@@ -30,7 +30,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Operator can add a structured comment and link a PR URL to a Linear issue via the Linear Agent
   4. All Linear write operations retry on failure with exponential backoff and log updatedAt before and after each mutation
   5. Every agent input/output object passes pydantic validation against AGENT-CONTRACTS.md schemas, and the Knowledge Store directory exists with all category subdirectories
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 01-01-PLAN.md — Project scaffold (pyproject.toml, .mcp.json, knowledge/ tree, Linear SKILL.md migration) — FOUND-02, FOUND-04
+- [ ] 01-02-PLAN.md — Pydantic contract models mirroring AGENT-CONTRACTS.md + schema-drift tests — FOUND-03
+- [ ] 01-03-PLAN.md — Claude Agent SDK lifecycle hooks (retry/backoff, audit log, PreCompact, list filter) + tests — LINR-05 (hooks)
+- [ ] 01-04-PLAN.md — Linear Agent service: run_linear_agent + run_validated_linear_agent (validation retry layer) — LINR-05 (system prompt)
+- [ ] 01-05-PLAN.md — Typer CLI (create-issue, update-issue, add-comment, link-pr) + integration tests + human checkpoint — FOUND-01, LINR-01, LINR-02, LINR-03, LINR-04
 
 ### Phase 2: Core Execution Agents
 **Goal**: The four execution agents — Backlog, Builder, Git, QA — are each independently functional and produce correct, verifiable output before any orchestrator wires them together
@@ -87,7 +93,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and Linear Integration | 0/TBD | Not started | - |
+| 1. Foundation and Linear Integration | 0/5 | Not started | - |
 | 2. Core Execution Agents | 0/TBD | Not started | - |
 | 3. Work Item Orchestrator and Single-Cycle MVP | 0/TBD | Not started | - |
 | 4. Global + Main Orchestrators and Parallel Mode | 0/TBD | Not started | - |
