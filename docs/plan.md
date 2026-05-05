@@ -1,0 +1,29 @@
+I want to setup a way to manage my demands based on linear tasks with the following structure:                                                                                                                   
+                                                                                                                                                                                                                   
+- I want to understand pretty well what I am building, for this I need clear epics to track a certain deliverable goal                                                                                           
+- I want to understand and test manually features that I am building, and to be guideded to test it and collect information and enhance integration and e2e tests, I need user stories (bound to epic)           
+- I want to implement a certain technical step that delivers a piece of the work. This technical task is related to a user stories and a user stories may be totally covered by the conjunction of the tasks .   
+
+If user story is simple enough, it is a must having technical tasks bound to it. The same way, if the task if simple, it is not required to be related to a user story. But user story and tasks must be under an epic.                                                                                                                                                                                                         
+                                                                                                                       
+The epics (so on the related US and tasks under it) will be always related to a project and may be related to milestone within linear project.                                                                   
+                                                                                                                                                                                                                   
+  The goal here is to guide Claude CLI or Code (need to support both) to implement tech tasks using task information and within the user story (that may be also a guide for implementation). Every                
+  implementation needs approval by me and the way we are going to do it is the following:                                                                                                                          
+                                                                                                                                                                                                                   
+  States:                                                                                                                                                                                                          
+  - Epic will always have a feature branch created with the epic plan on it - a draft PR must be created.                                                                                                          
+  - task without user story: create a PR and target the epic PR                                                                                                                                                    
+  - user story must have its own PR targeting to epic PR                                                                                                                                                           
+  - task with user story must target the US's PR as a feature branch instead of epic's PR.                                                                                                                         
+                                                                                                                                                                                                                   
+  Important: PR approvals and merge is always done manually and US PRs must have a UAT instructiosn to test it. If task without US, it must also have UAT instructions as well if applicable.                      
+                                                                                                                                                                                                                   
+  ---                                                                                                                                                                                                              
+                                                                                                                                                                                                                   
+  So this skill state that:                                                                                                                                                                                        
+                                                                                                                                                                                                                   
+  - there will be multiple plans explicitly defined as epic plan, user story plan and tech task plan.                                                                                                              
+  - we MUST have a plan that states the correct sequence, blocked, all other linear tasks relations. So the skill must access linear, and understand that a certain cannot be implemented if it is blocked         
+                                                                                                                                                                                                                   
+  This skill must be for creating
