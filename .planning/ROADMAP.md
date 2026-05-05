@@ -66,7 +66,12 @@ Plans:
   3. When qa_cycle_count reaches 3 without QA approval, the orchestrator escalates to human rather than initiating a fourth QA cycle
   4. Every agent invocation during the cycle receives the full Linear issue content as explicit structured input — no reliance on conversation memory
   5. Operator can view current system state and next recommended action from the CLI without triggering execution; the CLI loop repeats cycles autonomously until no ready tasks remain
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 03-01-PLAN.md — Foundation: pydantic contracts + Wave 0 test stubs + task-orchestration SKILL.md migration — covers all 10 requirement IDs as test stubs
+- [ ] 03-02-PLAN.md — Work Item Orchestrator implementation: single SDK session + skill injection + four @tool wrappers + QA cycle cap safety net — WORC-01..05
+- [ ] 03-03-PLAN.md — CLI extensions (run-next-step, show-state, show-next-action) + run_loop.py thin wrapper — CLIR-01..05
+- [ ] 03-04-PLAN.md — Integration tests + MVP benchmark cycle (real Linear + hsb-test-fixture) + human GO/NO-GO checkpoint — WORC-01, WORC-05, CLIR-01, CLIR-04
 
 ### Phase 4: Global + Main Orchestrators and Parallel Mode
 **Goal**: The full three-level orchestration hierarchy works in cascade mode, then parallel mode with optimistic claiming and worktree isolation passes a two-task concurrent test
@@ -101,6 +106,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation and Linear Integration | 0/5 | Not started | - |
 | 2. Core Execution Agents | 0/5 | Not started | - |
-| 3. Work Item Orchestrator and Single-Cycle MVP | 0/TBD | Not started | - |
+| 3. Work Item Orchestrator and Single-Cycle MVP | 0/4 | Not started | - |
 | 4. Global + Main Orchestrators and Parallel Mode | 0/TBD | Not started | - |
 | 5. Enhancement Agents | 0/TBD | Not started | - |

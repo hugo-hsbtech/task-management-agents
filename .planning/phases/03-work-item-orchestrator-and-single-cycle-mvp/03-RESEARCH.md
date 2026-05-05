@@ -724,7 +724,7 @@ class WorkItemOrchOutput(BaseModel):
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`work_item_id` selection when `--work-item-id` is omitted from `hsb run-next-step`**
    - What we know: CONTEXT.md D-06 says the command "triggers one orchestration cycle; a single work item progresses exactly one lifecycle step." The stopping condition in `run_loop.py` is "no `todo`-status tasks."
