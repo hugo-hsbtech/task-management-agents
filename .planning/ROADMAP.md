@@ -48,7 +48,13 @@ Plans:
   3. Git Agent creates a correctly named branch, opens a PR with the task PR targeting the EPIC branch and the EPIC PR targeting main, and triggers REBASE_STACK when a sibling task PR merges
   4. QA Agent produces a structured findings contract (approved or changes_required) with severity, blocking flag, evidence, and suggested fix subtask for each finding — and never exceeds 5 fix subtasks per report
   5. QA Agent increments qa_cycle_count and approves with tech-debt annotation when qa_cycle_count reaches 3, rather than requesting further fixes
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 02-01-PLAN.md — Wave 0 test scaffolds + per-agent CLI module skeletons + hsb-test-fixture checkpoint (covers all 19 requirement IDs as test stubs)
+- [ ] 02-02-PLAN.md — Backlog Agent: contracts + agent + SKILL.md + CLI + integration tests — BKPK-01..05
+- [ ] 02-03-PLAN.md — Builder Agent: contracts + agent + SKILL.md + CLI + integration tests — BLDR-01..04
+- [ ] 02-04-PLAN.md — Git Agent: contracts + agent + SKILL.md + CLI (create-pr, rebase-stack) + integration tests — GITA-01..05
+- [ ] 02-05-PLAN.md — QA Agent: contracts (with IMMUTABLE cycle cap validator) + agent + SKILL.md + CLI + integration tests — QAAG-01..05
 
 ### Phase 3: Work Item Orchestrator and Single-Cycle MVP
 **Goal**: One complete controlled cycle — a single Task moving from todo to done through Intelligence → Builder → Git → QA → fix loop — runs successfully in cascade mode via CLI trigger
@@ -94,7 +100,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Linear Integration | 0/5 | Not started | - |
-| 2. Core Execution Agents | 0/TBD | Not started | - |
+| 2. Core Execution Agents | 0/5 | Not started | - |
 | 3. Work Item Orchestrator and Single-Cycle MVP | 0/TBD | Not started | - |
 | 4. Global + Main Orchestrators and Parallel Mode | 0/TBD | Not started | - |
 | 5. Enhancement Agents | 0/TBD | Not started | - |
