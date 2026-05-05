@@ -675,17 +675,19 @@ date: "2026-05-05"
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> Both questions below were left open by initial research. They have been resolved during planning. Plan 05 (and the wider Phase 1 plan set) adopt the resolutions noted under each question.
 
 1. **Linear custom fields for `qa_status`, `uat_status`, `assigned_orchestrator`**
    - What we know: `mcp__linear__update_issue` updates standard Linear fields (status, assignee, priority). Linear supports custom fields via the GraphQL API.
    - What's unclear: Whether `mcp__linear__update_issue` exposes custom field updates via the MCP tool, or whether `qa_status` / `uat_status` / `assigned_orchestrator` must be implemented as Linear labels, issue description metadata, or comments rather than true custom fields.
-   - Recommendation: Implement LINR-02's `qa_status` / `uat_status` / `assigned_orchestrator` as structured comment data and/or labels in Phase 1. If the MCP tool exposes custom field updates, use them. Verify at runtime by inspecting the tool's input schema in `SystemMessage(subtype="init")`. Do not block Phase 1 on this ambiguity.
+   - **Resolution (adopted by Plan 04 + Plan 05):** Defer the choice to runtime. The Linear Agent's system prompt (Plan 04) instructs the model to inspect the `mcp__linear__update_issue` tool input schema from `SystemMessage(subtype="init")` and choose the best available mechanism in this order: (1) native custom field update if the MCP tool exposes one, (2) Linear label if labels are writable, (3) structured comment fallback (`<!-- qa_status: approved -->` style markdown comment) as a guaranteed-available fallback. Plan 05's `update-issue` CLI command exposes `--qa-status` / `--uat-status` / `--assigned-orchestrator` and forwards them in the payload — the agent decides the implementation per call. Plan 05 Task 3 (operator checkpoint) includes a manual step verifying `qa_status` is visible in the Linear UI after a live update, which closes the loop on whichever mechanism the agent selected.
 
 2. **Whether pytest tests should mock at the MCP boundary or hit a real Linear workspace**
    - What we know: Claude's discretion per CONTEXT.md. Mocking avoids external dependency but cannot verify real MCP connectivity (FOUND-01).
    - What's unclear: Whether a test Linear workspace is available for Phase 1 validation.
-   - Recommendation: Unit tests mock at the `run_linear_agent()` boundary (inject pre-canned result text, test pydantic validation and hook logic). One integration smoke test hits the real Linear MCP to satisfy FOUND-01. The integration test is marked `@pytest.mark.integration` and excluded from CI runs that lack `ANTHROPIC_API_KEY` + `LINEAR_API_KEY`.
+   - **Resolution (adopted by Plans 02, 03, 05):** Hybrid approach. Unit tests (`tests/test_contracts.py` in Plan 02, `tests/test_hooks.py` in Plan 03, `tests/test_cli.py` in Plan 05) mock at the `run_validated_linear_agent` / `run_linear_agent` boundary using `unittest.mock.AsyncMock` — these run in CI without credentials. A separate integration test suite (`tests/test_integration.py` in Plan 05) is marked `@pytest.mark.integration` and excluded from default `pytest tests/` runs. Integration tests skip individually via `pytest.skip` when `ANTHROPIC_API_KEY` / `LINEAR_TEST_TEAM_ID` / `LINEAR_TEST_ISSUE_ID` env vars are missing. Plan 05 Task 3 (operator checkpoint) is the gate that flips the integration suite from skipped to executed against a live Linear sandbox workspace.
 
 ---
 
