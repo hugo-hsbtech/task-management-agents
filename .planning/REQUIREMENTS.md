@@ -146,71 +146,71 @@ Populated during roadmap creation by the roadmapper agent.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | — | Pending |
-| FOUND-02 | — | Pending |
-| FOUND-03 | — | Pending |
-| FOUND-04 | — | Pending |
-| LINR-01 | — | Pending |
-| LINR-02 | — | Pending |
-| LINR-03 | — | Pending |
-| LINR-04 | — | Pending |
-| LINR-05 | — | Pending |
-| BKPK-01 | — | Pending |
-| BKPK-02 | — | Pending |
-| BKPK-03 | — | Pending |
-| BKPK-04 | — | Pending |
-| BKPK-05 | — | Pending |
-| BLDR-01 | — | Pending |
-| BLDR-02 | — | Pending |
-| BLDR-03 | — | Pending |
-| BLDR-04 | — | Pending |
-| GITA-01 | — | Pending |
-| GITA-02 | — | Pending |
-| GITA-03 | — | Pending |
-| GITA-04 | — | Pending |
-| GITA-05 | — | Pending |
-| QAAG-01 | — | Pending |
-| QAAG-02 | — | Pending |
-| QAAG-03 | — | Pending |
-| QAAG-04 | — | Pending |
-| QAAG-05 | — | Pending |
-| WORC-01 | — | Pending |
-| WORC-02 | — | Pending |
-| WORC-03 | — | Pending |
-| WORC-04 | — | Pending |
-| WORC-05 | — | Pending |
-| GORD-01 | — | Pending |
-| GORD-02 | — | Pending |
-| GORD-03 | — | Pending |
-| GORD-04 | — | Pending |
-| MORD-01 | — | Pending |
-| MORD-02 | — | Pending |
-| MORD-03 | — | Pending |
-| MORD-04 | — | Pending |
-| MORD-05 | — | Pending |
-| CLIR-01 | — | Pending |
-| CLIR-02 | — | Pending |
-| CLIR-03 | — | Pending |
-| CLIR-04 | — | Pending |
-| CLIR-05 | — | Pending |
-| UATA-01 | — | Pending |
-| UATA-02 | — | Pending |
-| UATA-03 | — | Pending |
-| UATA-04 | — | Pending |
-| INTL-01 | — | Pending |
-| INTL-02 | — | Pending |
-| INTL-03 | — | Pending |
-| INTL-04 | — | Pending |
-| RISK-01 | — | Pending |
-| RISK-02 | — | Pending |
-| RISK-03 | — | Pending |
-| RISK-04 | — | Pending |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| LINR-01 | Phase 1 | Pending |
+| LINR-02 | Phase 1 | Pending |
+| LINR-03 | Phase 1 | Pending |
+| LINR-04 | Phase 1 | Pending |
+| LINR-05 | Phase 1 | Pending |
+| BKPK-01 | Phase 2 | Pending |
+| BKPK-02 | Phase 2 | Pending |
+| BKPK-03 | Phase 2 | Pending |
+| BKPK-04 | Phase 2 | Pending |
+| BKPK-05 | Phase 2 | Pending |
+| BLDR-01 | Phase 2 | Pending |
+| BLDR-02 | Phase 2 | Pending |
+| BLDR-03 | Phase 2 | Pending |
+| BLDR-04 | Phase 2 | Pending |
+| GITA-01 | Phase 2 | Pending |
+| GITA-02 | Phase 2 | Pending |
+| GITA-03 | Phase 2 | Pending |
+| GITA-04 | Phase 2 | Pending |
+| GITA-05 | Phase 2 | Pending |
+| QAAG-01 | Phase 2 | Pending |
+| QAAG-02 | Phase 2 | Pending |
+| QAAG-03 | Phase 2 | Pending |
+| QAAG-04 | Phase 2 | Pending |
+| QAAG-05 | Phase 2 | Pending |
+| WORC-01 | Phase 3 | Pending |
+| WORC-02 | Phase 3 | Pending |
+| WORC-03 | Phase 3 | Pending |
+| WORC-04 | Phase 3 | Pending |
+| WORC-05 | Phase 3 | Pending |
+| CLIR-01 | Phase 3 | Pending |
+| CLIR-02 | Phase 3 | Pending |
+| CLIR-03 | Phase 3 | Pending |
+| CLIR-04 | Phase 3 | Pending |
+| CLIR-05 | Phase 3 | Pending |
+| GORD-01 | Phase 4 | Pending |
+| GORD-02 | Phase 4 | Pending |
+| GORD-03 | Phase 4 | Pending |
+| GORD-04 | Phase 4 | Pending |
+| MORD-01 | Phase 4 | Pending |
+| MORD-02 | Phase 4 | Pending |
+| MORD-03 | Phase 4 | Pending |
+| MORD-04 | Phase 4 | Pending |
+| MORD-05 | Phase 4 | Pending |
+| UATA-01 | Phase 5 | Pending |
+| UATA-02 | Phase 5 | Pending |
+| UATA-03 | Phase 5 | Pending |
+| UATA-04 | Phase 5 | Pending |
+| INTL-01 | Phase 5 | Pending |
+| INTL-02 | Phase 5 | Pending |
+| INTL-03 | Phase 5 | Pending |
+| INTL-04 | Phase 5 | Pending |
+| RISK-01 | Phase 5 | Pending |
+| RISK-02 | Phase 5 | Pending |
+| RISK-03 | Phase 5 | Pending |
+| RISK-04 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 57 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 57 ⚠️
+- Mapped to phases: 57 (roadmap complete)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-05*
-*Last updated: 2026-05-05 after initial definition*
+*Last updated: 2026-05-05 after roadmap creation*
