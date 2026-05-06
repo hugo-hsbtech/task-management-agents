@@ -75,7 +75,64 @@ If `hsb` is not found, check that `.venv/bin` is on your `PATH` (`which hsb` sho
 
 ## Authenticate (one-time setup)
 
-> This section mirrors [`.planning/phases/01-foundation-and-linear-integration/HUMAN-SETUP.md`](./.planning/phases/01-foundation-and-linear-integration/HUMAN-SETUP.md). The original spec is the source of truth — this is the operator-friendly summary.
+> The original Phase 1 spec is at [`.planning/phases/01-foundation-and-linear-integration/HUMAN-SETUP.md`](./.planning/phases/01-foundation-and-linear-integration/HUMAN-SETUP.md). It predates the Linear-MCP corrections in Step 2 below; **this guide supersedes it** for operator setup. Treat HUMAN-SETUP.md as historical context only.
+
+### Step 0 — Prepare your environment
+
+Before authenticating, do a quick preflight to make sure nothing in your environment will break the OAuth handshake or the agent pre-flight check. Skipping this step is the most common cause of the failure modes listed in [Troubleshooting](#troubleshooting).
+
+#### 0a — Confirm port 22227 is free
+
+`mcp-remote` always binds the OAuth callback listener to **`127.0.0.1:22227`** (a fixed port; not configurable). If anything else holds it — most often a stale `mcp-remote` from a previous attempt that crashed without cleanup — the next invocation exits with `EADDRINUSE`, the agent reports `linear: failed`, and OAuth never completes.
+
+```bash
+# Find anything listening on 22227
+ss -tlnp 2>/dev/null | grep 22227     # Linux
+lsof -i :22227                         # macOS / BSD
+
+# If a stale mcp-remote is listed, kill it
+kill <pid>
+
+# Confirm the port is free
+ss -tlnp 2>/dev/null | grep 22227 || echo "port 22227 free"
+```
+
+#### 0b — Audit your user-level Claude Code MCP servers
+
+The Claude Agent SDK that powers HSBTech inherits MCP server definitions from your user-level Claude Code config (`~/.claude.json` and any project-level `.mcp.json`). The HSBTech agents enforce a strict pre-flight: **every** MCP server reported at session init must be in `connected` state. If any user-level server (e.g. `claude.ai Google Drive`, `notion`, `github`) is in `needs-auth` or `failed`, every HSBTech agent invocation will raise — even though the failing server is unrelated to Linear.
+
+```bash
+# List user-level MCP servers
+jq '.mcpServers | keys' ~/.claude.json 2>/dev/null
+
+# Inspect any cached "needs-auth" entries
+cat ~/.claude/mcp-needs-auth-cache.json 2>/dev/null
+```
+
+For every server listed, either:
+
+- **Re-authenticate it** inside Claude Code (`/mcp` → reauth the server), or
+- **Remove the entry** from `~/.claude.json`'s `mcpServers` block until you have time to authenticate it
+
+The HSBTech agents only need `linear` (and the in-process `agents` SDK server). Any other server that leaks in from your user config must still report `connected` or it will block agents.
+
+#### 0c — Confirm `~/.mcp-auth/` is in expected state
+
+```bash
+ls ~/.mcp-auth/ 2>/dev/null
+```
+
+- **Empty or missing:** clean slate, proceed to Step 1 / 2.
+- **Has `mcp-remote-<version>/<hash>_tokens.json`:** OAuth was completed previously. You can skip Step 2 and jump to Step 2d to validate. If 2d fails, wipe the cache (`rm -rf ~/.mcp-auth/mcp-remote-*/`) and redo Step 2.
+
+#### 0d — Confirm Node toolchain
+
+```bash
+node --version    # ≥ 18 recommended
+npx --version     # bundled with node
+```
+
+`npx` will download `mcp-remote` on first use; nothing to install up-front.
 
 ### Step 1 — Anthropic OAuth2 token (NOT API key)
 
@@ -95,18 +152,80 @@ env | grep -i ANTHROPIC_API_KEY
 
 If you previously had `ANTHROPIC_API_KEY` set anywhere (`.env`, shell config, CI), unset it everywhere before running HSBTech.
 
-### Step 2 — Linear MCP browser OAuth (one-time)
+### Step 2 — Linear MCP OAuth (one-time, out-of-band)
 
-The Linear MCP server (`mcp.linear.app/mcp`) uses OAuth 2.1. The first call opens a browser tab; the token is cached at `~/.mcp-remote/` and reused for all subsequent runs.
+The Linear MCP server (`mcp.linear.app/mcp`) uses OAuth 2.1, brokered locally by `mcp-remote` (a Node helper that proxies STDIO ↔ remote MCP and handles the OAuth dance). The token is cached at `~/.mcp-auth/mcp-remote-<version>/` (e.g. `~/.mcp-auth/mcp-remote-0.1.37/`) and reused by every subsequent agent invocation.
+
+> **Important:** OAuth must complete *before* you run any HSBTech agent. The agents' MCP pre-flight check refuses to start unless every configured MCP server is already in `connected` state. So you cannot rely on "the first agent run will pop a browser" — by the time the SDK reports `linear: pending`, the pre-flight has already raised. Run the OAuth handshake out-of-band with `mcp-remote` directly, as below, *then* run an agent.
+
+#### 2a — Run the OAuth handshake
+
+```bash
+# Foreground process — prints the auth URL and waits for the callback
+npx -y mcp-remote https://mcp.linear.app/mcp
+```
+
+Expected output:
+
+```
+[…] Discovered authorization server: https://mcp.linear.app
+[…] Connecting to remote server: https://mcp.linear.app/mcp
+[…] OAuth callback server running at http://127.0.0.1:22227
+Please authorize this client by visiting:
+https://mcp.linear.app/authorize?…&redirect_uri=http%3A%2F%2Flocalhost%3A22227%2Foauth%2Fcallback&…
+
+[…] Authentication required. Waiting for authorization…
+```
+
+1. Open the printed URL in your browser
+2. Click **Authorize Linear**
+3. Browser is redirected to `http://localhost:22227/oauth/callback?code=…&state=…` and shows "Authorization successful! You may close this window."
+4. The `mcp-remote` terminal prints `Auth code received → Completing authorization → Connected to remote server → Proxy established successfully`
+5. Press **Ctrl+C** to stop `mcp-remote` — the token is now cached and HSBTech agents will reuse it on every invocation
+
+#### 2b — Verify the token landed
+
+```bash
+ls ~/.mcp-auth/mcp-remote-*/
+# Should list 3 files: <hash>_client_info.json, <hash>_code_verifier.txt, <hash>_tokens.json
+```
+
+If those files exist, OAuth is done. The path is *not* `~/.mcp-remote/` — older docs/READMEs may say so; that location is unused.
+
+#### 2c — Remote shell, local browser
+
+If your shell is on a remote machine (SSH session) and your browser runs locally, the redirect to `http://localhost:22227/...` will hit your local browser's localhost — which has no `mcp-remote` listening. Two options:
+
+**Option A — SSH port-forward (preferred, automatic):** before invoking `mcp-remote`, set up the tunnel so your local `localhost:22227` is forwarded to the remote machine:
+
+```bash
+ssh -L 22227:localhost:22227 <remote-host>
+# In the forwarded session:
+npx -y mcp-remote https://mcp.linear.app/mcp
+```
+
+After clicking Authorize, your local browser's redirect to `localhost:22227` is tunnelled to the remote `mcp-remote` automatically.
+
+**Option B — manual callback forwarding:** if you can't change the SSH session, open the auth URL in your local browser, click Authorize, then copy the *entire* failed-redirect URL (it'll look like `http://localhost:22227/oauth/callback?code=…&state=…`) and `curl` it from the remote shell while `mcp-remote` is still running:
+
+```bash
+# In a second remote shell:
+curl "http://localhost:22227/oauth/callback?code=...&state=..."
+# Returns: "Authorization successful! You may close this window."
+```
+
+The waiting `mcp-remote` process picks up the callback and finishes the token exchange.
+
+#### 2d — Validate end-to-end
+
+After the token is cached, sanity-check with a no-op Linear read through the agent:
 
 ```bash
 source .venv/bin/activate
-
-# Trigger the OAuth flow with a no-op Linear read
 python -c "import asyncio; from hsb.agents.linear_agent import run_linear_agent; asyncio.run(run_linear_agent('List Linear teams. Return JSON: {\"operation\":\"read\",\"result\":\"success\",\"linear_entities\":[],\"error\":null}'))"
 ```
 
-A browser tab will open → log into Linear → grant access → close the tab. The Python call completes and prints the agent's tool calls. **Subsequent calls reuse the cached token without prompting.**
+The agent should connect, list your teams, and return success. If it raises `RuntimeError: Linear MCP server failed to connect`, see the relevant Troubleshooting entry below before continuing.
 
 ### Step 3 — Test workspace identifiers
 
@@ -354,17 +473,51 @@ grep -r "ANTHROPIC_API_KEY" ~/.bashrc ~/.zshrc ~/.profile .env 2>/dev/null
 
 Use OAuth2 (`claude setup-token` + `CLAUDE_CODE_OAUTH_TOKEN`) instead.
 
-### Linear MCP browser flow doesn't open
+### `RuntimeError: Linear MCP server failed to connect: [...status: 'failed']`
 
-The token cache at `~/.mcp-remote/` may be stale or the OAuth callback may be blocked.
+The most common cause is a **stale `mcp-remote` process** still holding the OAuth callback port (`127.0.0.1:22227`) from a previous attempt that crashed before completing OAuth. Every new `mcp-remote` invocation then exits with `EADDRINUSE` and the agent's pre-flight reports `linear: failed`.
 
 ```bash
-# Clear the cache and retry
-rm -rf ~/.mcp-remote/
-# Re-run the trigger snippet from "Authenticate Step 2"
+# Identify what's holding port 22227
+ss -tlnp 2>/dev/null | grep 22227    # Linux
+lsof -i :22227                        # macOS / BSD
+
+# Confirm it's a stale mcp-remote
+ps -p <pid> -o pid,etime,cmd
+
+# Kill it
+kill <pid>
+
+# Verify port is free
+ss -tlnp 2>/dev/null | grep 22227 || echo "port 22227 free"
 ```
 
-If you're on a remote server without browser, see the `mcp-remote` docs for headless flows.
+Then redo Step 2. (Step 0a is the prevention.)
+
+A secondary cause is a corrupt or partial token cache. If killing the stale process doesn't help, also wipe the cache:
+
+```bash
+rm -rf ~/.mcp-auth/mcp-remote-*/
+# Re-run Step 2
+```
+
+### `RuntimeError: ...failed to connect: [{'name': '<other server>', 'status': 'needs-auth'}]`
+
+The agent's pre-flight check refuses to start unless **every** MCP server reported at session init is `connected`. The Claude Agent SDK inherits MCP servers from your user-level Claude Code config, so a `needs-auth` server you never use for HSBTech (e.g. `claude.ai Google Drive`, `notion`) will still block agents.
+
+```bash
+# Inspect what's leaking in
+jq '.mcpServers | keys' ~/.claude.json 2>/dev/null
+cat ~/.claude/mcp-needs-auth-cache.json 2>/dev/null
+```
+
+Resolution: either re-authenticate the offending server inside Claude Code (`/mcp` → reauth), or remove its entry from `~/.claude.json`'s `mcpServers` block. Step 0b is the prevention.
+
+### OAuth browser flow doesn't open / wrong machine
+
+`mcp-remote` always binds the callback to `127.0.0.1:22227`. If your shell is on a remote host but your browser runs locally, the redirect cannot reach the listener. See [Step 2c](#2c--remote-shell-local-browser) for the SSH port-forward and manual `curl` callback options.
+
+If `mcp-remote` says `Browser opened automatically` but you don't see anything, it's running headless — open the printed URL manually and proceed as in Step 2c Option B.
 
 ### `RuntimeError: error_max_turns` raised mid-cycle
 
@@ -427,9 +580,12 @@ If you want them to SKIP (default), don't set the env vars. The unit suite alway
 
 ```
 # One-time setup
-claude setup-token                    # OAuth2 token
+ss -tlnp | grep 22227                 # Step 0a — port 22227 must be free
+jq '.mcpServers|keys' ~/.claude.json  # Step 0b — audit user-level MCPs
+claude setup-token                    # Step 1 — OAuth2 token
 echo "CLAUDE_CODE_OAUTH_TOKEN=..." >> .env
-python -c "...run_linear_agent..."    # Linear MCP browser flow
+npx -y mcp-remote https://mcp.linear.app/mcp   # Step 2a — Linear OAuth (Ctrl+C after success)
+ls ~/.mcp-auth/mcp-remote-*/          # Step 2b — verify token cached
 export LINEAR_TEST_TEAM_ID=... LINEAR_TEST_ISSUE_ID=LIN-XXX
 
 # Daily use
