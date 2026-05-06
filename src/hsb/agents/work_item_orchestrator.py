@@ -10,11 +10,28 @@ Architecture (RESEARCH.md Pattern 1, Pitfall 1, Pitfall 4):
 - Every ``@tool`` returns the canonical ``{"content":[{"type":"text","text":...}]}``
   envelope; returning a Pydantic model directly silently fails the SDK serializer.
 
+Phase 5 (D-04, D-06): the WIO embeds skills 10 + 11 inline within the same SDK
+session, adds a Step 1 enrichment turn before Builder and a Step 5 knowledge
+storage turn after QA. The transition from a single ``query()`` call to a
+multi-turn ``ClaudeSDKClient`` session preserves all of Phase 3's @tool
+wiring (Builder/Git/QA dispatched as MCP tools).
+
 Two-layer QA cycle cap (CONTEXT.md D-05):
 - Layer 1 lives in :class:`hsb.contracts.qa.QAOutput.validate_cycle_cap_logic`.
 - Layer 2 (this module) — :func:`_check_qa_cycle_cap` — posts a Linear escalation
   comment when ``qa_cycle_count >= 3`` AND ``qa_status == "changes_required"``,
   preventing a runaway 4th cycle if Layer 1 is somehow bypassed.
+
+G1 (OAuth2 only): ``ANTHROPIC_API_KEY`` must be ``not in os.environ``. This
+file does NOT have a module-top assert — that pattern broke pytest collection
+when developer environments legitimately had the env var set. G1 is enforced
+function-entry via :func:`hsb.agents._sdk_options.assert_oauth2_only` (called
+from :func:`hsb.agents._sdk_options.make_options`); the SDK options here are
+constructed via ``ClaudeAgentOptions(...)`` directly (Phase 3 pattern), but
+the orchestrator is invoked through the global orchestrator which routes
+through the chokepoint factory. Defensive pairing: the session-scoped
+autouse fixture ``_gsd_clear_api_key`` in ``tests/conftest.py`` unsets the
+env var at test session start.
 """
 from __future__ import annotations
 
@@ -24,19 +41,25 @@ from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
-    create_sdk_mcp_server,
-    tool,
     AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
     ResultMessage,
     SystemMessage,
+    create_sdk_mcp_server,
+    query,
+    tool,
 )
 from claude_agent_sdk.types import TextBlock
 from dotenv import load_dotenv
 
-from hsb.contracts.orchestrator import WorkItemOrchInput, WorkItemOrchOutput  # noqa: F401
+from hsb.agents._sdk_options import assert_no_task_dispatch  # G3 runtime backstop
+from hsb.agents.intelligence_agent import (
+    build_enrichment_prompt,
+    build_storage_prompt,
+)
 from hsb.agents.linear_agent import run_validated_linear_agent
+from hsb.contracts.orchestrator import WorkItemOrchInput, WorkItemOrchOutput  # noqa: F401
 
 load_dotenv()
 
@@ -57,6 +80,14 @@ SKILL_FILES = [
     "skills/03-QA-REVIEW.md",
     "skills/04-GIT-PR-MANAGEMENT.md",
     "skills/05-LINEAR-SYSTEM-OF-RECORD.md",
+    # Phase 5 [D-04]: Intelligence Agent runs inline within the WIO SDK
+    # session. The skill bodies are injected into the system prompt so the
+    # LLM applies the retrieval rules (skill 10) before Builder and the
+    # ingestion criteria (skill 11) after QA. The migrated SKILL.md files
+    # under .claude/skills/ are referenced for SDK auto-discovery; the
+    # source paths under skills/ are loaded into assemble_system_prompt().
+    ".claude/skills/knowledge-context-enrichment/SKILL.md",  # skill 10 [Phase 5]
+    ".claude/skills/knowledge-storage/SKILL.md",  # skill 11 [Phase 5]
 ]
 
 
@@ -229,7 +260,7 @@ async def run_orchestration_cycle(work_item_id: str | None = None) -> None:
     # work_item_id selection: if not provided, orchestrator queries Linear for
     # the next todo task (Phase 4 will replace this with the Global
     # Orchestrator selection).
-    prompt = (
+    cycle_prompt = (
         f"Run the work item lifecycle for work item {work_item_id}. "
         "Read its current Linear state first, then execute the next "
         "appropriate lifecycle step."
@@ -242,23 +273,99 @@ async def run_orchestration_cycle(work_item_id: str | None = None) -> None:
         )
     )
 
-    # Message loop — same pattern as Phase 1 linear_agent.py run_linear_agent
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, SystemMessage) and message.subtype == "init":
-            mcp_servers = message.data.get("mcp_servers", [])
-            failed = [s for s in mcp_servers if s.get("status") != "connected"]
-            if failed:
-                raise RuntimeError(f"MCP server failed to connect: {failed}")
-        elif isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, TextBlock):
-                    print(block.text)
-                elif hasattr(block, "name"):
-                    logger.info("[TOOL] %s", block.name)
-        elif isinstance(message, ResultMessage):
-            logger.info(
-                "Orchestration cycle complete. Cost: $%.4f", message.total_cost_usd
-            )
+    # Phase 5 lifecycle: a single ClaudeSDKClient session drives three turns
+    # within the SAME context window:
+    #
+    #   Step 1 [NEW Phase 5, INTL-01]  — Intelligence enrichment via skill 10.
+    #                                    Populates `knowledge_context` for the
+    #                                    Builder. No Linear writes.
+    #   Steps 2-4 [Phase 3]            — Builder → Git → QA cycle (max QA
+    #                                    cycle cap = 3, D-05 Layer 1 in
+    #                                    QAOutput, Layer 2 in this module).
+    #   Step 5 [NEW Phase 5, INTL-02]  — Knowledge storage evaluation via
+    #                                    skill 11. Writes knowledge/<cat>/*.md
+    #                                    only if ingestion criteria are met.
+    #
+    # G3 runtime backstop (assert_no_task_dispatch) is called on every
+    # received message in EVERY receive_response() loop body — catches an
+    # SDK regression that bypasses allowed_tools at runtime (WORC-02).
+    work_item_json = (
+        f'{{"id": "{work_item_id}"}}' if work_item_id else "{}"
+    )
+    qa_result: dict[str, Any] = {}
+    implementation_notes: dict[str, Any] = {}
+
+    async with ClaudeSDKClient(options=options) as client:
+        # [NEW Phase 5] Step 1: Intelligence enrichment (skill 10) — before Builder.
+        await client.query(build_enrichment_prompt(work_item_id or "next-todo", work_item_json))
+        async for msg in client.receive_response():
+            assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
+            if isinstance(msg, SystemMessage) and msg.subtype == "init":
+                mcp_servers = msg.data.get("mcp_servers", [])
+                failed = [s for s in mcp_servers if s.get("status") != "connected"]
+                if failed:
+                    raise RuntimeError(f"MCP server failed to connect: {failed}")
+            elif isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        print(block.text, end="", flush=True)
+                    elif hasattr(block, "name"):
+                        logger.info("[TOOL] %s", block.name)
+
+        # [Phase 3] Steps 2-4: Builder → Git → QA cycle.
+        await client.query(cycle_prompt)
+        async for msg in client.receive_response():
+            assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
+            if isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        print(block.text)
+                    elif hasattr(block, "name"):
+                        logger.info("[TOOL] %s", block.name)
+            elif isinstance(msg, ResultMessage):
+                if msg.stop_reason == "error_max_turns":
+                    raise RuntimeError(f"WIO hit max_turns for {work_item_id}")
+                # G8 context budget warning at 60% of 200K window.
+                if msg.usage:
+                    input_tokens = msg.usage.get("input_tokens", 0)
+                    if input_tokens > 120_000:
+                        logger.warning(
+                            "WIO context at %d tokens for %s — consider skill index fallback",
+                            input_tokens,
+                            work_item_id,
+                        )
+                logger.info(
+                    "Orchestration cycle complete. Cost: $%.4f",
+                    msg.total_cost_usd,
+                )
+
+        # [NEW Phase 5] Step 5: Knowledge storage evaluation (skill 11) — after QA.
+        # qa_result/implementation_notes are propagated through the system
+        # prompt instructions; this prompt directs the LLM to pull them from
+        # its prior turns. Side-effectful writes to knowledge/; no return.
+        await client.query(build_storage_prompt(qa_result, implementation_notes))
+        async for msg in client.receive_response():
+            assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
+            if isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        print(block.text, end="", flush=True)
+                    elif hasattr(block, "name"):
+                        logger.info("[TOOL] %s", block.name)
+            elif isinstance(msg, ResultMessage):
+                if msg.stop_reason == "error_max_turns":
+                    raise RuntimeError(
+                        f"WIO storage step hit max_turns for {work_item_id}"
+                    )
+                if msg.usage:
+                    input_tokens = msg.usage.get("input_tokens", 0)
+                    if input_tokens > 120_000:
+                        logger.warning(
+                            "WIO context at %d tokens (storage step) for %s — "
+                            "consider skill index fallback",
+                            input_tokens,
+                            work_item_id,
+                        )
 
 
 # --------------------------------------------------------------------------- #
