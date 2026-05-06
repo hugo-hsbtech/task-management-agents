@@ -36,7 +36,7 @@ Plans:
 - [x] 01-02-PLAN.md — Pydantic contract models mirroring AGENT-CONTRACTS.md + schema-drift tests — FOUND-03
 - [x] 01-03-PLAN.md — Claude Agent SDK lifecycle hooks (retry/backoff, audit log, PreCompact, list filter) + tests — LINR-05 (hooks)
 - [x] 01-04-PLAN.md — Linear Agent service: run_linear_agent + run_validated_linear_agent (validation retry layer) — LINR-05 (system prompt)
-- [ ] 01-05-PLAN.md — Typer CLI (create-issue, update-issue, add-comment, link-pr) + integration tests + human checkpoint — FOUND-01, LINR-01, LINR-02, LINR-03, LINR-04
+- [x] 01-05-PLAN.md — Typer CLI (create-issue, update-issue, add-comment, link-pr) + integration tests + human checkpoint — FOUND-01, LINR-01, LINR-02, LINR-03, LINR-04 *(autonomous tasks complete; human OAuth checkpoint pending — see 01-05-SUMMARY.md)*
 
 ### Phase 2: Core Execution Agents
 **Goal**: The four execution agents — Backlog, Builder, Git, QA — are each independently functional and produce correct, verifiable output before any orchestrator wires them together
