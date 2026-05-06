@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. Every agent input/output object passes pydantic validation against AGENT-CONTRACTS.md schemas, and the Knowledge Store directory exists with all category subdirectories
 **Plans**: 5 plans
 Plans:
-- [ ] 01-01-PLAN.md — Project scaffold (pyproject.toml, .mcp.json, knowledge/ tree, Linear SKILL.md migration) — FOUND-02, FOUND-04
+- [x] 01-01-PLAN.md — Project scaffold (pyproject.toml, .mcp.json, knowledge/ tree, Linear SKILL.md migration) — FOUND-02, FOUND-04
 - [ ] 01-02-PLAN.md — Pydantic contract models mirroring AGENT-CONTRACTS.md + schema-drift tests — FOUND-03
 - [ ] 01-03-PLAN.md — Claude Agent SDK lifecycle hooks (retry/backoff, audit log, PreCompact, list filter) + tests — LINR-05 (hooks)
 - [ ] 01-04-PLAN.md — Linear Agent service: run_linear_agent + run_validated_linear_agent (validation retry layer) — LINR-05 (system prompt)
