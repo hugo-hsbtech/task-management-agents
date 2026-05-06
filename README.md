@@ -1,778 +1,407 @@
-# HSBTech AI Engineering Workflow
+# HSBTech — AI Engineering Workflow
 
-## Overview
+[![Status: v1.0 autonomous-complete](https://img.shields.io/badge/status-v1.0%20autonomous--complete-success)](#milestone-status)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+[![Tests: 106 unit / 18 evals / 59 integration](https://img.shields.io/badge/tests-106%20unit%20%7C%2018%20evals%20%7C%2059%20integration-brightgreen)](#test-suite)
 
-HSBTech is an AI-assisted engineering workflow designed to transform a documented plan into a structured, traceable, and quality-controlled software delivery process.
-
-The system is built around the idea that AI agents should not behave like isolated assistants. Instead, they should operate as a coordinated engineering system with:
-
-- clear responsibilities
-- explicit contracts
-- persistent state
-- small execution steps
-- strong QA loops
-- traceable delivery through Linear and GitHub
-
-The goal is to create a practical agentic workflow that can run on tools such as Claude Code, Codex, MCP-enabled runtimes, GitHub, and Linear.
+> A coordinated multi-agent system that turns a documented plan into traceable, QA-reviewed software delivery via Linear and GitHub. Built on the Claude Agent SDK with structurally-enforced capability boundaries and a deterministic risk-based prioritizer.
 
 ---
 
-## What This System Does
+## Table of contents
 
-At a high level, HSBTech takes a documented plan and turns it into a complete engineering execution flow:
+1. [What this is](#what-this-is)
+2. [Architecture](#architecture)
+3. [The 11 agents](#the-11-agents)
+4. [Guardrails (G1–G10)](#guardrails-g1g10)
+5. [Repository layout](#repository-layout)
+6. [Tech stack](#tech-stack)
+7. [Installation](#installation)
+8. [CLI reference](#cli-reference)
+9. [Operating modes](#operating-modes)
+10. [Knowledge Store](#knowledge-store)
+11. [Test suite](#test-suite)
+12. [Milestone status](#milestone-status)
+13. [Design rules and constraints](#design-rules-and-constraints)
+14. [Project history](#project-history)
+15. [License](#license)
 
-```txt
-Plan
-  → Backlog
-  → Linear
-  → Implementation
-  → Pull Request
-  → QA Review
-  → Fix Loop
-  → UAT
-  → Epic Completion
+---
+
+## What this is
+
+HSBTech turns a documented plan into a complete engineering execution flow:
+
+```
+plan.md
+   ↓
+Backlog Agent   → creates EPIC + User Stories + Tasks in Linear
+   ↓
+Global Orchestrator   → reads Linear state, builds risk-prioritized work queue
+   ↓
+Main Orchestrator   → cascade or parallel dispatch
+   ↓
+Work Item Orchestrator (one per task)
+   ├─ Intelligence    → enriches with Knowledge Store entries (skills 10+11)
+   ├─ Builder         → implements scoped change
+   ├─ Git             → branches, commits, opens stacked PR
+   └─ QA              → reviews PR diff, produces findings or approves
+   ↓
+UAT Agent   → validates User Story against acceptance criteria
+   ↓
+Risk Agent   → scores, prioritizes, surfaces auto-improvement triggers
 ```
 
-The system is designed to support:
+Linear is the durable system of record. GitHub is the code delivery surface. Every merge to `main` is human-approved. Every agent action is structured JSON in/out, traceable by Linear comment and Git commit.
 
-- backlog creation from a plan
-- EPIC-driven delivery
-- User Stories with UAT
-- technical Tasks and Subtasks
-- small Pull Requests
-- stacked PR workflows
-- QA findings converted into fix subtasks
-- Linear as the operational system of record
-- knowledge capture and reuse
-- risk analysis and adaptive prioritization
+The runtime is the Claude Agent SDK. Every agent is one of three patterns: a stateful `ClaudeSDKClient` session (Work Item Orchestrator), a one-shot `query()` session (UAT Agent, Risk Agent skill 14), or a pure-Python class (Risk Agent skills 12+13, Global Orchestrator, Main Orchestrator).
 
 ---
 
-## Core Philosophy
+## Architecture
 
-The system follows four core principles.
+Three orchestration levels, deliberately separated by responsibility:
 
-### 1. Linear is the System of Record
+| Level | Class | What it decides | LLM? |
+|-------|-------|-----------------|------|
+| **L0 — Main Orchestrator** | `MainOrchestrator` | Cascade vs. parallel mode. Dispatch budget. Worktree lifecycle. | No (pure Python) |
+| **L1 — Global Orchestrator** | `GlobalOrchestrator` | What's ready (no blocking deps), in what risk-priority order, when to dispatch UAT. | No (pure Python) |
+| **L2 — Work Item Orchestrator** | `WorkItemOrchestrator` | The full lifecycle of one task. Calls Builder → Git → QA → fix loop within ONE Claude session. | Yes (single SDK session, inline skill injection) |
 
-Linear is not just a tracker. It is the operational brain of the workflow.
+L0 and L1 are deterministic. L2 is the only place LLM reasoning drives a multi-step lifecycle, and it's bounded: max 3 QA cycles per task, structurally-enforced no-sub-subagent dispatch, no `Agent` tool in `allowed_tools`.
 
-It stores:
-
-- EPICs
-- User Stories
-- Tasks
-- Subtasks
-- statuses
-- dependencies
-- PR links
-- QA findings
-- UAT results
-- blockers
-- execution memory
-
-If something affects the current workflow, it must be represented in Linear.
+The same Work Item Orchestrator runs in cascade and parallel modes — the difference is just whether `MainOrchestrator` invokes one at a time or via `asyncio.gather` with worktree isolation.
 
 ---
 
-### 2. Skills Define Behavior
+## The 11 agents
 
-Skills are reusable operational instructions.
+### Foundation (Phase 1)
 
-They define how a specific type of work must be performed, such as:
+**Linear Agent** (`src/hsb/agents/linear_agent.py`)
+Wraps `claude_agent_sdk.query` with the Linear MCP server (`mcp.linear.app/mcp`). Provides `run_linear_agent(prompt)` and `run_validated_linear_agent(operation, payload)` — the latter does pydantic-gated 3-retry self-correction. Implements LINR-05 optimistic-lock procedure: read `updatedAt` → write → re-read → verify post>pre. All Linear writes go through this agent.
 
-- backlog planning
-- implementation
-- QA review
-- PR management
-- orchestration
-- UAT validation
-- knowledge enrichment
+### Execution (Phase 2)
 
-Skills are not tied to a specific tool. They can be used by Claude Code, Codex, local scripts, or other runtimes.
+**Backlog Agent** (`src/hsb/agents/backlog_agent.py`)
+Reads `plan.md`, produces a structured `BacklogOutput` (EPIC + User Stories + Tasks + Subtasks). Idempotent: rerun produces zero new EPICs (BKPK-05). Allow-list: `create_issue`, `list_issues`, `get_issue`, `Read`. `IDEMPOTENCY RULE` pre-flight in system prompt.
 
----
+**Builder Agent** (`src/hsb/agents/builder_agent.py`)
+Implements only the scoped change for one Task. Allow-list: 7 tools (`Read`, `Edit`, `Write`, `Bash` for `pytest`/`ruff`/`mypy`/`python`). NO `mcp_servers` — Builder cannot touch Linear or git. Three-defense capability boundary: SKILL.md allow-list + `ClaudeAgentOptions` allow-list + Pydantic `extra="forbid"` rejects `git_branch` field.
 
-### 3. Agents Execute Skills
+**Git Agent** (`src/hsb/agents/git_agent.py`)
+Creates branches matching `feature/LIN-{id}-{slug}`, commits, opens stacked PRs (task PRs target `epic/LIN-...`, NOT `main`). Allow-list: 12 tools including `gh pr create/view/diff`, `git push --force-with-lease` (Pitfall 3), `gh pr list --limit 100` (Pitfall 4). Excludes `Edit`, `Write`, `git merge`, `gh pr merge`, all `mcp__linear__*`. REBASE_STACK procedure for sibling PRs.
 
-Agents are executable actors.
+**QA Agent** (`src/hsb/agents/qa_agent.py`)
+Reviews PR diff against requirements. Allow-list: 3 tools (`Read`, `Bash(gh pr diff *)`, `Bash(gh pr view *)`). Triple-layer cycle cap: SKILL.md system prompt + `validate_cycle_cap_logic` Pydantic `model_validator` + integration test. At `qa_cycle_count = 3`, status MUST be `approved` with a `tech_debt_annotation`. Post-validation Linear writes via Phase 1 Linear Agent.
 
-An agent owns a responsibility and uses one or more skills to perform work.
+### Orchestration (Phases 3–4)
 
-Example:
+**Work Item Orchestrator** (`src/hsb/agents/work_item_orchestrator.py`)
+A single Claude Agent SDK session driving one Linear task through its full lifecycle. Inline skill injection: 7 skills (skills 02+03+04+05+06 from Phase 3 + skills 10+11 from Phase 5) concatenated into the system prompt at startup (~14.4 KB). NO sub-subagent dispatch (WORC-02): `agents=` kwarg absent, `AgentDefinition` not imported, `assert_no_task_dispatch(msg)` runtime backstop in every receive loop.
 
-- Backlog Agent uses Backlog Planning
-- Builder Agent uses Implementation
-- QA Agent uses QA Review
-- Git Agent uses Git/PR Management
-- **Main Orchestrator Agent** is the entry point, deciding between sequential and parallel execution.
-- **Global Orchestrator Agent** identifies what tasks can be run.
+**Global Orchestrator** (`src/hsb/agents/global_orchestrator.py`)
+Pure Python async class. Reads Linear state, filters dependency-blocked tasks, calls `RiskAgent.get_priority_queue()`, detects UAT-ready User Stories, dispatches UAT inline via `await`. No SDK session, no LLM.
 
----
+**Main Orchestrator** (`src/hsb/agents/main_orchestrator.py`)
+Pure Python dispatch controller. `--cascade` runs WIOs sequentially. `--parallel` uses `asyncio.gather(..., return_exceptions=True)` with optimistic-lock claiming + worktree isolation + `try/finally` cleanup + `git worktree prune` startup. T-4-04: subprocess env is a strict 5-key allowlist (no `**os.environ`).
 
-### 4. Multi-Level Orchestration
+### Enhancement (Phase 5)
 
-The system is not a single loop but a hierarchy of orchestrators, providing both flexibility and control.
+**Intelligence Agent** (`src/hsb/agents/intelligence_agent.py` + inline in WIO)
+Not a separate process — embedded inline in the WIO via skills 10+11. Step 1 (before Builder): queries Knowledge Store via Glob+Grep, populates `knowledge_context`. Step 5 (after QA): evaluates findings, writes new Knowledge Store entry if ingestion criteria met. `KnowledgeStorageInput` Pydantic model rejects `applicability` of "all tasks" / "n/a" / "tbd" / empty.
 
-1.  **Main Orchestrator**: The entry point. It decides the *how* (sequentially or in parallel).
-2.  **Global Orchestrator**: The strategist. It determines the *what* (which tasks are ready to run).
-3.  **Work Item Orchestrator**: The executor. It manages the lifecycle of a *single* task from start to finish.
+**UAT Agent** (`src/hsb/agents/uat_agent.py`)
+Standalone Claude Agent SDK session. `query()` Pattern B + 3-retry Pydantic wrapper. Skill 08 inline. Allow-list: `Read`, `Glob`, `Grep`, `Bash` (no Write, no Edit, no `Agent`, no Linear MCP). `mcp_servers=None`. Validates User Story acceptance criteria; produces scenario pass/fail with evidence. SCOPE BOUNDARY literal in every prompt (does not review code, does not create PRs).
 
-This separation of concerns keeps the system:
+**Risk Agent** (`src/hsb/agents/risk_agent.py`)
+Pure Python class for skills 12+13 (deterministic quality scoring + adaptive prioritization). Quality score formula: start=100, −10/QA failure, −5/fix subtask, −15 if UAT failed, −5/rework cycle, min=0. Single async method `detect_improvement_triggers()` for skill 14 — isolated SDK call with `allowed_tools=[]`, `mcp_servers=None`, `model=haiku`, `max_turns=3`. Never writes to Linear directly (RISK-04, 4-layer defense).
 
-- observable
-- debuggable
-- interruptible
-- safe
-- easy to reason about
+### Sentinel module
+
+**`_sdk_options.py`** (`src/hsb/agents/_sdk_options.py`)
+The chokepoint module that enforces Phase 5 guardrails structurally. Every SDK call site must use `make_options()`, which calls `assert_oauth2_only()` and refuses any `allowed_tools` containing `"Agent"`. Provides `assert_no_task_dispatch(msg)` (G3 runtime backstop) and `linear_write_guard` (G5 stack-inspection decorator on Phase 1 LinearAgent write methods).
 
 ---
 
-# System Architecture
+## Guardrails (G1–G10)
 
-```mermaid
-flowchart TD
-    subgraph Initialization
-        Plan[Documented Plan] --> BacklogAgent[Backlog Agent]
-        BacklogAgent --> Linear[Linear System of Record]
-    end
+| ID | What it enforces | Mechanism | File |
+|----|------------------|-----------|------|
+| **G1** | OAuth2-only — never API keys | `assert_oauth2_only()` function-entry guard + `_gsd_clear_api_key` autouse session fixture | `_sdk_options.py`, `tests/conftest.py` |
+| **G2** | No `Agent` tool in `allowed_tools` (no sub-subagent dispatch) | `make_options()` factory raises `ValueError` | `_sdk_options.py:43` |
+| **G3** | Runtime backstop for G2 — catches SDK regressions | `assert_no_task_dispatch(msg)` in every receive loop | WIO (3 sites), Risk Agent (1), UAT Agent (1) |
+| **G4** | Risk Agent skill 14 is structurally air-gapped | `allowed_tools=[]`, `mcp_servers=None`, `model=haiku`, `max_turns=3`, `max_budget_usd=0.05` | `risk_agent.py:177` |
+| **G5** | LinearAgent writes denied for callers from `risk_agent.py` (except via explicit delegated path) | `linear_write_guard` stack-inspection decorator | `linear_agent.py:181-189` |
+| **G6** | UAT cycle cap = 3, project-wide invariant | Global Orchestrator skips re-dispatch + posts `linear_createComment` escalation (camelCase `issueId`, `body`) | `global_orchestrator.py::_detect_uat_ready_user_stories` |
+| **G7** | `error_max_turns` raises `RuntimeError` — no silent loop continuation | `if msg.stop_reason == "error_max_turns": raise` in every SDK loop | WIO, UAT, Risk |
+| **G8** | WIO context budget warning at 120K input tokens | WARN log emitted in receive loops | WIO Steps 2-4 + Step 5 |
+| **G9** | Knowledge Store pre-write hook | `KnowledgeStorageInput.applicability` validator + `extra="forbid"` | `contracts/knowledge.py` |
+| **G10** | UAT pre-persist validation (B1 coverage + B3 banned-token regex) | `_uat_passes_g10` helper called twice in `get_ready_tasks` | `global_orchestrator.py:75` |
 
-    subgraph Execution Cycle
-        MainOrchestrator(Main Orchestrator) -- "1. Ask User: Cascade or Parallel?" --> UserInput{Mode?}
-        UserInput -- "2. Get Ready Tasks" --> GlobalOrchestrator[Global Orchestrator Agent]
-        GlobalOrchestrator -- "3. List of [Task A, Task B]" --> MainOrchestrator
-    end
+**RISK-04 has 4 layers of structural defense** (the strongest milestone-level invariant): no `linear_agent` import in `risk_agent.py` + `linear_write_guard` decorator + `Literal["suggested"]` Pydantic field + skill 14 `allowed_tools=[]`.
 
-    subgraph Task Execution
-        MainOrchestrator -- "4. Dispatch" --> WorkItemOrchestratorA[Work Item Orchestrator A]
-        MainOrchestrator -- "4. Dispatch" --> WorkItemOrchestratorB[Work Item Orchestrator B]
-    end
+---
 
-    subgraph Single Task Lifecycle
-        WorkItemOrchestratorA --> BuilderAgent[Builder Agent]
-        BuilderAgent --> GitAgent[Git Agent]
-        GitAgent --> GitHub[GitHub Pull Request]
-        GitHub --> QAAgent[QA Agent]
-        QAAgent --> FixLoop{Fix Required?}
-        FixLoop -->|Yes| WorkItemOrchestratorA
-        FixLoop -->|No| Done[Done]
-    end
+## Repository layout
 
-    style MainOrchestrator fill:#f9f,stroke:#333,stroke-width:2px
 ```
-
----
-
-# Main Components
-
-## 1. Skills
-
-Skills are documented procedures used by agents.
-
-Current skills:
-
-| File | Purpose |
-|---|---|
-| `skills/00-MAIN-ORCHESTRATOR.md` | **(Entry Point)** Decides execution mode (Cascade/Parallel) and dispatches tasks. |
-| `skills/07-GLOBAL-ORCHESTRATION.md` | **(Strategist)** Identifies and lists all ready-to-execute tasks for the Main Orchestrator. |
-| `skills/06-TASK-ORCHESTRATION.md` | **(Executor)** Drives the lifecycle of a **single** work item as a sub-agent. |
-| `skills/01-BACKLOG-PLANNING.md` | Converts a documented plan into EPICs, User Stories, Tasks, and Subtasks |
-| `skills/02-IMPLEMENTATION.md` | Implements a selected work item without managing PRs or Linear state |
-| `skills/03-QA-REVIEW.md` | Reviews PRs and generates detailed actionable findings |
-| `skills/04-GIT-PR-MANAGEMENT.md` | Creates branches, commits, and stacked PRs |
-| `skills/05-LINEAR-SYSTEM-OF-RECORD.md` | Manages Linear as operational state and memory |
-| `skills/08-UAT-VALIDATION.md` | Validates User Stories from a user acceptance perspective |
-| `skills/09-OBSERVABILITY-REPORTING.md` | Produces operational reports and visibility |
-| `skills/10-KNOWLEDGE-CONTEXT-ENRICHMENT.md` | Enriches work with reusable technical context |
-| `skills/11-KNOWLEDGE-STORAGE.md` | Persists long-term reusable knowledge |
-| `skills/12-QUALITY-SCORING-RISK-ANALYSIS.md` | Measures quality and risk |
-| `skills/13-ADAPTIVE-PRIORITIZATION.md` | Reorders work based on risk and real system state |
-| `skills/14-AUTO-IMPROVEMENT-TRIGGERS.md` | Detects repeated issues and suggests improvement work |
-
-Future enhancements are captured in:
-
-| File | Purpose |
-|---|---|
-| `docs/FUTURE-SCOPE.md` | Documents future improvements and maturity layers |
-
----
-
-## 2. Agent Contracts
-
-`agents/AGENT-CONTRACTS.md` defines how agents and skills communicate.
-
-It includes:
-
-- shared state model
-- runtime execution envelope
-- error contract
-- input/output schemas
-- handoff contracts
-- cross-agent interaction rules
-
-The contract layer is what prevents agents from becoming chaotic or incompatible.
-
----
-
-## 3. Agents
-
-`agents/AGENTS.md` defines the executable actors of the system.
-
-Current agents:
-
-| Agent | Responsibility |
-|---|---|
-| Main Orchestrator Agent | **NEW:** Top-level orchestrator, chooses execution mode. |
-| Global Orchestrator Agent | Identifies all executable tasks for the Main Orchestrator. |
-| Work Item Orchestrator Agent | Drives one item through its lifecycle |
-| Backlog Agent | Builds backlog from a plan |
-| Linear Agent | Reads/writes operational state in Linear |
-| Builder Agent | Implements code |
-| Git Agent | Creates branches, commits, and PRs |
-| QA Agent | Reviews PRs and produces findings |
-| UAT Agent | Validates User Stories |
-| Intelligence Agent | Enriches context and persists knowledge |
-| Risk Agent | Scores quality/risk and prioritizes work |
-
----
-
-
----
-
-# Backlog Model
-
-The backlog starts from EPICs.
-
-```mermaid
-flowchart TD
-    Epic[EPIC] --> US1[User Story]
-    Epic --> TaskDirect[Direct Task]
-
-    US1 --> Task1[Task]
-    US1 --> Task2[Task]
-
-    Task1 --> Subtask1[Subtask]
-    Task2 --> Subtask2[Subtask]
-```
-
-## EPIC
-
-An EPIC is a deliverable feature or meaningful slice of the project.
-
-It has:
-
-- scope
-- objective
-- traceability to the plan
-- related User Stories
-- related Tasks
-- final EPIC PR
-
-The merge to main is always manual and happens from the EPIC PR.
-
----
-
-## User Story
-
-A User Story represents user-visible value.
-
-It should have:
-
-- persona
-- action
-- benefit
-- acceptance criteria
-- UAT validation
-
-Not every User Story needs Tasks. If it is simple enough, it can be implemented directly.
-
----
-
-## Task
-
-A Task is usually a technical unit of work.
-
-It can be linked to:
-
-- a User Story
-- directly to an EPIC
-
-A Task without a User Story is allowed, especially when the work is:
-
-- technical
-- internal
-- simple
-- infrastructure-related
-- refactoring-related
-
-If a direct Task becomes too complex or delivers visible value, it should probably become a User Story or be decomposed.
-
----
-
-## Subtask
-
-A Subtask is the smallest actionable work unit.
-
-Subtasks are especially useful for:
-
-- QA fixes
-- UAT fixes
-- small implementation slices
-- technical decomposition
-
----
-
-# Backlog Flexibility Rules
-
-The system is flexible, but not loose.
-
-```txt
-EPIC is mandatory.
-User Story is recommended for user-visible value.
-Task is flexible.
-Subtask is used for precise execution or fixes.
-```
-
-Valid structures:
-
-```txt
-EPIC → User Story → Task → Subtask
-EPIC → User Story
-EPIC → Task
-EPIC → Task → Subtask
-```
-
-Invalid structure:
-
-```txt
-Task without EPIC
-Subtask without parent
-User Story without traceability
+.
+├── src/hsb/
+│   ├── agents/                       # 11 agents (Linear, Backlog, Builder, Git, QA, WIO, Global, Main, UAT, Risk, Intelligence)
+│   │   ├── _sdk_options.py           # G1/G2/G3/G5 chokepoint module
+│   │   └── hooks.py                  # Phase 1 LINEAR_HOOKS (retry/audit/PreCompact/filter)
+│   ├── cli/                          # Typer CLI surface
+│   │   ├── main.py                   # hsb create-issue, update-issue, add-comment, link-pr, run, run-next-step, show-state, show-next-action
+│   │   ├── backlog.py / builder.py / git.py / qa.py   # per-agent subgroups
+│   └── contracts/                    # Pydantic models — all extra="forbid"
+│       ├── linear.py / backlog.py / builder.py / git.py / qa.py
+│       ├── orchestrator.py / global_orchestrator.py / main_orchestrator.py
+│       ├── knowledge.py / risk.py / uat.py
+│       └── base.py
+├── .claude/skills/                   # 14 SKILL.md files migrated from skills/NN-*.md
+│   ├── linear-system-of-record/
+│   ├── backlog-planning/ implementation/ git-pr-management/ qa-review/
+│   ├── task-orchestration/
+│   ├── global-orchestration/ main-orchestrator/
+│   ├── knowledge-context-enrichment/ knowledge-storage/
+│   ├── quality-scoring-risk-analysis/ adaptive-prioritization/ auto-improvement-triggers/
+│   └── uat-validation/
+├── knowledge/                        # Persistent file-based Knowledge Store
+│   ├── architecture/ qa/ implementation/ backlog/ risk/   # category subdirs
+├── tests/
+│   ├── unit/                         # 106 tests (cumulative across phases)
+│   ├── evals/code_based/             # 18 B1/B3 eval tests
+│   └── integration/                  # 59 tests, gated by `-m integration` and live env vars
+├── agents/                           # Spec docs (input source for skill migration)
+│   ├── AGENT-CONTRACTS.md            # JSON schemas for all agent input/output
+│   ├── AGENTS.md                     # Agent responsibilities + capability boundaries
+├── runtime/RUNTIME-EXECUTION.md      # Golden rules (no sub-subagent dispatch, one action per cycle)
+├── skills/                           # Behavioral specs (skills 00–14) — sources for SKILL.md migration
+├── docs/                             # Architecture concept docs
+├── .planning/                        # GSD workflow planning artifacts (5 phases)
+│   ├── PROJECT.md ROADMAP.md REQUIREMENTS.md STATE.md
+│   ├── MILESTONE-UAT.md              # Operator UAT run-list (24 steps, 5 groups)
+│   ├── v1.0-MILESTONE-AUDIT.md       # Audit reports (3 iterations)
+│   └── phases/01-..05/               # Per-phase CONTEXT, RESEARCH, PATTERNS, AI-SPEC, VALIDATION, VERIFICATION, PLAN, SUMMARY
+├── run_loop.py                       # Repo-root continuous loop (CLIR-04)
+├── pyproject.toml                    # hsb-agents 0.1.0 — Python ≥3.12
+└── uv.lock
 ```
 
 ---
 
-# Pull Request Strategy
+## Tech stack
 
-The system uses stacked PRs.
+| Component | Pin / version | Role |
+|-----------|---------------|------|
+| Python | ≥3.12 | Runtime |
+| `claude-agent-sdk` | ≥0.1.73, <0.2.0 | LLM session orchestration |
+| `pydantic` | ≥2.0 | Contract validation, schema-drift defense (`extra="forbid"`) |
+| `typer` | ≥0.12 | CLI |
+| `rich` | ≥13.0 | CLI rendering |
+| `python-dotenv` | ≥1.0 | `.env` loading |
+| `pytest` + `pytest-asyncio` | 8.x / ≥0.23 | Test framework |
+| `hypothesis` | ≥6.100 | Property tests (RISK-01 deterministic formula) |
+| Linear MCP | `mcp.linear.app/mcp` | System of record |
+| GitHub CLI (`gh`) | latest | PR delivery |
 
-```mermaid
-gitGraph
-    commit id: "main"
-    branch epic-feature
-    checkout epic-feature
-    commit id: "epic base"
+Optional `[eval]` extra: `arize-phoenix`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp` for production tracing per AI-SPEC §7.
 
-    branch task-1
-    checkout task-1
-    commit id: "task 1"
-    checkout epic-feature
+---
 
-    branch task-2
-    checkout task-2
-    commit id: "task 2"
-    checkout epic-feature
+## Installation
 
-    commit id: "epic integration"
+```bash
+git clone <repo-url> hsb && cd hsb
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,eval]"
+hsb --help     # confirms Typer CLI registered
 ```
 
-Conceptually:
+For the operator UAT pathway (live Linear MCP + GitHub PR runs), see [GET-STARTED.md](./GET-STARTED.md) — covers OAuth2 token, Linear MCP browser flow, sandbox issue setup, and the `hsb-test-fixture` GitHub repo.
 
-```txt
-main
-  └── epic/<feature>
-        ├── feature/LIN-101-task-1
-        ├── feature/LIN-102-task-2
-        └── feature/LIN-103-task-3
+---
+
+## CLI reference
+
+### Linear ops (Phase 1)
+
+```bash
+hsb create-issue        # Create EPIC / User Story / Task / Subtask with parent linkage (LINR-01)
+hsb update-issue        # Update status / qa_status / uat_status / assigned_orchestrator (LINR-02)
+hsb add-comment         # Add structured comment (decision / QA finding / impl note) (LINR-03)
+hsb link-pr             # Link GitHub PR URL to a Linear work item (LINR-04)
 ```
 
-Rules:
+### Per-agent CLI subgroups (Phase 2)
 
-- one task should produce one small PR
-- task PRs target the proper EPIC branch or previous PR branch
-- fix PRs target the original task PR when appropriate
-- no agent merges to main
-- EPIC PR is merged manually
-
----
-
-# Runtime Flow
-
-The overall workflow is best understood through the main **System Architecture** diagram presented earlier. It illustrates the new, flexible orchestration model:
-
-1.  The **Main Orchestrator** starts the process, determining the execution mode (Cascade or Parallel).
-2.  It consults the **Global Orchestrator** to get a list of all tasks that are ready to be worked on.
-3.  It then dispatches these tasks to one or more **Work Item Orchestrators**.
-4.  Each **Work Item Orchestrator** is a sub-agent responsible for the lifecycle of a single task, invoking other specialized agents like the `Builder`, `Git`, and `QA` agents as needed.
-
----
-
-## QA Failure Loop
-
-```mermaid
-flowchart TD
-    PR[Pull Request] --> QA[QA Review]
-    QA --> Decision{Approved?}
-
-    Decision -->|Yes| Done[Work Item Done]
-    Decision -->|No| Findings[Detailed QA Findings]
-    Findings --> Linear[Persist Findings in Linear]
-    Linear --> FixSubtasks[Create Fix Subtasks]
-    FixSubtasks --> Implementation[Implement Fix]
-    Implementation --> FixPR[Create Fix PR]
-    FixPR --> QA
+```bash
+hsb backlog ...         # Backlog Agent commands
+hsb builder ...         # Builder Agent commands
+hsb git ...             # Git Agent commands (incl. `hsb git rebase-stack`)
+hsb qa ...              # QA Agent commands
 ```
 
----
+### Orchestration (Phases 3–4)
 
-## UAT Flow
-
-```mermaid
-flowchart TD
-    Story[User Story] --> QAApproved[QA Approved]
-    QAApproved --> UAT[UAT Validation]
-    UAT --> Result{Accepted?}
-
-    Result -->|Yes| StoryDone[User Story Done]
-    Result -->|No| UATFindings[UAT Findings]
-    UATFindings --> FixSubtasks[Create UAT Fix Subtasks]
-    FixSubtasks --> WorkLoop[Return to Work Item Flow]
+```bash
+hsb run-next-step       # CLIR-01: trigger ONE Work Item Orchestrator cycle (cascade default)
+hsb run                 # Phase 4: drive cycles via Global + Main Orchestrators
+hsb run --parallel      # Parallel mode: optimistic claiming + worktree isolation
+hsb show-state          # CLIR-02: render Linear EPICs / tasks / QA / PR links
+hsb show-next-action    # CLIR-03: dry-run — show next decision without side effects
 ```
 
----
+### Continuous loop (Phase 3)
 
-# Linear as the Brain
-
-Linear stores operational state.
-
-```mermaid
-flowchart LR
-    Global[Global Orchestrator] --> Linear[Linear]
-    Work[Work Item Orchestrator] --> Linear
-    QA[QA Agent] --> Linear
-    Git[Git Agent] --> Linear
-    UAT[UAT Agent] --> Linear
-    Risk[Risk Agent] --> Linear
-
-    Linear --> Global
-    Linear --> Work
-    Linear --> Risk
+```bash
+python run_loop.py       # Repeats `hsb run` until backlog empty or Ctrl+C (CLIR-04)
 ```
 
-Linear should contain:
-
-- EPIC hierarchy
-- issue status
-- QA status
-- UAT status
-- dependencies
-- PR links
-- comments
-- findings
-- blockers
-- decisions
+All CLI handlers wrap their async work in `asyncio.run()` at the Typer body — no `asyncio.run` inside coroutines (CLIR-05). State lives in Linear, not the CLI process.
 
 ---
 
-# Knowledge Store
+## Operating modes
 
-Linear stores operational memory.
+### Cascade (default)
 
-The Knowledge Store stores reusable long-term intelligence.
+`hsb run` → Global Orchestrator returns the risk-prioritized ready queue → Main Orchestrator dispatches the **first** task to a Work Item Orchestrator → WIO runs the full lifecycle (Intelligence → Builder → Git → QA → fix loop, max 3 QA cycles) → done. Repeat with `python run_loop.py`.
 
-```mermaid
-flowchart TD
-    QAFindings[QA Findings] --> KnowledgeDecision{Reusable?}
-    ImplementationNotes[Implementation Notes] --> KnowledgeDecision
-    ArchitectureInsight[Architecture Insight] --> KnowledgeDecision
+Ideal for: development, debugging, single-developer workflows, MVP usage.
 
-    KnowledgeDecision -->|No| LinearOnly[Keep in Linear]
-    KnowledgeDecision -->|Yes| KnowledgeStore[Persist in Knowledge Store]
+### Parallel
 
-    KnowledgeStore --> Enrichment[Future Context Enrichment]
+`hsb run --parallel` → Global Orchestrator returns the queue → Main Orchestrator launches multiple WIOs concurrently with `asyncio.gather(..., return_exceptions=True)`, each in its own git worktree (`.worktrees/<task-slug>`). Optimistic-lock claiming via `updatedAt` re-read prevents double-claims (T-4-01 mitigation, MORD-03). Worktree cleanup in `try/finally` + `git worktree prune` at startup (Pitfall C, D-09).
+
+Ideal for: throughput, multi-task parallelism on independent EPICs, post-MVP scale.
+
+The Phase 4 acceptance gate (`tests/integration/test_parallel_mode_e2e.py::test_no_double_claim_parallel_two_tasks`) verifies parallel correctness against a real Linear test workspace.
+
+---
+
+## Knowledge Store
+
+The Intelligence Agent's persistent state. Flat markdown + YAML frontmatter, file-based, no vector DB (per ADVL-01 deferral).
+
+```
+knowledge/
+├── architecture/    # System-level decisions
+├── qa/              # Recurring QA findings → preventive guidance
+├── implementation/  # Reusable patterns / techniques
+├── backlog/         # Plan-decomposition lessons
+├── risk/            # Failure-mode patterns and Auto-Improvement Trigger material
+└── ...
 ```
 
-## Store in Linear when:
+Every entry has 8 required fields enforced by `KnowledgeStorageInput` Pydantic model: `title`, `type`, `context`, `evidence` (Linear issue ID + PR URL + files), `insight`, `recommendation`, `applicability`, `date`. The `applicability` validator rejects "all tasks", "n/a", "tbd", and empty values (G9 — prevents Knowledge Store contamination, INTL-02 ingestion criteria).
 
-- it affects current workflow
-- it belongs to an issue
-- it represents execution state
-- it is needed for traceability
-
-## Store in Knowledge Storage when:
-
-- it is reusable
-- it represents a pattern
-- it helps future implementation
-- it helps future QA
-- it identifies recurring risk
-- it documents architectural insight
+Retrieval is Glob+Grep at MVP scale. If the store grows past ~50 entries with degrading retrieval precision, `rank-bm25` is the documented upgrade path (no vector DB, no new framework dep).
 
 ---
 
-# Quality and Risk Layer
+## Test suite
 
-The system does not only execute work. It also learns from work.
-
-```mermaid
-flowchart TD
-    QA[QA Findings] --> Scoring[Quality Scoring]
-    PRs[PR History] --> Scoring
-    UAT[UAT Results] --> Scoring
-    Knowledge[Knowledge Store] --> Scoring
-
-    Scoring --> Risk[Risk Analysis]
-    Risk --> Priority[Adaptive Prioritization]
-    Priority --> Global[Global Orchestrator]
-
-    Risk --> Improvement[Auto-Improvement Triggers]
-    Improvement --> Linear[Improvement Tasks in Linear]
+```
+106 unit tests           — pytest tests/unit/ -x -q
+ 18 code-based evals     — pytest tests/evals/code_based/ -x -q  (B1 UAT coverage + B3 banned-token regex)
+ 22 integration tests    — source-grep tests run without live creds
+ 59 integration tests    — total collected (37 require live env vars; skip cleanly)
 ```
 
-The quality layer helps answer:
+**Real-data integration testing stance:** every Phase 2-5 integration suite runs against real Linear workspace + real `hsb-test-fixture` GitHub repo. No mocking. Tests skip cleanly without env vars via `_require_*` helpers. Operator setup pathway: see [GET-STARTED.md](./GET-STARTED.md) and [`.planning/MILESTONE-UAT.md`](./.planning/MILESTONE-UAT.md).
 
-- Which EPIC is risky?
-- Which module is fragile?
-- Which task is causing rework?
-- Which fixes should be prioritized?
-- Which improvements should be proposed?
+**Property-based testing:** Risk Agent quality score (RISK-01) uses `hypothesis @given` to verify determinism across the input space.
+
+**Eval framework:** Phoenix (Arize) recommended for production tracing per `.planning/phases/05-enhancement-agents/05-AI-SPEC.md` §7.
 
 ---
 
-# Execution Modes & Triggers
+## Milestone status
 
-The system's execution is defined by two concepts: **Execution Mode** (decided by the `Main Orchestrator`) and **Trigger** (how a cycle is initiated).
+**v1.0 — autonomous-complete.** Audit progression today:
 
-### Execution Modes
+| Iteration | Status | Resolution |
+|-----------|--------|------------|
+| 1 | `gaps_found` | 3 phases lacked VERIFICATION.md → wrote retroactive ones from SUMMARY frontmatter |
+| 2 | `tech_debt` | 3 Nyquist drafts → ran `/gsd-validate-phase {2,3,4}` |
+| 3 | **`passed`** | All gaps closed |
 
-1.  **Cascade Mode (Sequential)**: The `Main Orchestrator` executes one task at a time. This is ideal for workflows requiring careful observation or where tasks might have subtle, undeclared dependencies.
-2.  **Parallel Mode**: The `Main Orchestrator` executes all non-dependent tasks simultaneously. This is ideal for maximizing throughput and speed.
+**Score card:**
+- 57/57 REQ-IDs autonomously verified (24 with operator-pending live integration)
+- 5/5 phases with VERIFICATION.md
+- 5/5 phases Nyquist-compliant
+- 0 critical gaps · 0 implementation gaps · 0 tech debt items
+- 5 operator UAT checkpoints documented at `.planning/MILESTONE-UAT.md` (5 groups, 24 steps, ~60–90 min)
 
-### Trigger Mechanisms
+**Total commits:** ~115 across the milestone (5 phases × ~15 implementation commits + 11 audit-cycle commits).
 
-1.  **Manual Trigger**: A human initiates a run cycle by invoking the `Main Orchestrator` and choosing an execution mode. This is the default for the MVP.
-2.  **CLI Loop Trigger**: A script (`run_loop.py`) runs the `Main Orchestrator` in a continuous loop, allowing for unattended execution.
-3.  **Event-Driven Trigger (Future)**: A webhook (e.g., from Linear or GitHub) could trigger the `Main Orchestrator`, enabling a fully automated, event-based system.
-
----
-
-# MVP Recommendation
-
-Start small.
-
-The first goal should not be full autonomy.
-
-The first goal should be to complete one full controlled cycle:
-
-```txt
-1 EPIC
-  → 2 or 3 Tasks
-  → 1 implementation
-  → 1 PR
-  → 1 QA review
-  → 1 fix
-  → done
-```
-
-If this works, the system is viable.
+**To close out the milestone:** operator runs `MILESTONE-UAT.md` against a live Linear test workspace, then `/gsd-complete-milestone v1.0` archives v1.0 and prepares v2.0 planning.
 
 ---
 
-# Minimal MVP Flow
+## Design rules and constraints
 
-```mermaid
-flowchart TD
-    A[Plan File] --> B[Backlog Agent]
-    B --> C[Linear Issues]
-    C --> D(Main Orchestrator)
-    D -- "Get Ready Tasks" --> E[Global Orchestrator]
-    E -- "List of Tasks" --> D
-    D -- "Dispatch Task" --> F[Work Item Orchestrator]
-    F --> G[Builder Agent]
-    G --> H[Git Agent]
-    H --> I{QA Passed?}
-    I -->|No| J[Fix Subtasks]
-    J --> F
-    I -->|Yes| K[Done]
-```
+### Hard rules (architectural invariants)
 
----
+1. **No automatic merge to `main`** — every EPIC PR merge is human-approved. There is no `gh pr merge` in any allow-list anywhere.
+2. **One action per Work Item Orchestrator cycle** — prevents runaway automation. Enforced by max 3 QA cycles + `error_max_turns` raises.
+3. **No sub-subagent dispatch** (WORC-02) — the WIO is one Claude Agent SDK session. No nested sessions. Verified by AST walk + G2 + G3 backstop.
+4. **OAuth2 only — no API keys** (G1) — `ANTHROPIC_API_KEY` is forbidden in process env. Use `claude setup-token` + `CLAUDE_CODE_OAUTH_TOKEN`.
+5. **Linear is the only durable operational state** — agents read and write Linear; reusable patterns go to Knowledge Store; nothing else persists across runs.
+6. **Risk Agent never writes to Linear without explicit delegation** (RISK-04) — 4-layer structural defense.
+7. **Capability boundaries are structural, not docstring-level** — every agent has a 3-defense pattern: SKILL.md allow-list + `ClaudeAgentOptions.allowed_tools` + Pydantic `extra="forbid"`.
 
-# Suggested Repository Structure
+### Soft conventions (project style)
 
-```txt
-hsbtech/
-  README.md
+- All Pydantic models use `extra="forbid"` (FOUND-03 schema-drift defense)
+- All CLI handlers are sync; `asyncio.run()` lives at the Typer body, never inside coroutines (CLIR-05 boundary)
+- All cross-system regex constraints are Pydantic `Field(..., pattern=)` — `LIN-\d+`, `https://github.com/.+/pull/\d+`, etc.
+- All Linear writes go through `run_validated_linear_agent` (Phase 1) — not direct MCP calls
+- All retry/backoff is in PostToolUseFailure hooks (Phase 1 `LINEAR_HOOKS`), not in-prompt retry instructions
 
-  docs/
-    plan.md
+### Out of scope (deferred to v2.0)
 
-  skills/
-    01-BACKLOG-PLANNING.md
-    02-IMPLEMENTATION.md
-    03-QA-REVIEW.md
-    04-GIT-PR-MANAGEMENT.md
-    05-LINEAR-SYSTEM-OF-RECORD.md
-    06-TASK-ORCHESTRATION.md
-    07-GLOBAL-ORCHESTRATION.md
-    08-UAT-VALIDATION.md
-    09-OBSERVABILITY-REPORTING.md
-    10-KNOWLEDGE-CONTEXT-ENRICHMENT.md
-    11-KNOWLEDGE-STORAGE.md
-    12-QUALITY-SCORING-RISK-ANALYSIS.md
-    13-ADAPTIVE-PRIORITIZATION.md
-    14-AUTO-IMPROVEMENT-TRIGGERS.md
-
-  agents/
-    AGENTS.md
-    AGENT-CONTRACTS.md
-
-  runtime/
-    RUNTIME-EXECUTION.md
-    run_loop.py
-
-  knowledge/
-    architecture/
-    qa/
-    implementation/
-    backlog/
-```
+- Event-driven triggers (Linear/GitHub webhooks) — MVP uses CLI loop
+- Real-time observability dashboards — Phoenix tracing is the recommended path
+- Multi-project / cross-project intelligence
+- Simulation / dry-run mode
+- ML-based risk prediction (current formula is deterministic by design)
+- Semantic search over Knowledge Store (ADVL-01)
 
 ---
 
-# Operational Safety Rules
+## Project history
 
-## 1. No Automatic Merge
+Built using GSD (Get Shit Done) workflow — a 5-phase planning + execution system with structured artifacts at each phase: CONTEXT (decisions), RESEARCH (technical approach), PATTERNS (file-to-analog mapping), AI-SPEC (framework + eval strategy), VALIDATION (Nyquist verification map), PLAN (executable tasks), SUMMARY (per-plan handoff), VERIFICATION (per-REQ traceability).
 
-No agent merges into `main`.
+Phase progression:
 
-EPIC PR merge is always manual.
+| Phase | Goal | Plans | Commits |
+|-------|------|-------|---------|
+| 1 | Linear Agent foundation | 5 | 16 |
+| 2 | 4 execution agents (Backlog, Builder, Git, QA) | 5 | 42 |
+| 3 | Work Item Orchestrator + single-cycle MVP | 4 | 12 |
+| 4 | Global + Main Orchestrators + parallel mode | 4 | 15 |
+| 5 | Enhancement agents (Intelligence, UAT, Risk) | 4 | 8 |
 
----
-
-## 2. Controlled Execution Scope
-
-- In **Cascade Mode**, the system executes one action for one task at a time.
-- In **Parallel Mode**, the system executes one action for *each* concurrent task, but each task's lifecycle is still managed independently and sequentially.
-
----
-
-## 3. Linear First
-
-Every orchestration cycle starts by reading Linear.
+Full planning history is in `.planning/phases/<NN>-*/`. The 4 retroactive verification artifacts (3 VERIFICATION.md + 3 audit iterations) were generated during the v1.0 milestone audit.
 
 ---
 
-## 4. QA Cannot Be Skipped
+## License
 
-Every PR must pass QA before completion.
-
----
-
-## 5. UAT Validates Product Behavior
-
-QA validates implementation quality.
-
-UAT validates whether the feature solves the user need.
+[Add license here — recommended: Apache-2.0 or MIT for an internal tooling project, or proprietary if not open-source]
 
 ---
 
-## 6. No Hidden Durable State
+## See also
 
-Durable operational state goes to Linear.
-
-Reusable intelligence goes to Knowledge Storage.
-
----
-
-## 7. Scope Must Stay Small
-
-Agents should not expand scope silently.
-
-If the work grows, create another work item.
-
----
-
-# Example End-to-End Narrative Flow
-
-1.  A **Human** provides a `plan.md` file.
-2.  The **Main Orchestrator** starts. It invokes the **Global Orchestrator**.
-3.  The **Global Orchestrator** sees that no backlog exists in Linear and delegates to the **Backlog Agent**.
-4.  The **Backlog Agent** reads the plan and creates EPICs/Tasks, which are persisted by the **Linear Agent**.
-5.  On the next cycle, the **Main Orchestrator** asks the user for the execution mode (e.g., `Parallel`).
-6.  It asks the **Global Orchestrator** for ready tasks. The **Global Orchestrator** returns a list of all non-dependent tasks: `[Task_A, Task_B]`.
-7.  The **Main Orchestrator**, being in `Parallel` mode, dispatches two **Work Item Orchestrators** concurrently, one for `Task_A` and one for `Task_B`.
-8.  Each **Work Item Orchestrator** then manages its task's lifecycle: invoking the `Builder Agent` to write code, the `Git Agent` to create a PR, and the `QA Agent` for review.
-9.  If QA fails, a fix sub-task is created and the cycle repeats for that item.
-10. Once all tasks and sub-tasks are `Done`, the EPIC is marked as ready for manual merge.
-
----
-
-# How to Think About the System
-
-This is not a single agent.
-
-It is closer to an AI-powered engineering operating system.
-
-```txt
-Linear = memory and operational truth
-Skills = procedures
-Contracts = interfaces
-Agents = workers
-Runtime = execution loop
-GitHub = delivery surface
-Knowledge Store = long-term learning
-```
-
----
-
-# Why This Design Matters
-
-Without this structure, agentic engineering usually becomes:
-
-- unclear
-- hard to debug
-- unsafe
-- too broad
-- inconsistent
-- impossible to scale
-
-With this structure, each part has a clear role:
-
-- Backlog is structured.
-- Execution is scoped.
-- PRs are traceable.
-- QA is actionable.
-- Fixes become work items.
-- Linear preserves state.
-- Knowledge is reused.
-- Orchestration stays deterministic.
-
----
-
-# Final Mental Model
-
-```mermaid
-flowchart LR
-    Skills[Skills: How work is done]
-    Contracts[Contracts: How parts communicate]
-    Agents[Agents: Who executes]
-    Runtime[Runtime: When actions happen]
-    Linear[Linear: State and memory]
-    GitHub[GitHub: Code delivery]
-    Knowledge[Knowledge Store: Long-term learning]
-
-    Skills --> Agents
-    Contracts --> Agents
-    Agents --> Runtime
-    Runtime --> Linear
-    Runtime --> GitHub
-    Runtime --> Knowledge
-    Linear --> Runtime
-    Knowledge --> Agents
-```
-
----
-
-## Final Rule
-
-> Make every action small, traceable, reviewable, and recoverable.
+- [GET-STARTED.md](./GET-STARTED.md) — operator onboarding (~30 min)
+- [`.planning/MILESTONE-UAT.md`](./.planning/MILESTONE-UAT.md) — milestone acceptance test plan (~60–90 min)
+- [`.planning/v1.0-MILESTONE-AUDIT.md`](./.planning/v1.0-MILESTONE-AUDIT.md) — full audit report
+- [`agents/AGENT-CONTRACTS.md`](./agents/AGENT-CONTRACTS.md) — JSON schemas for every agent's input/output
+- [`agents/AGENTS.md`](./agents/AGENTS.md) — agent responsibilities + capability boundaries
+- [`runtime/RUNTIME-EXECUTION.md`](./runtime/RUNTIME-EXECUTION.md) — runtime golden rules
+- [`skills/`](./skills/) — original behavioral specs (15 markdown files); migrated copies live in `.claude/skills/`
