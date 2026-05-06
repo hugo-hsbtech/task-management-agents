@@ -35,7 +35,7 @@ Plans:
 - [x] 01-01-PLAN.md — Project scaffold (pyproject.toml, .mcp.json, knowledge/ tree, Linear SKILL.md migration) — FOUND-02, FOUND-04
 - [x] 01-02-PLAN.md — Pydantic contract models mirroring AGENT-CONTRACTS.md + schema-drift tests — FOUND-03
 - [x] 01-03-PLAN.md — Claude Agent SDK lifecycle hooks (retry/backoff, audit log, PreCompact, list filter) + tests — LINR-05 (hooks)
-- [ ] 01-04-PLAN.md — Linear Agent service: run_linear_agent + run_validated_linear_agent (validation retry layer) — LINR-05 (system prompt)
+- [x] 01-04-PLAN.md — Linear Agent service: run_linear_agent + run_validated_linear_agent (validation retry layer) — LINR-05 (system prompt)
 - [ ] 01-05-PLAN.md — Typer CLI (create-issue, update-issue, add-comment, link-pr) + integration tests + human checkpoint — FOUND-01, LINR-01, LINR-02, LINR-03, LINR-04
 
 ### Phase 2: Core Execution Agents
