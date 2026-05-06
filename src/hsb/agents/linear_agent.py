@@ -21,10 +21,25 @@ from claude_agent_sdk import (
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
+from hsb.agents._sdk_options import linear_write_guard
 from hsb.agents.hooks import LINEAR_HOOKS
 from hsb.contracts.linear import LinearOutput
 
 load_dotenv()  # Loads ANTHROPIC_API_KEY from .env
+
+# Phase 5 G5 (RISK-04 layer 4): write operations dispatched through
+# run_validated_linear_agent are routed through a guarded inner shim that
+# inspects the call stack for frames originating in risk_agent.py outside
+# the operator-delegated approve_improvement_trigger path. READ operations
+# bypass the guard.
+_WRITE_OPERATIONS = {
+    "create",
+    "update",
+    "create_comment",
+    "create_subtasks",
+    "create_issue",
+    "update_issue",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -98,15 +113,16 @@ async def run_linear_agent(prompt: str) -> str | None:
     return result_text
 
 
-async def run_validated_linear_agent(
+async def _run_validated_linear_agent_impl(
     operation: str,
     payload: dict,
 ) -> LinearOutput:
-    """Run the Linear Agent and validate the result against LinearOutput.
+    """Internal implementation. Use :func:`run_validated_linear_agent` instead.
 
-    Up to MAX_VALIDATION_RETRIES on validation failure; each retry injects the
-    exact ValidationError details into the next prompt so the agent can self-correct.
-    On final failure: raise ValueError with last error.
+    The public function dispatches WRITE operations through
+    :func:`_run_validated_linear_agent_write` (which carries the G5
+    ``linear_write_guard`` decorator) so the call stack is inspected for
+    Risk Agent frames before any Linear mutation runs.
     """
     prompt = (
         f"Execute Linear operation '{operation}' with this payload:\n"
@@ -159,6 +175,38 @@ async def run_validated_linear_agent(
         f"Linear Agent failed validation after {MAX_VALIDATION_RETRIES} attempts. "
         f"Last error: {last_error}"
     )
+
+
+# Phase 5 G5 (RISK-04 layer 4): wrap WRITE dispatch path with the
+# linear_write_guard decorator. The decorator inspects the call stack and
+# raises PermissionError if any frame originates from risk_agent.py outside
+# the operator-delegated global_orchestrator.approve_improvement_trigger path.
+@linear_write_guard
+async def _run_validated_linear_agent_write(
+    operation: str,
+    payload: dict,
+) -> LinearOutput:
+    """G5-guarded WRITE entry point. Delegates to the unguarded implementation
+    after passing the stack-inspection check."""
+    return await _run_validated_linear_agent_impl(operation, payload)
+
+
+async def run_validated_linear_agent(
+    operation: str,
+    payload: dict,
+) -> LinearOutput:
+    """Public Linear Agent entry point.
+
+    WRITE operations (in :data:`_WRITE_OPERATIONS`) flow through the
+    :func:`_run_validated_linear_agent_write` shim which carries the G5
+    ``linear_write_guard`` decorator. READ operations bypass the guard
+    and call the implementation directly. This preserves Phase 1's
+    retry/validation logic untouched while adding the RISK-04 layer-4
+    runtime defense.
+    """
+    if operation in _WRITE_OPERATIONS:
+        return await _run_validated_linear_agent_write(operation, payload)
+    return await _run_validated_linear_agent_impl(operation, payload)
 
 
 if __name__ == "__main__":
