@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.claude/session_cache.json
+.claude/linear_audit.log
+.claude/compaction_archive_*.jsonl
