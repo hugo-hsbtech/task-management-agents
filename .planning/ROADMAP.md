@@ -83,7 +83,12 @@ Plans:
   3. Main Orchestrator runs two Work Item Orchestrators in cascade mode sequentially and persists a cycle summary to Linear after both complete
   4. In parallel mode, each Work Item Orchestrator claims its task with the optimistic-lock protocol (write in_progress, re-read, verify assigned_orchestrator) and runs in an isolated git worktree
   5. No task is double-claimed during a parallel run with two concurrent orchestrators targeting the same ready-task list
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 04-01-PLAN.md — Foundation: pydantic contracts + Wave 0 test stubs (GORD-01..04, MORD-01..05) + SKILL.md migrations + .gitignore
+- [ ] 04-02-PLAN.md — Global Orchestrator: pure Python class implementation + GORD-01..04 unit tests
+- [ ] 04-03-PLAN.md — Main Orchestrator: pure Python dispatch controller + optimistic-lock claiming + worktree lifecycle + asyncio.gather + MORD-01..04 unit tests
+- [ ] 04-04-PLAN.md — CLI integration (hsb run + --parallel) + run_loop.py update + integration tests + two-task parallel acceptance gate (human checkpoint)
 
 ### Phase 5: Enhancement Agents
 **Goal**: Intelligence, UAT, and Risk agents are active on top of the validated delivery loop — enriching work items before implementation, validating User Stories after QA, and feeding risk-aware prioritization to the Global Orchestrator
@@ -107,5 +112,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Foundation and Linear Integration | 0/5 | Not started | - |
 | 2. Core Execution Agents | 0/5 | Not started | - |
 | 3. Work Item Orchestrator and Single-Cycle MVP | 0/4 | Not started | - |
-| 4. Global + Main Orchestrators and Parallel Mode | 0/TBD | Not started | - |
+| 4. Global + Main Orchestrators and Parallel Mode | 0/4 | Not started | - |
 | 5. Enhancement Agents | 0/TBD | Not started | - |
