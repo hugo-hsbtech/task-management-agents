@@ -100,7 +100,12 @@ Plans:
   3. UAT Agent validates a User Story from user-acceptance perspective after all related task PRs are QA-approved, producing scenario results with pass/fail per acceptance criterion — without reviewing low-level code or creating PRs
   4. Risk Agent produces a quality score and risk level for each work item and a prioritized queue with reason per item, consumed by Global Orchestrator for ordering
   5. Risk Agent detects repeated QA failure patterns and surfaces improvement trigger suggestions — without creating Linear work items unless explicitly delegated through the Linear Agent
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 05-01-PLAN.md — Intelligence Agent (WIO inline extension): skills 10+11 injection + Step 1 enrichment + Step 5 storage + KnowledgeStorageInput contract — INTL-01..04
+- [ ] 05-02-PLAN.md — Risk Agent (pure Python class + isolated skill 14 SDK call): RiskAgent + risk.py contracts + _sdk_options.py G2 factory + 3 SKILL.md migrations + Hypothesis tests — RISK-01..04
+- [ ] 05-03-PLAN.md — UAT Agent (standalone Pattern B SDK session): run_uat_and_validate + uat.py contracts + skill 08 SKILL.md + UATA-04 structural enforcement — UATA-01..04
+- [ ] 05-04-PLAN.md — Global Orchestrator wiring (Wave 2): Risk priority insertion + UAT detection/dispatch + G6 cycle cap + G10 pre-persist validation + human checkpoint — UATA-01, UATA-03
 
 ## Progress
 
@@ -113,4 +118,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Core Execution Agents | 0/5 | Not started | - |
 | 3. Work Item Orchestrator and Single-Cycle MVP | 0/4 | Not started | - |
 | 4. Global + Main Orchestrators and Parallel Mode | 0/4 | Not started | - |
-| 5. Enhancement Agents | 0/TBD | Not started | - |
+| 5. Enhancement Agents | 0/4 | Not started | - |
