@@ -17,6 +17,8 @@ from hsb.contracts.linear import LinearOutput
 # Phase 3 imports — Work Item Orchestrator + rich Table for show-state
 from rich.table import Table
 from hsb.agents.work_item_orchestrator import run_orchestration_cycle
+# Phase 4 import — Main Orchestrator entrypoint for the `hsb run` cycle command
+from hsb.agents.main_orchestrator import run_main_orchestrator
 
 app = typer.Typer(name="hsb", help="HSBTech AI Engineering Workflow CLI")
 console = Console()
@@ -258,6 +260,40 @@ def show_next_action(
 ) -> None:
     """Display next recommended action without executing it (CLIR-03). No side effects."""
     asyncio.run(_render_next_action(work_item_id))
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4 — Main Orchestrator entry point (D-10, D-11, D-12, D-13)            #
+# --------------------------------------------------------------------------- #
+#
+# `hsb run` is the new Phase 4 cycle entry point. Cascade is the default mode;
+# `--parallel` requires explicit operator opt-in (D-10). Parallel mode never
+# activates by accident. `hsb run-next-step` (Phase 3) is RETAINED unchanged
+# above as the single-task debug path (D-11).
+
+
+@app.command("run")
+def run(
+    parallel: bool = typer.Option(
+        False,
+        "--parallel",
+        help=(
+            "Run all ready tasks in parallel with worktree isolation. "
+            "Requires Phase 3 cascade cycle to have been validated first (D-13)."
+        ),
+    ),
+) -> None:
+    """
+    Run one orchestration cycle.
+
+    Default mode: cascade (one task at a time, sequential WIO).
+    Use --parallel for concurrent WIO dispatch (D-10).
+    Parallel never activates by accident — requires explicit opt-in (D-10).
+    """
+    mode = "parallel" if parallel else "cascade"
+    # asyncio.run() at the CLI boundary only — NEVER inside a coroutine
+    # (Phase 1 Shared Patterns; RESEARCH.md Anti-Patterns).
+    asyncio.run(run_main_orchestrator(mode=mode))
 
 
 @app.callback()
