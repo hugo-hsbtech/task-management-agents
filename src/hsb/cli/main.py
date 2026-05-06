@@ -18,6 +18,18 @@ from hsb.contracts.linear import LinearOutput
 app = typer.Typer(name="hsb", help="HSBTech AI Engineering Workflow CLI")
 console = Console()
 
+# Phase 2: register per-agent typer apps (each implemented in its own module so
+# Wave 1 plans modify only their own file — no cli/main.py contention).
+from hsb.cli.backlog import app as backlog_app
+from hsb.cli.builder import app as builder_app
+from hsb.cli.git import app as git_app
+from hsb.cli.qa import app as qa_app
+
+app.add_typer(backlog_app, name="backlog")
+app.add_typer(builder_app, name="builder")
+app.add_typer(git_app, name="git")
+app.add_typer(qa_app, name="qa")
+
 
 def _dispatch(operation: str, payload: dict) -> LinearOutput:
     """Run validated agent and render the LinearOutput. Exit 1 on failure."""
