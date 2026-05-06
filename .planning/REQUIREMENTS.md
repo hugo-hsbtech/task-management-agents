@@ -165,71 +165,77 @@ Populated during roadmap creation by the roadmapper agent.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
-| LINR-01 | Phase 1 | Pending |
-| LINR-02 | Phase 1 | Pending |
-| LINR-03 | Phase 1 | Pending |
-| LINR-04 | Phase 1 | Pending |
-| LINR-05 | Phase 1 | Pending |
-| BKPK-01 | Phase 2 | Pending |
-| BKPK-02 | Phase 2 | Pending |
-| BKPK-03 | Phase 2 | Pending |
-| BKPK-04 | Phase 2 | Pending |
-| BKPK-05 | Phase 2 | Pending |
-| BLDR-01 | Phase 2 | Pending |
-| BLDR-02 | Phase 2 | Pending |
-| BLDR-03 | Phase 2 | Pending |
-| BLDR-04 | Phase 2 | Pending |
-| GITA-01 | Phase 2 | Pending |
-| GITA-02 | Phase 2 | Pending |
-| GITA-03 | Phase 2 | Pending |
-| GITA-04 | Phase 2 | Pending |
-| GITA-05 | Phase 2 | Pending |
-| QAAG-01 | Phase 2 | Pending |
-| QAAG-02 | Phase 2 | Pending |
-| QAAG-03 | Phase 2 | Pending |
-| QAAG-04 | Phase 2 | Pending |
-| QAAG-05 | Phase 2 | Pending |
-| WORC-01 | Phase 3 | Pending |
-| WORC-02 | Phase 3 | Pending |
-| WORC-03 | Phase 3 | Pending |
-| WORC-04 | Phase 3 | Pending |
-| WORC-05 | Phase 3 | Pending |
-| CLIR-01 | Phase 3 | Pending |
-| CLIR-02 | Phase 3 | Pending |
-| CLIR-03 | Phase 3 | Pending |
-| CLIR-04 | Phase 3 | Pending |
-| CLIR-05 | Phase 3 | Pending |
-| GORD-01 | Phase 4 | Pending |
-| GORD-02 | Phase 4 | Pending |
-| GORD-03 | Phase 4 | Pending |
-| GORD-04 | Phase 4 | Pending |
-| MORD-01 | Phase 4 | Pending |
-| MORD-02 | Phase 4 | Pending |
-| MORD-03 | Phase 4 | Pending |
-| MORD-04 | Phase 4 | Pending |
-| MORD-05 | Phase 4 | Pending |
-| UATA-01 | Phase 5 | Pending |
-| UATA-02 | Phase 5 | Pending |
-| UATA-03 | Phase 5 | Pending |
-| UATA-04 | Phase 5 | Pending |
-| INTL-01 | Phase 5 | Pending |
-| INTL-02 | Phase 5 | Pending |
-| INTL-03 | Phase 5 | Pending |
-| INTL-04 | Phase 5 | Pending |
-| RISK-01 | Phase 5 | Pending |
-| RISK-02 | Phase 5 | Pending |
-| RISK-03 | Phase 5 | Pending |
-| RISK-04 | Phase 5 | Pending |
+| FOUND-01 | Phase 1 | Complete*  |
+| FOUND-02 | Phase 1 | Complete   |
+| FOUND-03 | Phase 1 | Complete   |
+| FOUND-04 | Phase 1 | Complete   |
+| LINR-01  | Phase 1 | Complete*  |
+| LINR-02  | Phase 1 | Complete*  |
+| LINR-03  | Phase 1 | Complete*  |
+| LINR-04  | Phase 1 | Complete*  |
+| LINR-05  | Phase 1 | Complete   |
+| BKPK-01  | Phase 2 | Complete*  |
+| BKPK-02  | Phase 2 | Complete*  |
+| BKPK-03  | Phase 2 | Complete*  |
+| BKPK-04  | Phase 2 | Complete*  |
+| BKPK-05  | Phase 2 | Complete*  |
+| BLDR-01  | Phase 2 | Complete*  |
+| BLDR-02  | Phase 2 | Complete*  |
+| BLDR-03  | Phase 2 | Complete   |
+| BLDR-04  | Phase 2 | Complete*  |
+| GITA-01  | Phase 2 | Complete   |
+| GITA-02  | Phase 2 | Complete*  |
+| GITA-03  | Phase 2 | Complete   |
+| GITA-04  | Phase 2 | Complete*  |
+| GITA-05  | Phase 2 | Complete   |
+| QAAG-01  | Phase 2 | Complete*  |
+| QAAG-02  | Phase 2 | Complete   |
+| QAAG-03  | Phase 2 | Complete   |
+| QAAG-04  | Phase 2 | Complete   |
+| QAAG-05  | Phase 2 | Complete*  |
+| WORC-01  | Phase 3 | Complete*  |
+| WORC-02  | Phase 3 | Complete   |
+| WORC-03  | Phase 3 | Complete   |
+| WORC-04  | Phase 3 | Complete   |
+| WORC-05  | Phase 3 | Complete*  |
+| CLIR-01  | Phase 3 | Complete*  |
+| CLIR-02  | Phase 3 | Complete*  |
+| CLIR-03  | Phase 3 | Complete   |
+| CLIR-04  | Phase 3 | Complete*  |
+| CLIR-05  | Phase 3 | Complete   |
+| GORD-01  | Phase 4 | Complete   |
+| GORD-02  | Phase 4 | Complete   |
+| GORD-03  | Phase 4 | Complete   |
+| GORD-04  | Phase 4 | Complete   |
+| MORD-01  | Phase 4 | Complete   |
+| MORD-02  | Phase 4 | Complete   |
+| MORD-03  | Phase 4 | Complete*  |
+| MORD-04  | Phase 4 | Complete*  |
+| MORD-05  | Phase 4 | Complete*  |
+| UATA-01  | Phase 5 | Complete*  |
+| UATA-02  | Phase 5 | Complete   |
+| UATA-03  | Phase 5 | Complete*  |
+| UATA-04  | Phase 5 | Complete   |
+| INTL-01  | Phase 5 | Complete*  |
+| INTL-02  | Phase 5 | Complete*  |
+| INTL-03  | Phase 5 | Complete   |
+| INTL-04  | Phase 5 | Complete   |
+| RISK-01  | Phase 5 | Complete   |
+| RISK-02  | Phase 5 | Complete   |
+| RISK-03  | Phase 5 | Complete   |
+| RISK-04  | Phase 5 | Complete   |
+
+**Status legend:**
+- `Complete` — autonomous verification passed (unit tests + code-based evals + source-grep architectural assertions)
+- `Complete*` — autonomous verification passed; live integration test pending operator action. Run-list: `.planning/MILESTONE-UAT.md`
 
 **Coverage:**
 - v1 requirements: 57 total
 - Mapped to phases: 57 (roadmap complete)
+- Autonomous-complete: 57/57
+- Live integration pending operator: 24/57 (24 with `*` marker)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-05*
-*Last updated: 2026-05-05 after roadmap creation*
+*Last updated: 2026-05-06 — flipped Pending → Complete during v1.0 milestone audit; live operator gates marked with `*` and consolidated in MILESTONE-UAT.md*
