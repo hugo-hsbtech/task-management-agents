@@ -68,10 +68,10 @@ Plans:
   5. Operator can view current system state and next recommended action from the CLI without triggering execution; the CLI loop repeats cycles autonomously until no ready tasks remain
 **Plans**: 4 plans
 Plans:
-- [ ] 03-01-PLAN.md — Foundation: pydantic contracts + Wave 0 test stubs + task-orchestration SKILL.md migration — covers all 10 requirement IDs as test stubs
-- [ ] 03-02-PLAN.md — Work Item Orchestrator implementation: single SDK session + skill injection + four @tool wrappers + QA cycle cap safety net — WORC-01..05
-- [ ] 03-03-PLAN.md — CLI extensions (run-next-step, show-state, show-next-action) + run_loop.py thin wrapper — CLIR-01..05
-- [ ] 03-04-PLAN.md — Integration tests + MVP benchmark cycle (real Linear + hsb-test-fixture) + human GO/NO-GO checkpoint — WORC-01, WORC-05, CLIR-01, CLIR-04
+- [x] 03-01-PLAN.md — Foundation: pydantic contracts + Wave 0 test stubs + task-orchestration SKILL.md migration — covers all 10 requirement IDs as test stubs
+- [x] 03-02-PLAN.md — Work Item Orchestrator implementation: single SDK session + skill injection + four @tool wrappers + QA cycle cap safety net — WORC-01..05
+- [x] 03-03-PLAN.md — CLI extensions (run-next-step, show-state, show-next-action) + run_loop.py thin wrapper — CLIR-01..05
+- [ ] 03-04-PLAN.md — Integration tests + MVP benchmark cycle (real Linear + hsb-test-fixture) + human GO/NO-GO checkpoint — WORC-01, WORC-05, CLIR-01, CLIR-04 *(autonomous Task 1 complete; operator MVP checkpoint pending — see 03-04-SUMMARY.md)*
 
 ### Phase 4: Global + Main Orchestrators and Parallel Mode
 **Goal**: The full three-level orchestration hierarchy works in cascade mode, then parallel mode with optimistic claiming and worktree isolation passes a two-task concurrent test
