@@ -22,34 +22,53 @@
 
 ### Backlog Agent
 
-- [ ] **BKPK-01**: Backlog Agent reads a `plan.md` file and produces a structured backlog proposal (EPICs → User Stories → Tasks → Subtasks) traceable to the plan
-- [ ] **BKPK-02**: Every EPIC produced by the Backlog Agent is persisted to Linear with title, description, and traceability reference to `plan.md`
-- [ ] **BKPK-03**: Every User Story produced is persisted to Linear as a child of its EPIC with acceptance criteria
-- [ ] **BKPK-04**: Every Task produced is persisted to Linear as a child of either a User Story or directly of an EPIC
-- [ ] **BKPK-05**: Backlog Agent outputs traceability metadata mapping each work item back to its section in `plan.md`
+- [x] **BKPK-01
+**: Backlog Agent reads a `plan.md` file and produces a structured backlog proposal (EPICs → User Stories → Tasks → Subtasks) traceable to the plan
+- [x] **BKPK-02
+**: Every EPIC produced by the Backlog Agent is persisted to Linear with title, description, and traceability reference to `plan.md`
+- [x] **BKPK-03
+**: Every User Story produced is persisted to Linear as a child of its EPIC with acceptance criteria
+- [x] **BKPK-04
+**: Every Task produced is persisted to Linear as a child of either a User Story or directly of an EPIC
+- [x] **BKPK-05
+**: Backlog Agent outputs traceability metadata mapping each work item back to its section in `plan.md`
 
 ### Builder Agent
 
-- [ ] **BLDR-01**: Builder Agent receives a work item ID, reads the full Linear issue via the Linear Agent, and implements only the scoped change described by the issue
-- [ ] **BLDR-02**: Builder Agent runs available local validations (build, lint, typecheck, tests) after implementation and reports results
-- [ ] **BLDR-03**: Builder Agent produces an implementation output contract including files changed, validation results, decisions, assumptions, and QA notes
-- [ ] **BLDR-04**: Builder Agent does not create branches, commit code, or write to Linear directly
+- [x] **BLDR-01
+**: Builder Agent receives a work item ID, reads the full Linear issue via the Linear Agent, and implements only the scoped change described by the issue
+- [x] **BLDR-02
+**: Builder Agent runs available local validations (build, lint, typecheck, tests) after implementation and reports results
+- [x] **BLDR-03
+**: Builder Agent produces an implementation output contract including files changed, validation results, decisions, assumptions, and QA notes
+- [x] **BLDR-04
+**: Builder Agent does not create branches, commit code, or write to Linear directly
 
 ### Git Agent
 
-- [ ] **GITA-01**: Git Agent creates a branch named `feature/LIN-{id}-{slug}` for every task-level work item
-- [ ] **GITA-02**: Git Agent determines the correct PR base: task PR targets the EPIC branch; EPIC branch PR targets `main`; fix PR targets the original task PR
-- [ ] **GITA-03**: Git Agent creates a GitHub PR with the Linear issue ID in the title, UAT instructions in the body when applicable, and correct `--base` targeting
-- [ ] **GITA-04**: Git Agent triggers a rebase cascade (`REBASE_STACK`) for all open sibling task PRs when a task PR is merged into the EPIC branch
-- [ ] **GITA-05**: Git Agent never merges any PR into `main`
+- [x] **GITA-01
+**: Git Agent creates a branch named `feature/LIN-{id}-{slug}` for every task-level work item
+- [x] **GITA-02
+**: Git Agent determines the correct PR base: task PR targets the EPIC branch; EPIC branch PR targets `main`; fix PR targets the original task PR
+- [x] **GITA-03
+**: Git Agent creates a GitHub PR with the Linear issue ID in the title, UAT instructions in the body when applicable, and correct `--base` targeting
+- [x] **GITA-04
+**: Git Agent triggers a rebase cascade (`REBASE_STACK`) for all open sibling task PRs when a task PR is merged into the EPIC branch
+- [x] **GITA-05
+**: Git Agent never merges any PR into `main`
 
 ### QA Agent
 
-- [ ] **QAAG-01**: QA Agent receives a PR diff and the full Linear issue and produces a structured findings contract with `approved` or `changes_required` status
-- [ ] **QAAG-02**: Every QA finding includes: severity, category, blocking/non-blocking flag, evidence (file + location), expected vs actual behavior, and a suggested fix subtask
-- [ ] **QAAG-03**: QA Agent creates a maximum of 5 fix subtasks per QA report via the Linear Agent
-- [ ] **QAAG-04**: QA Agent increments `qa_cycle_count` on the work item; when `qa_cycle_count >= 3` the QA Agent approves with tech-debt annotation rather than requiring further fixes
-- [ ] **QAAG-05**: QA Agent never modifies code or creates PRs directly
+- [x] **QAAG-01
+**: QA Agent receives a PR diff and the full Linear issue and produces a structured findings contract with `approved` or `changes_required` status
+- [x] **QAAG-02
+**: Every QA finding includes: severity, category, blocking/non-blocking flag, evidence (file + location), expected vs actual behavior, and a suggested fix subtask
+- [x] **QAAG-03
+**: QA Agent creates a maximum of 5 fix subtasks per QA report via the Linear Agent
+- [x] **QAAG-04
+**: QA Agent increments `qa_cycle_count` on the work item; when `qa_cycle_count >= 3` the QA Agent approves with tech-debt annotation rather than requiring further fixes
+- [x] **QAAG-05
+**: QA Agent never modifies code or creates PRs directly
 
 ### Work Item Orchestrator
 
