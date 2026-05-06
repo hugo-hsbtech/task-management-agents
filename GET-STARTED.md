@@ -192,29 +192,48 @@ ls ~/.mcp-auth/mcp-remote-*/
 
 If those files exist, OAuth is done. The path is *not* `~/.mcp-remote/` — older docs/READMEs may say so; that location is unused.
 
-#### 2c — Remote shell, local browser
+#### 2c — Remote shell, local browser (VPS / SSH)
 
-If your shell is on a remote machine (SSH session) and your browser runs locally, the redirect to `http://localhost:22227/...` will hit your local browser's localhost — which has no `mcp-remote` listening. Two options:
+If your shell is on a VPS or other remote machine and your browser runs locally, the redirect to `http://localhost:22227/...` hits your *local* browser's localhost — which has no `mcp-remote` listening. The browser shows "site can't be reached" and `mcp-remote` keeps waiting on the VPS. You need to forward the callback to the VPS-side `mcp-remote`. Three options, in order of preference for a Claude-Code-on-VPS setup:
 
-**Option A — SSH port-forward (preferred, automatic):** before invoking `mcp-remote`, set up the tunnel so your local `localhost:22227` is forwarded to the remote machine:
+**Option A — Paste the callback URL into Claude Code (most common for this project):**
+
+If you're driving the VPS through Claude Code (the typical HSBTech operator setup), this is the simplest path:
+
+1. Run `npx -y mcp-remote https://mcp.linear.app/mcp` in a Claude Code Bash session.
+2. Copy the printed `https://mcp.linear.app/authorize?...` URL into your local browser.
+3. Click **Authorize Linear**. Your browser tries to redirect to `http://localhost:22227/oauth/callback?code=...&state=...` and fails (no listener locally). **Copy that full failed-redirect URL** from your browser's address bar.
+4. Paste the URL into the Claude Code chat and ask Claude to forward it. Claude will run:
+   ```bash
+   curl "http://localhost:22227/oauth/callback?code=...&state=..."
+   ```
+   from the VPS, where `mcp-remote` is listening. The waiting `mcp-remote` process completes the token exchange.
+
+This works because Claude Code's Bash tool runs in the same VPS shell as `mcp-remote`, so a `curl` to `localhost:22227` reaches the right listener.
+
+**Option B — SSH port-forward (preferred when you have shell access without Claude Code):**
+
+Open a fresh SSH session with port-forwarding so your *local* `localhost:22227` is tunnelled to the VPS:
 
 ```bash
-ssh -L 22227:localhost:22227 <remote-host>
+ssh -L 22227:localhost:22227 <vps-host>
 # In the forwarded session:
 npx -y mcp-remote https://mcp.linear.app/mcp
 ```
 
-After clicking Authorize, your local browser's redirect to `localhost:22227` is tunnelled to the remote `mcp-remote` automatically.
+After clicking Authorize, your local browser's redirect to `localhost:22227` is tunnelled to the VPS automatically — no copy-paste needed.
 
-**Option B — manual callback forwarding:** if you can't change the SSH session, open the auth URL in your local browser, click Authorize, then copy the *entire* failed-redirect URL (it'll look like `http://localhost:22227/oauth/callback?code=…&state=…`) and `curl` it from the remote shell while `mcp-remote` is still running:
+**Option C — Manual `curl` from a second VPS shell:**
+
+If you have multiple VPS shells but no Claude Code and no port-forwarding, copy the failed-redirect URL and `curl` it yourself:
 
 ```bash
-# In a second remote shell:
+# In a second VPS shell, while mcp-remote is still running in the first:
 curl "http://localhost:22227/oauth/callback?code=...&state=..."
 # Returns: "Authorization successful! You may close this window."
 ```
 
-The waiting `mcp-remote` process picks up the callback and finishes the token exchange.
+In all three options the visible result on the VPS is the same: `mcp-remote` prints `Auth code received → Completing authorization → Connected to remote server → Proxy established successfully`, then you Ctrl+C and the token is cached.
 
 #### 2d — Validate end-to-end
 
