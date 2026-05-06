@@ -12,15 +12,15 @@ A developer can provide a plan file and have AI agents coordinate the full imple
 
 ### Validated
 
-(None yet — ship to validate)
+(None fully validated yet — Phases 1+2 complete in code with 55 passing unit tests; live MCP/GitHub integration suites pending operator-driven runs)
 
 ### Active
 
-- [ ] Backlog Planning skill — transforms `plan.md` into EPIC/User Story/Task/Subtask hierarchy and persists to Linear
+- [x] Backlog Planning skill — transforms `plan.md` into EPIC/User Story/Task/Subtask hierarchy and persists to Linear *(Phase 2 complete; integration pending live run)*
 - [ ] Linear Agent — reads and writes operational state in Linear via MCP (create, update, link, comment)
-- [ ] Builder Agent — implements scoped code changes from task specifications and acceptance criteria
-- [ ] Git Agent — creates branches, commits changes, and opens correctly targeted stacked PRs
-- [ ] QA Agent — reviews PR diffs against requirements and produces structured findings with fix subtasks
+- [x] Builder Agent — implements scoped code changes from task specifications and acceptance criteria *(Phase 2 complete; integration pending live run)*
+- [x] Git Agent — creates branches, commits changes, and opens correctly targeted stacked PRs *(Phase 2 complete; integration pending live run)*
+- [x] QA Agent — reviews PR diffs against requirements and produces structured findings with fix subtasks *(Phase 2 complete; integration pending live run)*
 - [ ] Work Item Orchestrator — drives one work item through its full lifecycle (implement → PR → QA → fix loop → done)
 - [ ] Global Orchestrator — reads Linear state, identifies all ready non-blocked tasks, returns prioritized list
 - [ ] Main Orchestrator — entry point that selects execution mode (cascade/parallel) and dispatches to Work Item Orchestrators
@@ -90,4 +90,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-05 after initialization*
+*Last updated: 2026-05-06 after Phase 02 completion (4 execution agents — Backlog/Builder/Git/QA — wired with two-layer capability boundaries; 55 unit tests passing; integration suites pending operator-driven live runs)*
