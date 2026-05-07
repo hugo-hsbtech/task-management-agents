@@ -1,0 +1,22 @@
+services:
+  hsb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hsb-agents:local
+    container_name: hsb-agents
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./.mcp.json:/app/.mcp.json:ro
+      - hsb-mcp-auth:/root/.mcp-auth
+      - hsb-claude-state:/app/.claude
+    stdin_open: true
+    tty: true
+    command: ["python", "run_loop.py"]
+
+volumes:
+  hsb-mcp-auth:
+  hsb-claude-state:
