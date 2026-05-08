@@ -9,6 +9,7 @@ VALIDATION.md aliases:
 - CLIR-04: ``test_loop_terminates``
 - Pitfall 5: ``test_loop_stops_on_run_next_step_failure``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -25,9 +26,7 @@ pytestmark = [pytest.mark.integration]
 
 
 def _require_linear_creds() -> None:
-    if not (
-        os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("LINEAR_API_KEY")
-    ):
+    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("LINEAR_API_KEY")):
         pytest.skip(
             "Neither ANTHROPIC_API_KEY nor LINEAR_API_KEY set — run_loop.py "
             "needs Linear MCP credentials to query has_ready_tasks()."
@@ -35,6 +34,7 @@ def _require_linear_creds() -> None:
 
 
 # --- CLIR-04: run_loop terminates when no ready tasks -----------------------
+
 
 @pytest.mark.integration
 def test_loop_terminates_when_no_ready_tasks() -> None:
@@ -69,6 +69,7 @@ def test_loop_terminates() -> None:
 
 # --- CLIR-04: graceful Ctrl+C handling --------------------------------------
 
+
 @pytest.mark.integration
 def test_loop_exits_on_ctrl_c() -> None:
     """CLIR-04: ``run_loop.py`` stops cleanly on KeyboardInterrupt."""
@@ -90,6 +91,7 @@ def test_loop_exits_on_ctrl_c() -> None:
 
 # --- Pitfall 5: loop stops on non-zero exit ---------------------------------
 
+
 @pytest.mark.integration
 def test_loop_stops_on_run_next_step_failure() -> None:
     """RESEARCH.md Pitfall 5: ``run_loop.py main()`` MUST check subprocess
@@ -104,12 +106,10 @@ def test_loop_stops_on_run_next_step_failure() -> None:
 
     main_source = inspect.getsource(module.main)
     assert "returncode" in main_source, (
-        "run_loop.py main() must check subprocess returncode "
-        "(RESEARCH.md Pitfall 5)"
+        "run_loop.py main() must check subprocess returncode (RESEARCH.md Pitfall 5)"
     )
     assert "sys.exit" in main_source, (
-        "run_loop.py must sys.exit on non-zero subprocess exit "
-        "(RESEARCH.md Pitfall 5)"
+        "run_loop.py must sys.exit on non-zero subprocess exit (RESEARCH.md Pitfall 5)"
     )
     # The whole module must also handle KeyboardInterrupt cleanly
     module_source = inspect.getsource(module)

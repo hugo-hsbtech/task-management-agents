@@ -10,8 +10,10 @@ after every cycle. Layer 1 of the QA cycle cap (QAAG-04) lives in
 net is in :mod:`hsb.agents.work_item_orchestrator`. Do NOT add a model_validator
 here — Phase 3 contracts are pure schema (CONTEXT.md D-05).
 """
+
 from __future__ import annotations
-from typing import Literal, Optional
+
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -62,14 +64,15 @@ class WorkItemOrchOutput(BaseModel):
         "done",
         "escalated_to_human",
     ]
-    next_skill: Optional[
+    next_skill: (
         Literal[
             "implementation",
             "git_pr_management",
             "qa_review",
             "linear_system_of_record",
         ]
-    ] = None
+        | None
+    ) = None
     handoff_payload: dict = Field(default_factory=dict)
     lifecycle_summary: str  # WORC-05 — posted to Linear as a comment after each cycle
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 from hsb.contracts.risk import AutoImprovementTrigger
@@ -6,6 +7,7 @@ from hsb.contracts.risk import AutoImprovementTrigger
 
 class ReadyTask(BaseModel):
     """A single ready work item returned by the Global Orchestrator."""
+
     model_config = {"extra": "forbid"}
 
     id: str
@@ -25,6 +27,7 @@ class GlobalOrchestratorOutput(BaseModel):
     operator delegation before any Linear write); a future CLI surfacer
     populates the field.
     """
+
     model_config = {"extra": "forbid"}
 
     ready_tasks: list[ReadyTask]

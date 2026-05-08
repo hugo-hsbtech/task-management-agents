@@ -30,10 +30,11 @@ Phase 5 additive surface:
   per-cycle path. Surfacing improvement triggers requires explicit
   operator-delegated CLI invocation (deferred to a future plan).
 """
+
 from __future__ import annotations
+
 import logging
 import re
-from typing import Any
 
 from dotenv import load_dotenv
 
@@ -198,9 +199,7 @@ class GlobalOrchestrator:
             improvement_triggers=improvement_triggers,
         )
 
-    async def _detect_uat_ready_user_stories(
-        self, linear_state: dict
-    ) -> list[dict]:
+    async def _detect_uat_ready_user_stories(self, linear_state: dict) -> list[dict]:
         """Phase 5 (UATA-01 / D-01).
 
         Detect User Stories where all child tasks are QA-approved and UAT
@@ -213,8 +212,13 @@ class GlobalOrchestrator:
         """
         uat_ready: list[dict] = []
         user_stories = [
-            item for item in linear_state.values()
-            if (item.get("type") if isinstance(item, dict) else getattr(item, "type", None))
+            item
+            for item in linear_state.values()
+            if (
+                item.get("type")
+                if isinstance(item, dict)
+                else getattr(item, "type", None)
+            )
             == "user_story"
         ]
         for us in user_stories:
@@ -249,8 +253,7 @@ class GlobalOrchestrator:
                 continue
             children = await self._fetch_children(us_dict["id"])
             children_dicts = [
-                c if isinstance(c, dict) else c.model_dump()
-                for c in (children or [])
+                c if isinstance(c, dict) else c.model_dump() for c in (children or [])
             ]
             if children_dicts and all(
                 c.get("qa_status") == "approved" for c in children_dicts
@@ -271,7 +274,7 @@ class GlobalOrchestrator:
             payload={"parent_id": parent_id},
         )
         items: list[dict] = []
-        for entity in (result.linear_entities or []):
+        for entity in result.linear_entities or []:
             if hasattr(entity, "model_dump"):
                 items.append(entity.model_dump())
             elif hasattr(entity, "__dict__"):
@@ -304,7 +307,8 @@ class GlobalOrchestrator:
         if not children:
             return False
         return all(
-            i.get("status") == "done" and i.get("qa_status") in ("approved", "not_required")
+            i.get("status") == "done"
+            and i.get("qa_status") in ("approved", "not_required")
             for i in children
         )
 

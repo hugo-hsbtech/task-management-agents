@@ -11,6 +11,7 @@ GITA-04 (REBASE_STACK).
 
 Run with: pytest tests/integration/test_git_agent.py -v -m integration
 """
+
 import os
 import re
 import subprocess
@@ -43,15 +44,34 @@ def epic_branch_setup(fixture_repo_path: Path) -> str:
     """Ensure epic/LIN-TEST-100 exists in the fixture repo before integration tests."""
     epic_branch = "epic/LIN-TEST-100"
     result = subprocess.run(
-        ["git", "-C", str(fixture_repo_path), "ls-remote", "--heads", "origin", epic_branch],
-        capture_output=True, text=True,
+        [
+            "git",
+            "-C",
+            str(fixture_repo_path),
+            "ls-remote",
+            "--heads",
+            "origin",
+            epic_branch,
+        ],
+        capture_output=True,
+        text=True,
     )
     if epic_branch not in result.stdout:
         # Create it from main
-        subprocess.run(["git", "-C", str(fixture_repo_path), "checkout", "main"], check=True)
-        subprocess.run(["git", "-C", str(fixture_repo_path), "pull", "origin", "main"], check=True)
-        subprocess.run(["git", "-C", str(fixture_repo_path), "checkout", "-b", epic_branch], check=True)
-        subprocess.run(["git", "-C", str(fixture_repo_path), "push", "-u", "origin", epic_branch], check=True)
+        subprocess.run(
+            ["git", "-C", str(fixture_repo_path), "checkout", "main"], check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(fixture_repo_path), "pull", "origin", "main"], check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(fixture_repo_path), "checkout", "-b", epic_branch],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(fixture_repo_path), "push", "-u", "origin", epic_branch],
+            check=True,
+        )
     return epic_branch
 
 
@@ -63,8 +83,18 @@ def _make_input(work_item_id: str, epic_id: str, files: list[dict]) -> GitInput:
             "implementation_status": "completed",
             "summary": f"Test impl for {work_item_id}",
             "files_changed": files,
-            "validation": {"build": "not_run", "tests": "passed", "lint": "passed", "typecheck": "not_run"},
-            "implementation_notes": {"decisions": [], "assumptions": [], "risks": [], "qa_notes": []},
+            "validation": {
+                "build": "not_run",
+                "tests": "passed",
+                "lint": "passed",
+                "typecheck": "not_run",
+            },
+            "implementation_notes": {
+                "decisions": [],
+                "assumptions": [],
+                "risks": [],
+                "qa_notes": [],
+            },
         },
         epic_id=epic_id,
     )
@@ -74,7 +104,8 @@ def _make_input(work_item_id: str, epic_id: str, files: list[dict]) -> GitInput:
 def test_branch_naming(fixture_repo_path: Path, epic_branch_setup: str):
     """GITA-01: branch matches feature/LIN-{id}-{slug}."""
     input = _make_input(
-        "LIN-TEST-201", "LIN-TEST-100",
+        "LIN-TEST-201",
+        "LIN-TEST-100",
         [{"path": "src/fixture/branch_test.py", "change_summary": "add stub"}],
     )
     # Note: this test exercises the agent's branch-creation step; the fixture repo
@@ -90,7 +121,8 @@ def test_branch_naming(fixture_repo_path: Path, epic_branch_setup: str):
 def test_pr_base(fixture_repo_path: Path, epic_branch_setup: str):
     """GITA-02 + D-07: task PR base is the EPIC branch (not main, not another task)."""
     input = _make_input(
-        "LIN-TEST-202", "LIN-TEST-100",
+        "LIN-TEST-202",
+        "LIN-TEST-100",
         [{"path": "src/fixture/pr_base_test.py", "change_summary": "add stub"}],
     )
     output = run_git_agent(input)
@@ -104,7 +136,8 @@ def test_pr_base(fixture_repo_path: Path, epic_branch_setup: str):
 def test_pr_title(fixture_repo_path: Path, epic_branch_setup: str):
     """GITA-03: PR title starts with [LIN-{id}]."""
     input = _make_input(
-        "LIN-TEST-203", "LIN-TEST-100",
+        "LIN-TEST-203",
+        "LIN-TEST-100",
         [{"path": "src/fixture/pr_title_test.py", "change_summary": "add stub"}],
     )
     output = run_git_agent(input)
@@ -128,10 +161,14 @@ def test_rebase_stack(fixture_repo_path: Path, epic_branch_setup: str):
     """
     input = GitInput(
         work_item_id="REBASE_STACK:feature/LIN-TEST-201-...",
-        implementation_output={"operation": "rebase_stack", "just_merged": "feature/LIN-TEST-201-x"},
+        implementation_output={
+            "operation": "rebase_stack",
+            "just_merged": "feature/LIN-TEST-201-x",
+        },
         epic_id="epic/LIN-TEST-100",
     )
     output = run_git_agent(input)
-    assert output.work_item_id.startswith("REBASE_STACK") or "LIN-TEST" in output.work_item_id, (
-        f"REBASE_STACK output should reference work_item_id; got {output.work_item_id}"
-    )
+    assert (
+        output.work_item_id.startswith("REBASE_STACK")
+        or "LIN-TEST" in output.work_item_id
+    ), f"REBASE_STACK output should reference work_item_id; got {output.work_item_id}"

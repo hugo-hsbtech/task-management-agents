@@ -5,6 +5,7 @@ is denied EXCEPT when the call stack also includes the explicit
 operator-delegated entry point
 ``global_orchestrator.approve_improvement_trigger``.
 """
+
 import textwrap
 
 import pytest

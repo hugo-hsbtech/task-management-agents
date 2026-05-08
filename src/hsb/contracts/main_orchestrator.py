@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class ClaimResult(BaseModel):
     """Internal result of a single claiming attempt (D-04 optimistic lock)."""
+
     model_config = {"extra": "forbid"}
 
     work_item_id: str
@@ -15,6 +18,7 @@ class ClaimResult(BaseModel):
 
 class DispatchedItem(BaseModel):
     """Record of a single dispatched work item within a cycle."""
+
     model_config = {"extra": "forbid"}
 
     work_item_id: str
@@ -28,6 +32,7 @@ class MainOrchestratorOutput(BaseModel):
     Output contract for the Main Orchestrator cycle.
     Mirrors AGENT-CONTRACTS.md §0 Output exactly (MORD-05 format).
     """
+
     model_config = {"extra": "forbid"}
 
     mode: Literal["cascade", "parallel"]

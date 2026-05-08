@@ -11,8 +11,10 @@ level, not just the system prompt.
 QAAG-05: All Linear writes (qa_cycle_count increment, fix subtask creation) happen
 OUTSIDE the agent loop via Phase 1 service — see qa_agent.py._write_qa_results_to_linear.
 """
+
 from __future__ import annotations
-from typing import Literal, Optional
+
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -27,6 +29,7 @@ class QAEvidence(BaseModel):
 
 class SuggestedSubtask(BaseModel):
     """Per skills/03-QA-REVIEW.md, fix subtask titles MUST start with '[FIX] '."""
+
     title: str
     description: str
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -51,8 +54,8 @@ class QAFinding(BaseModel):
     expected_behavior: str
     actual_behavior: str
     suggested_fix: str
-    suggested_subtask: Optional[SuggestedSubtask] = None
-    pr_targeting_guidance: Optional[PRTargetingGuidance] = None
+    suggested_subtask: SuggestedSubtask | None = None
+    pr_targeting_guidance: PRTargetingGuidance | None = None
     model_config = {"extra": "forbid"}
 
 
@@ -71,6 +74,7 @@ class QAInput(BaseModel):
     Caller MUST fetch this from Linear immediately before constructing QAInput
     (Pitfall 6) — the agent itself does not read Linear.
     """
+
     work_item_id: str
     linear_issue: dict
     pull_request: PullRequestInput
@@ -93,15 +97,16 @@ class QAOutput(BaseModel):
     (PITFALLS.md Pitfall 2 of Phase 2 RESEARCH.md). The SKILL.md system prompt
     instruction is probabilistic; the model_validator is deterministic.
     """
+
     work_item_id: str
     qa_status: Literal["approved", "changes_required"]
     qa_cycle_count: int = Field(ge=1, le=3)
     summary: str
     findings: list[QAFinding] = Field(max_length=5)  # QAAG-03 hard cap
-    tech_debt_annotation: Optional[str] = None  # required when qa_cycle_count >= 3
+    tech_debt_annotation: str | None = None  # required when qa_cycle_count >= 3
 
     @model_validator(mode="after")
-    def validate_cycle_cap_logic(self) -> "QAOutput":
+    def validate_cycle_cap_logic(self) -> QAOutput:
         # IMMUTABLE: do not modify. See class docstring.
         if self.qa_cycle_count >= 3 and self.qa_status == "changes_required":
             raise ValueError(
@@ -109,9 +114,7 @@ class QAOutput(BaseModel):
                 "QA runaway prevention (QAAG-04, PITFALLS.md Pitfall 2)."
             )
         if self.qa_cycle_count >= 3 and not self.tech_debt_annotation:
-            raise ValueError(
-                "tech_debt_annotation required when qa_cycle_count >= 3"
-            )
+            raise ValueError("tech_debt_annotation required when qa_cycle_count >= 3")
         return self
 
     model_config = {"extra": "forbid"}

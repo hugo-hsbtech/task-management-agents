@@ -4,6 +4,7 @@ Tests in this module deliberately use ``monkeypatch.setenv`` for the API-key
 flow so the session-scoped autouse fixture in ``conftest.py`` is honored
 (and restored) per-test.
 """
+
 import os
 
 import pytest

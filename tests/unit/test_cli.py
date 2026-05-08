@@ -7,13 +7,13 @@ Covers the three new Typer subcommands wired in Plan 03-03:
 
 VALIDATION.md command ID aliases mirror the canonical tests below.
 """
+
 from __future__ import annotations
 
 import asyncio
 import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from hsb.cli.main import app
@@ -30,6 +30,7 @@ def _stub_linear_output(entities: list | None = None) -> MagicMock:
 
 
 # --- CLIR-02: show-state renders rich table without writes ------------------
+
 
 def test_show_state_renders_table() -> None:
     """CLIR-02: hsb show-state renders a rich Table from Linear state. Read-only."""
@@ -54,6 +55,7 @@ def test_show_state_renders() -> None:
 
 # --- CLIR-03: show-next-action has no side effects --------------------------
 
+
 def test_show_next_action_no_side_effects() -> None:
     """CLIR-03: show-next-action must produce output without any Linear writes."""
     with patch(
@@ -69,6 +71,7 @@ def test_show_next_action_no_side_effects() -> None:
 
 
 # --- CLIR-05: No process-level state between invocations --------------------
+
 
 def test_run_next_step_uses_asyncio_run() -> None:
     """CLIR-05: run-next-step handler must use asyncio.run() — not be async itself."""
@@ -118,6 +121,6 @@ def test_no_process_state() -> None:
             continue
         if name in allowed:
             continue
-        if isinstance(value, (dict, list, set)):
+        if isinstance(value, dict | list | set):
             bad.append(name)
     assert not bad, f"unexpected module-level mutable state in hsb.cli.main: {bad}"

@@ -8,6 +8,7 @@ RISK-04 (defense-in-depth layer 2): ``AutoImprovementTrigger.linear_state`` is
 even if the skill 14 LLM hallucinates a payload claiming ``"created"``, the
 model will refuse to construct.
 """
+
 from __future__ import annotations
 
 from typing import Literal

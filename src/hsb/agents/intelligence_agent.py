@@ -13,6 +13,7 @@ assertion. The previous plan revision had one and broke pytest collection
 when ``ANTHROPIC_API_KEY`` was set in the developer environment for unrelated
 reasons.
 """
+
 from __future__ import annotations
 
 import json as _json

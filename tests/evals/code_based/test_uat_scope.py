@@ -1,5 +1,6 @@
 """B3 banned-token eval (AI-SPEC §5): UAT findings must not include
 code-quality or scope-creep terms."""
+
 import re
 
 import pytest
@@ -57,7 +58,9 @@ def test_uat_findings_with_refactor_term_flagged():
     bad = UATResult(
         user_story_id="LIN-1",
         overall_status="changes_required",
-        scenarios=[_scenario("AC-1", "fail", "The code should refactor the login handler")],
+        scenarios=[
+            _scenario("AC-1", "fail", "The code should refactor the login handler")
+        ],
         uat_cycle=1,
     )
     assert violations_in_result(bad), "B3 violated: 'refactor' must be flagged"
@@ -83,6 +86,4 @@ def test_uat_banned_token_each_flagged(token):
         scenarios=[_scenario("AC-1", "fail", f"This {token} thing is bad")],
         uat_cycle=1,
     )
-    assert violations_in_result(bad), (
-        f"B3 violated: token '{token}' was not flagged"
-    )
+    assert violations_in_result(bad), f"B3 violated: token '{token}' was not flagged"

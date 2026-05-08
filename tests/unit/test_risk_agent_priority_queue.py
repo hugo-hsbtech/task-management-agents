@@ -1,4 +1,5 @@
 """RISK-02: Priority queue sort order and tiebreaker."""
+
 from hsb.agents.risk_agent import RiskAgent
 
 

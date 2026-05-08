@@ -1,5 +1,5 @@
 """Unit tests for src/hsb/agents/hooks.py — LINR-05 retry behavior + audit log + filter enforcement."""
-import asyncio
+
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -8,7 +8,6 @@ import pytest
 
 from hsb.agents import hooks
 from hsb.agents.hooks import (
-    BASE_DELAY_SECONDS,
     MAX_RETRIES,
     _retry_counts,
     enforce_list_filters,
@@ -53,7 +52,7 @@ async def test_retry_backoff_exponential_timing():
         delays_recorded.append(delay)
 
     with patch("hsb.agents.hooks.asyncio.sleep", new=fake_sleep):
-        for i in range(3):
+        for _i in range(3):
             await linear_retry_hook(
                 {"tool_name": "mcp__linear__create_issue"}, "tool-use-2", None
             )
@@ -63,8 +62,10 @@ async def test_retry_backoff_exponential_timing():
 @pytest.mark.asyncio
 async def test_retry_cap_at_max():
     """Scenario 8: after 3 failures, return 'Do not retry'."""
+
     async def fake_sleep(delay):
         pass
+
     with patch("hsb.agents.hooks.asyncio.sleep", new=fake_sleep):
         for _ in range(MAX_RETRIES):
             await linear_retry_hook(
@@ -136,7 +137,10 @@ async def test_enforce_list_filters_denies_unfiltered():
         {"tool_name": "mcp__linear__list_issues", "tool_input": {}}, None, None
     )
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "teamId or projectId filter" in result["hookSpecificOutput"]["permissionDecisionReason"]
+    assert (
+        "teamId or projectId filter"
+        in result["hookSpecificOutput"]["permissionDecisionReason"]
+    )
 
 
 @pytest.mark.asyncio

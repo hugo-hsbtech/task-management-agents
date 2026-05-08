@@ -9,18 +9,20 @@ and explicitly forbid Linear update/delete, Bash, Edit, Write. The IDEMPOTENCY
 RULE in BACKLOG_SYSTEM_PROMPT enforces the list_issues pre-flight before any
 create_issue call (Pitfall 1, BKPK-05).
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 from pathlib import Path
 
 from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
-    SystemMessage,
     AssistantMessage,
+    ClaudeAgentOptions,
     ResultMessage,
+    SystemMessage,
+    query,
 )
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -93,7 +95,8 @@ async def _run_backlog_agent_async(input: BacklogInput) -> BacklogOutput:
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, SystemMessage) and message.subtype == "init":
                 failed = [
-                    s for s in message.data.get("mcp_servers", [])
+                    s
+                    for s in message.data.get("mcp_servers", [])
                     if s.get("status") != "connected"
                 ]
                 if failed:

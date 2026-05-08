@@ -1,4 +1,5 @@
 """Git Agent CLI subcommands (populated by Phase 2 Plan 04)."""
+
 import json as _json
 from pathlib import Path
 
@@ -18,9 +19,13 @@ def _git_callback() -> None:
 
 @app.command("create-pr")
 def git_create_pr(
-    issue_id: str = typer.Option(..., "--issue-id", help="Linear work item ID (e.g. LIN-123)"),
+    issue_id: str = typer.Option(
+        ..., "--issue-id", help="Linear work item ID (e.g. LIN-123)"
+    ),
     epic_id: str = typer.Option(..., "--epic-id", help="Parent EPIC ID (e.g. LIN-100)"),
-    impl_output: str = typer.Option(..., "--impl-output", help="Path to BuilderOutput JSON"),
+    impl_output: str = typer.Option(
+        ..., "--impl-output", help="Path to BuilderOutput JSON"
+    ),
 ):
     """Create branch + PR for a Linear work item (GITA-01..03)."""
     impl_data = _json.loads(Path(impl_output).read_text())
@@ -35,8 +40,12 @@ def git_create_pr(
 
 @app.command("rebase-stack")
 def git_rebase_stack(
-    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch (e.g. epic/LIN-100)"),
-    just_merged: str = typer.Option(..., "--just-merged", help="Branch just merged (excluded)"),
+    epic_branch: str = typer.Option(
+        ..., "--epic-branch", help="Epic branch (e.g. epic/LIN-100)"
+    ),
+    just_merged: str = typer.Option(
+        ..., "--just-merged", help="Branch just merged (excluded)"
+    ),
 ):
     """Rebase all open sibling task PRs after a merge (GITA-04, D-08).
 

@@ -14,15 +14,27 @@ exact moment we are about to construct an SDK options object, paired with the
 session-scoped autouse fixture in ``tests/conftest.py`` which unsets the env
 var at session start as a defensive measure.
 """
-from __future__ import annotations
 
 import functools
 import inspect
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import ClaudeAgentOptions, ResultMessage
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    PermissionMode,
+    ResultMessage,
+)
+from claude_agent_sdk.types import (
+    McpServerConfig,
+    Message,
+    SystemPromptFile,
+    SystemPromptPreset,
+    ToolsPreset,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +59,16 @@ def assert_oauth2_only() -> None:
 
 
 def make_options(
-    system_prompt,
-    allowed_tools,
-    permission_mode,
-    max_turns,
-    model,
-    mcp_servers=None,
-    max_budget_usd=None,
-    cwd=None,
-    resume=None,
+    permission_mode: PermissionMode,
+    system_prompt: str | SystemPromptPreset | SystemPromptFile | None = None,
+    allowed_tools: list[str] | None = None,
+    tools: list[str] | ToolsPreset | None = None,
+    max_turns: int | None = None,
+    model: str | None = None,
+    mcp_servers: dict[str, McpServerConfig] | str | Path | None = None,
+    max_budget_usd: float | None = None,
+    cwd: str | Path | None = None,
+    resume: str | None = None,
 ) -> ClaudeAgentOptions:
     """Construct a ``ClaudeAgentOptions`` with G1 + G2 enforcement.
 
@@ -67,7 +80,7 @@ def make_options(
     forbids sub-subagent dispatch.
     """
     assert_oauth2_only()  # G1: enforced at every SDK construction site through this factory.
-    forbidden = _FORBIDDEN_TOOLS & set(allowed_tools)
+    forbidden = _FORBIDDEN_TOOLS & set(allowed_tools or [])
     if forbidden:
         raise ValueError(
             f"G2 violation: {forbidden} must not appear in allowed_tools. "
@@ -88,10 +101,12 @@ def make_options(
         kwargs["cwd"] = cwd
     if resume is not None:
         kwargs["resume"] = resume
+    if tools:
+        kwargs["tools"] = tools
     return ClaudeAgentOptions(**kwargs)
 
 
-def assert_no_task_dispatch(msg: Any) -> None:
+def assert_no_task_dispatch(msg: Message) -> None:
     """G3 (AI-SPEC §6) — runtime backstop for G2.
 
     Called from every agent's SDK receive loop on every message. Inspects
@@ -110,12 +125,8 @@ def assert_no_task_dispatch(msg: Any) -> None:
     Intervention: raise ``RuntimeError``; the agent's receive loop must
     propagate (do NOT swallow) so the SDK session aborts.
     """
-    try:
-        from claude_agent_sdk import AssistantMessage  # type: ignore
-    except Exception:  # pragma: no cover - SDK lazy-import guard
-        AssistantMessage = None  # type: ignore
 
-    if AssistantMessage is not None and isinstance(msg, AssistantMessage):
+    if isinstance(msg, AssistantMessage):
         for block in getattr(msg, "content", []) or []:
             block_name = getattr(block, "name", None)
             if block_name == "Task":
@@ -130,11 +141,7 @@ def assert_no_task_dispatch(msg: Any) -> None:
         return
 
     if isinstance(msg, ResultMessage):
-        candidates = (
-            getattr(msg, "tool_calls", None)
-            or (getattr(msg, "usage", None) or {}).get("tool_uses", None)
-            or []
-        )
+        candidates = getattr(msg, "usage", {}).get("tool_uses", None) or []
         for entry in candidates or []:
             entry_name = (
                 entry.get("name")
@@ -223,4 +230,5 @@ def linear_write_guard(fn):
 
     if inspect.iscoroutinefunction(fn):
         return _async_wrapper
+
     return _sync_wrapper

@@ -7,7 +7,9 @@ These tests require:
 
 Run with: pytest tests/test_integration.py -x -m integration
 """
+
 from __future__ import annotations
+
 import os
 
 import pytest
@@ -47,7 +49,11 @@ async def test_create_epic(monkeypatch):
 
     result = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] EPIC test", "type": "epic", "teamId": team_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] EPIC test",
+            "type": "epic",
+            "teamId": team_id,
+        },
     )
     assert result.result == "success"
     assert result.linear_entities[0].type == "epic"
@@ -62,14 +68,22 @@ async def test_create_task_under_epic(monkeypatch):
 
     epic = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] EPIC for task test", "type": "epic", "teamId": team_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] EPIC for task test",
+            "type": "epic",
+            "teamId": team_id,
+        },
     )
     epic_id = epic.linear_entities[0].id
 
     task = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] Task under EPIC", "type": "task",
-                 "teamId": team_id, "parentId": epic_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] Task under EPIC",
+            "type": "task",
+            "teamId": team_id,
+            "parentId": epic_id,
+        },
     )
     assert task.result == "success"
     assert task.linear_entities[0].type == "task"
@@ -84,14 +98,22 @@ async def test_create_user_story_under_epic():
 
     epic = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] EPIC for user_story test", "type": "epic", "teamId": team_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] EPIC for user_story test",
+            "type": "epic",
+            "teamId": team_id,
+        },
     )
     epic_id = epic.linear_entities[0].id
 
     story = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] User Story under EPIC", "type": "user_story",
-                 "teamId": team_id, "parentId": epic_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] User Story under EPIC",
+            "type": "user_story",
+            "teamId": team_id,
+            "parentId": epic_id,
+        },
     )
     assert story.result == "success"
     assert story.linear_entities[0].type == "user_story"
@@ -106,21 +128,33 @@ async def test_create_subtask_under_task():
 
     epic = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] EPIC for subtask test", "type": "epic", "teamId": team_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] EPIC for subtask test",
+            "type": "epic",
+            "teamId": team_id,
+        },
     )
     epic_id = epic.linear_entities[0].id
 
     task = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] Task for subtask test", "type": "task",
-                 "teamId": team_id, "parentId": epic_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] Task for subtask test",
+            "type": "task",
+            "teamId": team_id,
+            "parentId": epic_id,
+        },
     )
     task_id = task.linear_entities[0].id
 
     subtask = await run_validated_linear_agent(
         operation="create",
-        payload={"title": "[PHASE-1-INTEGRATION] Subtask under Task", "type": "subtask",
-                 "teamId": team_id, "parentId": task_id},
+        payload={
+            "title": "[PHASE-1-INTEGRATION] Subtask under Task",
+            "type": "subtask",
+            "teamId": team_id,
+            "parentId": task_id,
+        },
     )
     assert subtask.result == "success"
     assert subtask.linear_entities[0].type == "subtask"
@@ -184,7 +218,10 @@ async def test_add_comment():
 
     result = await run_validated_linear_agent(
         operation="comment",
-        payload={"issueId": issue_id, "body": "[INTEGRATION TEST] Phase 1 verification"},
+        payload={
+            "issueId": issue_id,
+            "body": "[INTEGRATION TEST] Phase 1 verification",
+        },
     )
     assert result.result == "success"
 

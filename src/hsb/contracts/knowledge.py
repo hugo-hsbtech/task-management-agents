@@ -8,6 +8,7 @@ INTL-03: ``KnowledgeStorageInput.applicability`` MUST identify specific
 conditions; the validator rejects empty/whitespace strings and the
 case-insensitive set ``{"all tasks", "all", "n/a", "tbd"}``.
 """
+
 from __future__ import annotations
 
 from typing import Literal

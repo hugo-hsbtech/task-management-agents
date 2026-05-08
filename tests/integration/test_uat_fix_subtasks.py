@@ -6,6 +6,7 @@ Real Linear test workspace; no mocking. Runs as a smoke test only when a
 fixture User Story produces a 'changes_required' verdict — typically
 requires operator-curated test data.
 """
+
 import pytest
 
 pytestmark = [pytest.mark.integration]

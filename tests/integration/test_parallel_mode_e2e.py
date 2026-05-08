@@ -22,8 +22,8 @@ async def test_no_double_claim_parallel_two_tasks():
     with no blocking dependencies.
     """
     from hsb.agents.global_orchestrator import GlobalOrchestrator
-    from hsb.agents.main_orchestrator import run_main_orchestrator
     from hsb.agents.linear_agent import run_validated_linear_agent
+    from hsb.agents.main_orchestrator import run_main_orchestrator
 
     go = GlobalOrchestrator()
     output = await go.get_ready_tasks()
@@ -68,7 +68,8 @@ async def test_no_double_claim():
 async def test_worktree_cleanup_after_parallel():
     """D-09: Worktrees are removed after parallel dispatch completes."""
     import os
-    from hsb.agents.main_orchestrator import run_main_orchestrator, WORKTREES_DIR
+
+    from hsb.agents.main_orchestrator import WORKTREES_DIR, run_main_orchestrator
 
     worktrees_path = os.path.join(os.getcwd(), WORKTREES_DIR)
 

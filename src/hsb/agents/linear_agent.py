@@ -7,16 +7,19 @@ Two public entry points:
 
 Per D-01: OAuth handled by mcp-remote. Per D-02: token refresh automatic.
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
+
 from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
-    SystemMessage,
     AssistantMessage,
+    ClaudeAgentOptions,
     ResultMessage,
+    SystemMessage,
+    query,
 )
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -147,7 +150,9 @@ async def _run_validated_linear_agent_impl(
             json_end = result_text.rindex("}") + 1
             raw = json.loads(result_text[json_start:json_end])
         except (ValueError, json.JSONDecodeError) as e:
-            logger.warning("Attempt %d: could not parse JSON from result: %s", attempt, e)
+            logger.warning(
+                "Attempt %d: could not parse JSON from result: %s", attempt, e
+            )
             last_error = e
             prompt += (
                 f"\n\nPrevious attempt returned invalid JSON: {e}. "

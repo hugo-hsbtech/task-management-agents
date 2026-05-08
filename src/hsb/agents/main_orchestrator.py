@@ -10,7 +10,9 @@ Implements MORD-01 (mode routing), MORD-02 (cascade sequential), MORD-03
 (optimistic-lock claiming), MORD-04 (worktree-isolated parallel dispatch),
 and MORD-05 (cycle summary persistence to Linear).
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -26,9 +28,7 @@ from dotenv import load_dotenv
 from hsb.agents.global_orchestrator import GlobalOrchestrator
 from hsb.agents.linear_agent import run_validated_linear_agent
 from hsb.contracts.main_orchestrator import (
-    MainOrchestratorOutput,
     DispatchedItem,
-    ClaimResult,
 )
 
 load_dotenv()
@@ -48,7 +48,9 @@ def _entity_get(entity, key: str, default=None):
     return getattr(entity, key, default)
 
 
-async def run_main_orchestrator(mode: Literal["cascade", "parallel"] = "cascade") -> None:
+async def run_main_orchestrator(
+    mode: Literal["cascade", "parallel"] = "cascade",
+) -> None:
     """
     Main Orchestrator entrypoint (MORD-01, MORD-05, D-02, D-14).
 
@@ -102,12 +104,14 @@ async def _cascade_dispatch(
         return []
     task = ready_tasks[0]
     result = await _run_wio_subprocess(task, worktree_path=repo_root)
-    return [DispatchedItem(
-        work_item_id=task.id,
-        orchestrator_instance="cascade-0",
-        claim_status="claimed",
-        final_status=result.get("status", "completed"),
-    )]
+    return [
+        DispatchedItem(
+            work_item_id=task.id,
+            orchestrator_instance="cascade-0",
+            claim_status="claimed",
+            final_status=result.get("status", "completed"),
+        )
+    ]
 
 
 async def _sequential_claiming_loop(
@@ -134,7 +138,9 @@ async def _sequential_claiming_loop(
         )
         pre_updated_at = ""
         if fresh_before.linear_entities:
-            pre_updated_at = _entity_get(fresh_before.linear_entities[0], "updatedAt", "")
+            pre_updated_at = _entity_get(
+                fresh_before.linear_entities[0], "updatedAt", ""
+            )
 
         # Step 2: Write status = in_progress
         await run_validated_linear_agent(
@@ -149,7 +155,9 @@ async def _sequential_claiming_loop(
         )
         post_updated_at = ""
         if fresh_after.linear_entities:
-            post_updated_at = _entity_get(fresh_after.linear_entities[0], "updatedAt", "")
+            post_updated_at = _entity_get(
+                fresh_after.linear_entities[0], "updatedAt", ""
+            )
 
         if post_updated_at != pre_updated_at:
             claimed.append((task, post_updated_at))
@@ -177,7 +185,12 @@ async def _git_worktree_add(repo_root: str, task_id: str, branch_name: str) -> s
     """
     wt_path = os.path.join(repo_root, WORKTREES_DIR, f"LIN-{task_id}")
     proc = await asyncio.create_subprocess_exec(
-        "git", "worktree", "add", "-b", branch_name, wt_path,
+        "git",
+        "worktree",
+        "add",
+        "-b",
+        branch_name,
+        wt_path,
         cwd=repo_root,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -200,7 +213,11 @@ async def _git_worktree_remove(repo_root: str, task_id: str) -> None:
     """
     wt_path = os.path.join(repo_root, WORKTREES_DIR, f"LIN-{task_id}")
     proc = await asyncio.create_subprocess_exec(
-        "git", "worktree", "remove", "--force", wt_path,
+        "git",
+        "worktree",
+        "remove",
+        "--force",
+        wt_path,
         cwd=repo_root,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -242,7 +259,9 @@ async def _run_wio_subprocess(task, worktree_path: str) -> dict:
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "hsb.agents.work_item_orchestrator",
+            sys.executable,
+            "-m",
+            "hsb.agents.work_item_orchestrator",
             cwd=worktree_path,
             env=env,
             stdout=asyncio.subprocess.PIPE,
@@ -253,7 +272,9 @@ async def _run_wio_subprocess(task, worktree_path: str) -> dict:
         if proc.returncode != 0:
             logger.error(
                 "WIO subprocess failed for %s (exit %d): %s",
-                task.id, proc.returncode, stderr.decode()
+                task.id,
+                proc.returncode,
+                stderr.decode(),
             )
             return {"status": "failed", "task_id": task.id, "error": stderr.decode()}
 
@@ -282,7 +303,9 @@ async def _parallel_dispatch(
     """
     # Pitfall C mitigation: prune stale worktrees before any new ones are created
     prune_proc = await asyncio.create_subprocess_exec(
-        "git", "worktree", "prune",
+        "git",
+        "worktree",
+        "prune",
         cwd=repo_root,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -296,12 +319,14 @@ async def _parallel_dispatch(
     skipped_ids = {t.id for t in ready_tasks} - {t.id for t, _ in claimed_pairs}
 
     for skipped_id in skipped_ids:
-        dispatched_items.append(DispatchedItem(
-            work_item_id=skipped_id,
-            orchestrator_instance="skipped",
-            claim_status="skipped",
-            final_status="blocked",
-        ))
+        dispatched_items.append(
+            DispatchedItem(
+                work_item_id=skipped_id,
+                orchestrator_instance="skipped",
+                claim_status="skipped",
+                final_status="blocked",
+            )
+        )
 
     if not claimed_pairs:
         return dispatched_items
@@ -321,7 +346,7 @@ async def _parallel_dispatch(
         results = await asyncio.gather(
             *[
                 _run_wio_subprocess(task, wt)
-                for (task, _), wt in zip(claimed_pairs, worktree_paths)
+                for (task, _), wt in zip(claimed_pairs, worktree_paths, strict=False)
             ],
             return_exceptions=True,
         )
@@ -339,14 +364,20 @@ async def _parallel_dispatch(
             await _git_worktree_remove(repo_root, task.id)
 
     # Build dispatched items from normalized results
-    for i, ((task, _), result) in enumerate(zip(claimed_pairs, normalized)):
-        final_status = result.get("status", "completed") if isinstance(result, dict) else "failed"
-        dispatched_items.append(DispatchedItem(
-            work_item_id=task.id,
-            orchestrator_instance=f"parallel-{i}",
-            claim_status="claimed",
-            final_status=final_status,
-        ))
+    for i, ((task, _), result) in enumerate(
+        zip(claimed_pairs, normalized, strict=False)
+    ):
+        final_status = (
+            result.get("status", "completed") if isinstance(result, dict) else "failed"
+        )
+        dispatched_items.append(
+            DispatchedItem(
+                work_item_id=task.id,
+                orchestrator_instance=f"parallel-{i}",
+                claim_status="claimed",
+                final_status=final_status,
+            )
+        )
 
     return dispatched_items
 
@@ -354,7 +385,9 @@ async def _parallel_dispatch(
 def _build_cycle_summary(mode: str, dispatched: list[DispatchedItem]) -> str:
     """MORD-05: build cycle summary string for Linear EPIC comment (D-14)."""
     completed = [d for d in dispatched if d.final_status == "completed"]
-    failed = [d for d in dispatched if d.final_status in ("failed", "blocked", "exception")]
+    failed = [
+        d for d in dispatched if d.final_status in ("failed", "blocked", "exception")
+    ]
     skipped = [d for d in dispatched if d.claim_status == "skipped"]
 
     lines = [
@@ -369,6 +402,8 @@ def _build_cycle_summary(mode: str, dispatched: list[DispatchedItem]) -> str:
     ]
     for d in dispatched:
         icon = "OK" if d.final_status == "completed" else "FAIL"
-        lines.append(f"- [{icon}] {d.work_item_id}: {d.claim_status} -> {d.final_status}")
+        lines.append(
+            f"- [{icon}] {d.work_item_id}: {d.claim_status} -> {d.final_status}"
+        )
 
     return "\n".join(lines)

@@ -11,13 +11,14 @@ Covers: QAAG-01 (produces approved/changes_required contract), QAAG-05 (no code 
 
 Run with: pytest tests/integration/test_qa_agent.py -v -m integration
 """
+
 import os
 import subprocess
 
 import pytest
 
 from hsb.agents.qa_agent import run_qa_agent
-from hsb.contracts.qa import QAInput, PullRequestInput
+from hsb.contracts.qa import PullRequestInput, QAInput
 
 pytestmark = [pytest.mark.integration]
 
@@ -58,7 +59,9 @@ def test_qa_review():
     )
     output = run_qa_agent(input)
     assert output.qa_status in ("approved", "changes_required"), output.qa_status
-    assert len(output.findings) <= 5, f"QAAG-03 violation: {len(output.findings)} findings"
+    assert len(output.findings) <= 5, (
+        f"QAAG-03 violation: {len(output.findings)} findings"
+    )
     assert output.qa_cycle_count == 1, (
         f"qa_cycle_count must increment 0->1 (1-indexed output); got {output.qa_cycle_count}"
     )
@@ -66,7 +69,12 @@ def test_qa_review():
         for f in output.findings:
             assert f.severity in ("critical", "high", "medium", "low")
             assert f.category in (
-                "functional", "architecture", "code_quality", "test", "security", "regression",
+                "functional",
+                "architecture",
+                "code_quality",
+                "test",
+                "security",
+                "regression",
             )
             assert f.status in ("blocking", "non_blocking")
             assert f.evidence.file
@@ -109,7 +117,9 @@ def test_capability_boundary(tmp_path):
     run_qa_agent(input)
 
     # Verify sentinel was not touched
-    assert sentinel.read_text() == "DO NOT MODIFY", "QA Agent modified sentinel — QAAG-05 violation"
+    assert sentinel.read_text() == "DO NOT MODIFY", (
+        "QA Agent modified sentinel — QAAG-05 violation"
+    )
     assert sentinel.stat().st_mtime == sentinel_mtime_before, (
         "QA Agent altered sentinel mtime — QAAG-05 violation"
     )

@@ -6,6 +6,8 @@ guard in ``_sdk_options.assert_oauth2_only()`` never trips on a leaked env
 var during automated runs. Pairs with — does not replace — the runtime
 G1 guard in ``_sdk_options.py``.
 """
+
+import contextlib
 import os
 
 import pytest
@@ -54,7 +56,6 @@ def failed_linear_output() -> dict:
 # be ``@pytest_asyncio.fixture`` async generators, NOT sync wrappers around
 # ``asyncio.run()`` (which raises RuntimeError when called from inside a
 # running event loop).
-import shutil
 from pathlib import Path
 
 import pytest_asyncio
@@ -71,10 +72,8 @@ def tmp_knowledge_cleanup():
     root = Path("knowledge")
     if root.exists():
         for p in root.rglob("*_test_*.md"):
-            try:
+            with contextlib.suppress(OSError):
                 p.unlink()
-            except OSError:
-                pass
 
 
 @pytest.fixture
@@ -114,7 +113,7 @@ async def uat_ready_user_story(linear_test_workspace):
     except Exception as exc:
         pytest.skip(f"Linear test workspace unavailable: {exc}")
 
-    for entity in (resp.linear_entities or []):
+    for entity in resp.linear_entities or []:
         d = entity if isinstance(entity, dict) else entity.model_dump()
         if d.get("uat_status") == "approved":
             continue
@@ -151,7 +150,7 @@ async def test_task_with_knowledge_fixture(linear_test_workspace):
     except Exception as exc:
         pytest.skip(f"Linear test workspace unavailable: {exc}")
 
-    for entity in (resp.linear_entities or []):
+    for entity in resp.linear_entities or []:
         d = entity if isinstance(entity, dict) else entity.model_dump()
         return d
     pytest.skip("No todo Task in Linear test workspace")

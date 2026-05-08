@@ -9,6 +9,7 @@ VALIDATION.md aliases:
 - WORC-01: ``test_full_lifecycle``
 - WORC-05: ``test_lifecycle_comment``
 """
+
 from __future__ import annotations
 
 import os
@@ -32,6 +33,7 @@ def _require_test_work_item_id() -> str:
 
 # --- WORC-01: Full lifecycle todo → terminal state --------------------------
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_full_lifecycle_todo_to_done() -> None:
@@ -45,8 +47,8 @@ async def test_full_lifecycle_todo_to_done() -> None:
     may be ``done``, ``fix_required``, or ``escalated_to_human`` depending on
     QA outcome (CONTEXT.md D-04).
     """
-    from hsb.agents.work_item_orchestrator import run_orchestration_cycle
     from hsb.agents.linear_agent import run_validated_linear_agent
+    from hsb.agents.work_item_orchestrator import run_orchestration_cycle
 
     work_item_id = _require_test_work_item_id()
 
@@ -68,6 +70,7 @@ async def test_full_lifecycle() -> None:
 
 # --- WORC-05: lifecycle_summary persisted to Linear --------------------------
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_lifecycle_comment_persisted() -> None:
@@ -77,8 +80,8 @@ async def test_lifecycle_comment_persisted() -> None:
     ``run_orchestration_cycle`` invocation; expects at least one new comment
     (the ``lifecycle_summary``).
     """
-    from hsb.agents.work_item_orchestrator import run_orchestration_cycle
     from hsb.agents.linear_agent import run_validated_linear_agent
+    from hsb.agents.work_item_orchestrator import run_orchestration_cycle
 
     work_item_id = _require_test_work_item_id()
 
@@ -109,6 +112,7 @@ async def test_lifecycle_comment() -> None:
 
 
 # --- WORC-03: orchestrator never initiates a 4th QA cycle -------------------
+
 
 @pytest.mark.integration
 def test_qa_cycle_cap_not_exceeded() -> None:

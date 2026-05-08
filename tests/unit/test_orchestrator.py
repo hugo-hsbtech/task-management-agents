@@ -8,6 +8,7 @@ VALIDATION.md command IDs (alias tests below match these):
 - WORC-03: ``test_qa_cycle_cap``
 - WORC-04: ``test_full_context_in_tool_calls``
 """
+
 from __future__ import annotations
 
 import inspect
@@ -18,8 +19,8 @@ from pydantic import ValidationError
 
 from hsb.contracts.orchestrator import WorkItemOrchInput, WorkItemOrchOutput
 
-
 # --- WORC-02: No sub-agent dispatch -----------------------------------------
+
 
 def test_no_subagent_dispatch_in_options() -> None:
     """WORC-02 / RESEARCH.md Pitfall 1: ClaudeAgentOptions must register only
@@ -62,6 +63,7 @@ def test_no_subagent_dispatch() -> None:
 
 
 # --- WORC-03: QA cycle cap (Layer 1 + Layer 2) ------------------------------
+
 
 def test_qa_cycle_cap_model_validator() -> None:
     """WORC-03 / QAAG-04 Layer 1: qa_cycle_count >= 3 + changes_required is rejected
@@ -121,12 +123,15 @@ async def test_qa_cycle_cap_safety_net_silent_below_cap() -> None:
         "hsb.agents.work_item_orchestrator.run_validated_linear_agent",
         new_callable=AsyncMock,
     ) as mock_linear:
-        await _check_qa_cycle_cap("LIN-9", qa_cycle_count=2, qa_status="changes_required")
+        await _check_qa_cycle_cap(
+            "LIN-9", qa_cycle_count=2, qa_status="changes_required"
+        )
         await _check_qa_cycle_cap("LIN-9", qa_cycle_count=3, qa_status="approved")
     mock_linear.assert_not_called()
 
 
 # --- WORC-04: Full context passed in tool calls -----------------------------
+
 
 def test_tool_wrapper_requires_full_issue_content() -> None:
     """WORC-04 / Pitfall 4: ``run_builder_tool`` must accept ``issue_content``
@@ -169,15 +174,17 @@ def test_all_tools_return_canonical_envelope() -> None:
 
 # --- assemble_system_prompt -------------------------------------------------
 
+
 def test_assemble_system_prompt_loads_all_skills() -> None:
     """``assemble_system_prompt`` reads all 5 SKILL_FILES with ``# SKILL:``
     headers and returns a string > 5000 chars (skills total ~12KB)."""
-    from hsb.agents.work_item_orchestrator import assemble_system_prompt, SKILL_FILES
+    from hsb.agents.work_item_orchestrator import SKILL_FILES, assemble_system_prompt
 
     prompt = assemble_system_prompt()
     assert len(prompt) > 5000, f"system prompt is only {len(prompt)} chars"
     for path in SKILL_FILES:
         from pathlib import Path
+
         stem = Path(path).stem
         assert f"# SKILL: {stem}" in prompt, f"missing skill header for {stem}"
 
@@ -202,6 +209,7 @@ def test_orchestration_options_lists_required_tools() -> None:
 
 
 # --- Contract validation (Task 1 deliverables — implemented now) -------------
+
 
 def test_valid_orch_output_passes() -> None:
     """Sanity: a fully-populated WorkItemOrchOutput dict validates."""

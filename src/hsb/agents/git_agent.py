@@ -5,13 +5,18 @@ Two-layer enforcement (SKILL.md + this file).
 --force-with-lease ONLY (no bare --force, Pitfall 3).
 --limit 100 on gh pr list (Pitfall 4).
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 
 from claude_agent_sdk import (
-    query, ClaudeAgentOptions, AssistantMessage, ResultMessage,
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ResultMessage,
+    query,
 )
 from dotenv import load_dotenv
 from pydantic import ValidationError

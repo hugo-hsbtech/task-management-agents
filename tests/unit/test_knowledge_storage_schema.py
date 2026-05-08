@@ -1,4 +1,5 @@
 """INTL-03 schema completeness + applicability constraint tests."""
+
 import pytest
 from pydantic import ValidationError
 

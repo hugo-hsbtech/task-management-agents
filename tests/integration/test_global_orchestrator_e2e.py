@@ -15,6 +15,7 @@ pytestmark = [pytest.mark.integration]
 async def test_get_ready_tasks_returns_todo_only():
     """GORD-01: Returns only todo items from real Linear workspace."""
     from hsb.agents.global_orchestrator import GlobalOrchestrator
+
     go = GlobalOrchestrator()
     output = await go.get_ready_tasks()
     # All returned tasks must have been todo-status items
@@ -28,6 +29,7 @@ async def test_get_ready_tasks_returns_todo_only():
 async def test_dependency_filter_against_live_linear():
     """GORD-02: Dependency filtering works against real Linear dependency graph."""
     from hsb.agents.global_orchestrator import GlobalOrchestrator
+
     go = GlobalOrchestrator()
     output = await go.get_ready_tasks()
     # No item in ready_tasks should have a non-done dependency in Linear
@@ -41,6 +43,7 @@ async def test_dependency_filter_against_live_linear():
 async def test_empty_backlog_signal_live():
     """GORD-03 live shape check: is_backlog_empty is a bool."""
     from hsb.agents.global_orchestrator import GlobalOrchestrator
+
     go = GlobalOrchestrator()
     output = await go.get_ready_tasks()
     assert isinstance(output.is_backlog_empty, bool)
@@ -51,6 +54,7 @@ async def test_empty_backlog_signal_live():
 async def test_epic_ready_signal_live():
     """GORD-04 live shape check: is_epic_ready is a bool."""
     from hsb.agents.global_orchestrator import GlobalOrchestrator
+
     go = GlobalOrchestrator()
     output = await go.get_ready_tasks()
     assert isinstance(output.is_epic_ready, bool)
@@ -67,4 +71,5 @@ async def test_cycle_summary_posted():
     of the operator checkpoint (04-04-SUMMARY.md).
     """
     from hsb.agents.main_orchestrator import run_main_orchestrator
+
     await run_main_orchestrator(mode="cascade")

@@ -11,6 +11,7 @@ Two pydantic models per AI-SPEC §4b.1.
 Both models use ``model_config = {"extra": "forbid"}`` so the LLM cannot
 sneak rogue fields past parse.
 """
+
 from __future__ import annotations
 
 from typing import Literal

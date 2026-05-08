@@ -10,6 +10,7 @@ BKPK-05 (idempotency / traceability).
 
 Run with: pytest tests/integration/test_backlog_agent.py -v -m integration
 """
+
 import os
 from pathlib import Path
 
@@ -75,12 +76,16 @@ def test_create_epics(sample_plan_path: Path, project_ctx: ProjectContext):
     input = BacklogInput(plan_source=str(sample_plan_path), project_context=project_ctx)
     output = run_backlog_agent(input)
     for epic in output.epics:
-        assert epic.title.startswith("[EPIC]"), f"EPIC title must start with [EPIC]: {epic.title!r}"
+        assert epic.title.startswith("[EPIC]"), (
+            f"EPIC title must start with [EPIC]: {epic.title!r}"
+        )
         assert len(epic.description) > 0, "EPIC description must not be empty"
         # Traceability: description must reference the plan source by quoting it (D-03)
         # We accept either a markdown blockquote (>) or the original heading reference.
         quoted = ">" in epic.description or "User Authentication" in epic.description
-        assert quoted, f"EPIC description must include plan.md excerpt for traceability (BKPK-05)"
+        assert quoted, (
+            "EPIC description must include plan.md excerpt for traceability (BKPK-05)"
+        )
 
 
 @pytest.mark.integration

@@ -1,6 +1,8 @@
 """RISK-01 + arithmetic invariant tests for ``RiskAgent.calculate_quality_score``."""
+
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from hsb.agents.risk_agent import RiskAgent
 from hsb.contracts.risk import QualityScore
