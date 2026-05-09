@@ -17,6 +17,7 @@ services:
     volumes:
       - ./.mcp.json:/app/.mcp.json:ro
       - hsb-mcp-auth:/root/.mcp-auth
+      - hsb-gh-auth:/root/.config/gh
       - hsb-claude-state:/app/.claude/projects
     stdin_open: true
     tty: true
@@ -24,4 +25,5 @@ services:
 
 volumes:
   hsb-mcp-auth:
+  hsb-gh-auth:
   hsb-claude-state:

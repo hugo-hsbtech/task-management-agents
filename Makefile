@@ -45,6 +45,10 @@ shell: ## Open a bash shell inside a fresh container
 auth-linear: ## Run mcp-remote to complete Linear OAuth (one-time, persists in named volume)
 	@./scripts/auth-linear.sh
 
+.PHONY: auth-github
+auth-github: ## Run gh auth login to complete GitHub auth (one-time, persists in named volume)
+	@./scripts/auth-github.sh
+
 .PHONY: kill-stale
 kill-stale: ## Remove any lingering hsb-agents containers
 	@./scripts/kill-stale.sh

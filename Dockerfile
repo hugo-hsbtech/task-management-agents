@@ -16,6 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# GitHub CLI: install from the official apt repo so `gh auth login` is
+# available inside the container (Git Agent shells out to gh pr create/list/diff).
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 WORKDIR /app
@@ -28,4 +39,5 @@ COPY . .
 
 RUN uv sync --frozen
 
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["python", "run_loop.py"]

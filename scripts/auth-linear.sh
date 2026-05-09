@@ -15,7 +15,10 @@
 # token file appears.
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
+cd "$SCRIPT_DIR/.."
 
 CONTAINER_NAME="hsb-run-auth-linear-$$"
 LOG_FILE=$(mktemp /tmp/auth-linear-XXXXX.log)
@@ -38,29 +41,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-say()  { printf '%s\n' "$*"; }
-ok()   { printf '\e[32m[ok]\e[0m   %s\n' "$*"; }
-info() { printf '\e[36m[..]\e[0m   %s\n' "$*"; }
-warn() { printf '\e[33m[!!]\e[0m   %s\n' "$*"; }
-fail() { printf '\e[31m[xx]\e[0m   %s\n' "$*" >&2; }
-
 tokens_present() {
   docker exec "$CONTAINER_NAME" \
     find /root/.mcp-auth -name '*tokens.json' 2>/dev/null \
     | grep -q . 2>/dev/null
-}
-
-# Inspect the auth volume *before* starting the container so we can tell the
-# user up front whether this is a fresh-auth flow or a re-validation.
-auth_volume() {
-  docker volume ls --format '{{.Name}}' | grep '_hsb-mcp-auth$' | head -1
-}
-
-volume_has_tokens() {
-  local vol="$1"
-  [[ -z "$vol" ]] && return 1
-  docker run --rm -v "${vol}:/auth" alpine \
-    find /auth -name '*tokens.json' 2>/dev/null | grep -q . 2>/dev/null
 }
 
 deliver_callback() {
@@ -96,8 +80,8 @@ say ""
 "$(dirname "$0")/kill-stale.sh" auth-linear
 say ""
 
-EXISTING_VOL=$(auth_volume || true)
-if [[ -n "$EXISTING_VOL" ]] && volume_has_tokens "$EXISTING_VOL"; then
+EXISTING_VOL=$(auth_volume hsb-mcp-auth || true)
+if [[ -n "$EXISTING_VOL" ]] && volume_has_file "$EXISTING_VOL" '*tokens.json'; then
   info "Existing Linear auth found in volume '$EXISTING_VOL'."
   info "Validating token (starting mcp-remote)..."
   EXPECT_REAUTH=0
