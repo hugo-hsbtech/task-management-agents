@@ -148,7 +148,7 @@ def assert_no_task_dispatch(msg: Message) -> None:
         return
 
     if isinstance(msg, ResultMessage):
-        candidates = getattr(msg, "usage", {}).get("tool_uses", None) or []
+        candidates = (getattr(msg, "usage", None) or {}).get("tool_uses", None) or []
         for entry in candidates or []:
             entry_name = (
                 entry.get("name")
