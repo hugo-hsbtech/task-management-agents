@@ -17,15 +17,11 @@ import json
 import logging
 from pathlib import Path
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ResultMessage,
-    SystemMessage,
-    query,
-)
+from claude_agent_sdk import AssistantMessage, ResultMessage, SystemMessage
 from dotenv import load_dotenv
 from pydantic import ValidationError
+
+from hsb.agents._sdk_options import make_agent_options, resolve_runtime
 
 from hsb.agents.hooks import LINEAR_HOOKS
 from hsb.contracts.backlog import BacklogInput, BacklogOutput
@@ -68,14 +64,8 @@ async def _run_backlog_agent_async(input: BacklogInput) -> BacklogOutput:
         f"Return ONLY a JSON object matching BacklogOutput schema."
     )
 
-    options = ClaudeAgentOptions(
-        model="claude-opus-4-7",
-        mcp_servers={
-            "linear": {
-                "command": "npx",
-                "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"],
-            }
-        },
+    options = make_agent_options(
+        system_prompt=BACKLOG_SYSTEM_PROMPT,
         allowed_tools=[
             "mcp__linear__create_issue",
             "mcp__linear__list_issues",
@@ -83,35 +73,43 @@ async def _run_backlog_agent_async(input: BacklogInput) -> BacklogOutput:
             "Read",
         ],
         permission_mode="acceptEdits",
-        system_prompt=BACKLOG_SYSTEM_PROMPT,
         max_turns=80,  # supports 20+ Linear creates
+        model="claude-opus-4-7",
+        mcp_servers={
+            "linear": {
+                "command": "npx",
+                "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"],
+            }
+        },
         hooks=LINEAR_HOOKS,
     )
+    runtime = resolve_runtime("backlog")
 
     last_error: Exception | None = None
     prompt = base_prompt
     for attempt in range(1, MAX_VALIDATION_RETRIES + 1):
         result_text: str | None = None
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, SystemMessage) and message.subtype == "init":
+        async for message in runtime.query(prompt, options):
+            sdk_msg = message.raw
+            if isinstance(sdk_msg, SystemMessage) and sdk_msg.subtype == "init":
                 failed = [
                     s
-                    for s in message.data.get("mcp_servers", [])
+                    for s in sdk_msg.data.get("mcp_servers", [])
                     if s.get("status") != "connected"
                 ]
                 if failed:
                     raise RuntimeError(f"Linear MCP failed to connect: {failed}")
-            elif isinstance(message, AssistantMessage):
-                for block in message.content:
+            elif isinstance(sdk_msg, AssistantMessage):
+                for block in sdk_msg.content:
                     if hasattr(block, "text"):
                         print(block.text)
                     elif hasattr(block, "name"):
                         print(f"[TOOL] {block.name}")
-            elif isinstance(message, ResultMessage):
-                if message.subtype == "success":
-                    result_text = message.result
+            elif isinstance(sdk_msg, ResultMessage):
+                if sdk_msg.subtype == "success":
+                    result_text = sdk_msg.result
                 else:
-                    raise RuntimeError(f"Backlog Agent failed: {message.subtype}")
+                    raise RuntimeError(f"Backlog Agent failed: {sdk_msg.subtype}")
 
         if result_text is None:
             logger.warning("Attempt %d: no result text", attempt)
