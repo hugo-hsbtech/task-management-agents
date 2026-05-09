@@ -1,6 +1,6 @@
 ---
 name: ezra-create-handoff
-description: Create handoff document for transferring work to another session
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Create handoff document for transferring work to another session
 ---
 
 # Create Handoff

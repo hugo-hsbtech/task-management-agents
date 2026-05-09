@@ -1,6 +1,6 @@
 ---
 name: ezra-local-review
-description: Set up worktree for reviewing colleague's branch
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Set up worktree for reviewing colleague's branch
 ---
 
 # Local Review

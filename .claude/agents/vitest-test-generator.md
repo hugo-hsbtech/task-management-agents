@@ -1,6 +1,6 @@
 ---
 name: vitest-test-generator
-description: Generates Vitest test code from plans, creates missing factories and MSW handlers. Handles all 5 tiers.
+description: [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only] Generates Vitest test code from plans, creates missing factories and MSW handlers. Handles all 5 tiers.
 tools:
   - Read
   - Write

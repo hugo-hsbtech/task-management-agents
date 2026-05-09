@@ -1,7 +1,7 @@
 ---
 name: clerk-nextjs-patterns
 description: >-
-  Clerk authentication patterns for the Ezra Next.js monorepo — server vs client auth,
+  [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Clerk authentication patterns for the Ezra Next.js monorepo — server vs client auth,
   middleware strategies, Server Actions, API route protection, caching with auth,
   and token injection via authTokenProvider for Orval-generated hooks. Use when adding
   Clerk auth to a new app, protecting routes or actions, wiring auth tokens into API calls,
@@ -10,7 +10,6 @@ description: >-
   role/permission checks. Also use when touching middleware.ts, ClerkProvider, ClerkTokenSync,
   authTokenProvider, or any import from @clerk/nextjs. Do NOT use for Clerk SDK installation
   or initial project setup (see Clerk docs quickstart).
-origin: Ezra
 ---
 
 # Clerk + Next.js Patterns (Ezra Monorepo)

@@ -1,6 +1,6 @@
 ---
 name: ezra-scaffold-frontend-app-tests
-description: Scaffold Vitest unit/integration + Playwright E2E testing infrastructure for a new frontend app. Use when creating a new app in frontend/apps/, when user says "add tests to", "scaffold tests for", "setup testing for" a frontend app, or when a new Next.js app needs vitest config, E2E with Testcontainers, POMs, and Playwright fixtures. Also use when retrofitting tests onto an existing app that has no tests yet.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Scaffold Vitest unit/integration + Playwright E2E testing infrastructure for a new frontend app. Use when creating a new app in frontend/apps/, when user says "add tests to", "scaffold tests for", "setup testing for" a frontend app, or when a new Next.js app needs vitest config, E2E with Testcontainers, POMs, and Playwright fixtures. Also use when retrofitting tests onto an existing app that has no tests yet.
 ---
 
 # ezra-scaffold-frontend-app-tests

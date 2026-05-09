@@ -1,7 +1,6 @@
 ---
 name: feature-flags-ts-posthog
-description: TypeScript feature flag patterns using PostHog JS and Node SDKs — typed constants, React hooks, Next.js SSR bootstrap, local evaluation, and testing. Use with feature-flags for universal patterns.
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] TypeScript feature flag patterns using PostHog JS and Node SDKs — typed constants, React hooks, Next.js SSR bootstrap, local evaluation, and testing. Use with feature-flags for universal patterns.
 author: Carlos Melgoza
 ---
 

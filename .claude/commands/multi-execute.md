@@ -1,3 +1,6 @@
+> [!NOTE]
+> [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only]
+
 # Execute - Multi-Model Collaborative Execution
 
 Multi-model collaborative execution - Get prototype from plan → Claude refactors and implements → Multi-model audit and delivery.

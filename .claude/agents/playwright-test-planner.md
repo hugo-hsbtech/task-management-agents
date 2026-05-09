@@ -1,6 +1,6 @@
 ---
 name: playwright-test-planner
-description: Use this agent when you need to create comprehensive test plan for a web application or website
+description: [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only] Use this agent when you need to create comprehensive test plan for a web application or website
 tools: Glob, Grep, Read, LS, mcp__Playwright_MCP_Server__browser_click, mcp__Playwright_MCP_Server__browser_close, mcp__Playwright_MCP_Server__browser_console_messages, mcp__Playwright_MCP_Server__browser_drag, mcp__Playwright_MCP_Server__browser_evaluate, mcp__Playwright_MCP_Server__browser_file_upload, mcp__Playwright_MCP_Server__browser_handle_dialog, mcp__Playwright_MCP_Server__browser_hover, mcp__Playwright_MCP_Server__browser_navigate, mcp__Playwright_MCP_Server__browser_navigate_back, mcp__Playwright_MCP_Server__browser_network_requests, mcp__Playwright_MCP_Server__browser_press_key, mcp__Playwright_MCP_Server__browser_run_code, mcp__Playwright_MCP_Server__browser_select_option, mcp__Playwright_MCP_Server__browser_snapshot, mcp__Playwright_MCP_Server__browser_take_screenshot, mcp__Playwright_MCP_Server__browser_type, mcp__Playwright_MCP_Server__browser_wait_for, mcp__Playwright_MCP_Server__planner_setup_page, mcp__Playwright_MCP_Server__planner_save_plan
 model: sonnet
 color: green

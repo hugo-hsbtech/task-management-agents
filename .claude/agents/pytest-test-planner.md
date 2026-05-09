@@ -15,14 +15,14 @@ Given a source file path, derive:
 - **Package name**: read `[project].name` from that `pyproject.toml`
 - **Test dir**: `<package-root>/tests/`
 - **Factories**: `<package-root>/tests/fixtures/factories.py`
-- **Run cmd**: `cd backend && uv run pytest <test-path> -v`
+- **Run cmd**: `uv run pytest <test-path> -v`
 
-Example: for `backend/packages/apps/api/src/ezra_api/services/user_service.py`:
+Example: for `src/myapp/services/user_service.py`:
 
-- Package root: `backend/packages/apps/api/`
-- Package name: `ezra-api`
-- Test dir: `backend/packages/apps/api/tests/`
-- Test file: `backend/packages/apps/api/tests/services/test_user_service.py`
+- Package root: project root (containing `pyproject.toml`)
+- Package name: `myapp`
+- Test dir: `tests/`
+- Test file: `tests/services/test_user_service.py`
 
 ## Core Responsibilities
 
@@ -63,7 +63,7 @@ Example: for `backend/packages/apps/api/src/ezra_api/services/user_service.py`:
 ### Step 3: Plan Mocking Strategy
 
 - Identify external dependencies (database, APIs, services)
-- Note which fixtures to use (`mock_db_session` from root conftest via `ezra_test_utils.fixtures`)
+- Note which fixtures to use (`mock_db_session` from root conftest)
 - Check package conftest for package-specific fixtures
 - Plan `@patch` decorators for external services
 - Consider `AsyncMock` vs `MagicMock` for async code
@@ -98,8 +98,8 @@ Create a markdown table with this structure:
 
 ## Mocking Strategy
 
-- **Database**: Use `mock_db_session` fixture from root conftest (via `ezra_test_utils.fixtures`)
-- **External API**: `@patch('ezra_api.services.external_api_client')`
+- **Database**: Use `mock_db_session` fixture from root conftest
+- **External API**: `@patch('myapp.services.external_api_client')`
 - **Async functions**: All async tests auto-detected via `asyncio_mode = "auto"`
 
 ## Edge Cases to Test

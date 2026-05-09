@@ -1,7 +1,6 @@
 ---
 name: error-tracking-nextjs-sentry
-description: Sentry SDK internals for the @ezra/observability Next.js Sentry adapter — Sentry.init configuration across client/server/edge runtimes, withSentryConfig, session replay setup, beforeSend filters, and adapter-level tests. ADAPTER AUTHORS ONLY. App code must use `import { getObservability } from '@ezra/observability'` (frontend skill TBD; backend mirror is ezra-add-monitoring).
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Sentry SDK internals for the @ezra/observability Next.js Sentry adapter — Sentry.init configuration across client/server/edge runtimes, withSentryConfig, session replay setup, beforeSend filters, and adapter-level tests. ADAPTER AUTHORS ONLY. App code must use `import { getObservability } from '@ezra/observability'` (frontend skill TBD; backend mirror is ezra-add-monitoring).
 author: Carlos Melgoza
 ---
 

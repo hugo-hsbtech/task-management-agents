@@ -1,6 +1,6 @@
 ---
 name: ezra-validate-plan
-description: Validate implementation against plan, verify success criteria, identify issues
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Validate implementation against plan, verify success criteria, identify issues
 ---
 
 # Validate Plan

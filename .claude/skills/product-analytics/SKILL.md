@@ -1,7 +1,6 @@
 ---
 name: product-analytics
 description: Universal product analytics patterns — event naming, identity lifecycle, super properties, group analytics, and governance rules. Provider-agnostic. Use with product-analytics-ts-posthog or product-analytics-fastapi-posthog for implementation.
-origin: Ezra
 author: Carlos Melgoza
 ---
 
@@ -124,10 +123,10 @@ Call `identify()` once — at sign-up or sign-in — with a **stable, permanent 
 
 ```
 # Good: permanent database ID
-identify('usr_abc123', { email: 'carlos@ezra.com' })
+identify('usr_abc123', { email: 'carlos@example.com' })
 
 # Bad: email as ID — changes if user updates email
-identify('carlos@ezra.com', {})
+identify('carlos@example.com', {})
 
 # Bad: username — can change
 identify('carlosmelgoza', {})

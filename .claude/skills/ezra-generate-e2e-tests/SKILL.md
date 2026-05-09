@@ -1,6 +1,6 @@
 ---
 name: ezra-generate-e2e-tests
-description: Generate e2e Playwright tests from test plan specs with automated healing and refinement
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Generate e2e Playwright tests from test plan specs with automated healing and refinement
 model: opus
 ---
 

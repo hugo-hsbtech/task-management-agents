@@ -1,7 +1,6 @@
 ---
 name: feature-flags-fastapi-posthog
 description: FastAPI feature flag patterns using the PostHog Python SDK — lifespan initialization, Depends()-based evaluation, middleware for pre-loading, local evaluation, and testing. FastAPI-specific PostHog feature flag patterns.
-origin: Ezra
 author: Carlos Melgoza
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: ezra-describe-pr
-description: Generate PR descriptions from branch changes for creating or updating pull requests
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Generate PR descriptions from branch changes for creating or updating pull requests
 ---
 
 # Generate PR Description

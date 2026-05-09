@@ -1,6 +1,6 @@
 ---
 name: ezra-llm-integration
-description: Use when the task is “instrument this PydanticAI agent”, “add Langfuse tracing”, “add Langfuse evals”, “make this agent observable”, “fetch prompts from Langfuse”, “manage system prompts”, “version prompts”, or “wire Langfuse prompt into agent”. Covers observability, prompt management, and eval capture via `ezra_llm`.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Use when the task is “instrument this PydanticAI agent”, “add Langfuse tracing”, “add Langfuse evals”, “make this agent observable”, “fetch prompts from Langfuse”, “manage system prompts”, “version prompts”, or “wire Langfuse prompt into agent”. Covers observability, prompt management, and eval capture via `ezra_llm`.
 ---
 
 # Ezra LLM Integration

@@ -1,7 +1,6 @@
 ---
 name: product-analytics-fastapi-posthog
 description: FastAPI product analytics patterns using the PostHog Python SDK — lifespan initialization, event capture via Depends(), user identification, Starlette middleware for analytics context, batch events, and testing. FastAPI-specific PostHog product analytics patterns.
-origin: Ezra
 author: Carlos Melgoza
 ---
 
