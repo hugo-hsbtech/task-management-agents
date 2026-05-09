@@ -1,3 +1,8 @@
+# Multi-org isolation: scripts wrap every Compose call with
+# `docker compose -p ${HSB_PROJECT:-task-management-agents}`, so the named
+# volumes below are physically prefixed per org (e.g. org-acme_hsb-mcp-auth).
+# `container_name` is daemon-global, so only one project can be `up` at a
+# time — switch orgs with `make down` then re-`up` under the new project.
 services:
   hsb:
     build:

@@ -13,13 +13,31 @@ info() { printf '\e[36m[..]\e[0m   %s\n' "$*"; }
 warn() { printf '\e[33m[!!]\e[0m   %s\n' "$*"; }
 fail() { printf '\e[31m[xx]\e[0m   %s\n' "$*" >&2; }
 
+# ── Compose project ──────────────────────────────────────────────────────────
+#
+# All Compose calls go through `compose` so the project name is consistent
+# across scripts. Override per org by exporting HSB_PROJECT before invoking
+# make, e.g.:
+#
+#     HSB_PROJECT=org-acme make auth-linear
+#     HSB_PROJECT=org-acme make up
+#
+# The default matches Compose's own directory-name default, so existing
+# single-project setups keep their existing volumes (no migration).
+export HSB_PROJECT="${HSB_PROJECT:-task-management-agents}"
+
+compose() {
+  docker compose -p "$HSB_PROJECT" "$@"
+}
+
 # ── Docker named-volume helpers ──────────────────────────────────────────────
 
-# Find a named volume by its suffix (Compose prefixes <project>_).
-# Usage:   auth_volume hsb-mcp-auth → "task-management-agents_hsb-mcp-auth"
+# Find a named volume by its suffix, scoped to the current project.
+# Usage:   auth_volume hsb-mcp-auth → "<HSB_PROJECT>_hsb-mcp-auth"
 auth_volume() {
   local suffix="$1"
-  docker volume ls --format '{{.Name}}' | grep "_${suffix}\$" | head -1
+  docker volume ls --format '{{.Name}}' \
+    | grep "^${HSB_PROJECT}_${suffix}\$" | head -1
 }
 
 # Return 0 if the named volume contains a file matching the given glob.

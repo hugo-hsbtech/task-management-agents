@@ -7,6 +7,9 @@ SHELL := /usr/bin/env bash
 .PHONY: help
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@printf '\n  \033[33mMulti-org:\033[0m export HSB_PROJECT=<name> to scope volumes/containers per org.\n'
+	@printf '              Default is "task-management-agents". One project active at a time.\n'
+	@printf '              Example: HSB_PROJECT=org-acme make auth-linear && HSB_PROJECT=org-acme make up\n'
 
 # ── Service ───────────────────────────────────────────────────────────────────
 
@@ -42,11 +45,11 @@ shell: ## Open a bash shell inside a fresh container
 	@./scripts/shell.sh
 
 .PHONY: auth-linear
-auth-linear: ## Run mcp-remote to complete Linear OAuth (one-time, persists in named volume)
+auth-linear: ## Linear OAuth (persists per HSB_PROJECT in named volume)
 	@./scripts/auth-linear.sh
 
 .PHONY: auth-github
-auth-github: ## Run gh auth login to complete GitHub auth (one-time, persists in named volume)
+auth-github: ## GitHub gh auth login (persists per HSB_PROJECT in named volume)
 	@./scripts/auth-github.sh
 
 .PHONY: kill-stale

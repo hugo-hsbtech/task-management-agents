@@ -9,6 +9,11 @@
 #        b) user-pasted callback URL (we deliver it via `docker exec curl`).
 #   4. Verify the token file landed in the hsb-mcp-auth named volume.
 #
+# Multi-org: tokens are persisted to <HSB_PROJECT>_hsb-mcp-auth, so different
+# Linear orgs can be authed by setting HSB_PROJECT before invoking make:
+#   HSB_PROJECT=org-acme make auth-linear
+# Default project is "task-management-agents" (matches Compose's default).
+#
 # The FIFO stdin keeps mcp-remote alive past auth: it transitions to a STDIO
 # proxy after the token exchange and would otherwise crash on EOF before the
 # tokens.json write completes. We tear the container down ourselves once the
@@ -91,7 +96,7 @@ else
   EXPECT_REAUTH=1
 fi
 
-docker compose run --rm -T --name "$CONTAINER_NAME" \
+compose run --rm -T --name "$CONTAINER_NAME" \
   hsb npx -y mcp-remote "https://mcp.linear.app/mcp" "${CALLBACK_PORT}" \
   < "$STDIN_FIFO" > "$LOG_FILE" 2>&1 &
 DOCKER_PID=$!

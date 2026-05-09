@@ -7,6 +7,13 @@
 #   2. Device mode — `gh auth login --web` prints a one-time code; user
 #                    opens github.com/login/device, enters code, approves.
 #
+# Multi-org: token persists to <HSB_PROJECT>_hsb-gh-auth, so each org gets
+# its own auth state. Set HSB_PROJECT before invoking make:
+#   HSB_PROJECT=org-acme make auth-github
+# Note: GITHUB_TOKEN in .env is shared across projects. For per-org PATs,
+# either leave it unset (use device flow) or pass inline:
+#   GITHUB_TOKEN=ghp_xxx HSB_PROJECT=org-acme make auth-github
+#
 # Token lands at /root/.config/gh/hosts.yml inside the named volume.
 # git's credential.helper is wired up by docker-entrypoint.sh on each
 # container start (gh auth setup-git is not persistable on its own).
@@ -40,7 +47,7 @@ run_gh() {
   local mode="$1"; shift
   local tty_flag=""
   [[ "$mode" == "tty" ]] || tty_flag="-T"
-  docker compose run --rm $tty_flag -e BROWSER=true \
+  compose run --rm $tty_flag -e BROWSER=true \
     --name "$CONTAINER_NAME" hsb gh "$@"
 }
 
@@ -85,7 +92,7 @@ if [[ -n "$TOKEN_FROM_ENV" ]]; then
   info "GITHUB_TOKEN found in .env — using non-interactive --with-token flow."
   say ""
   if printf '%s' "$TOKEN_FROM_ENV" \
-       | docker compose run --rm -T --name "$CONTAINER_NAME" \
+       | compose run --rm -T --name "$CONTAINER_NAME" \
            hsb gh auth login --hostname github.com --git-protocol https --with-token; then
     say ""
     ok "Token accepted."

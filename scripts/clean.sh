@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
-docker compose down --volumes --remove-orphans --rmi all
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
+cd "$SCRIPT_DIR/.."
+compose down --volumes --remove-orphans --rmi all

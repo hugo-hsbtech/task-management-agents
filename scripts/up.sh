@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
-"$(dirname "$0")/kill-stale.sh"
-docker compose up -d "$@"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
+cd "$SCRIPT_DIR/.."
+"$SCRIPT_DIR/kill-stale.sh"
+compose up -d "$@"
