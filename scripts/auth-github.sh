@@ -27,13 +27,25 @@ cd "$SCRIPT_DIR/.."
 CONTAINER_NAME="hsb-run-auth-github-$$"
 
 cleanup() {
-  "$(dirname "$0")/kill-stale.sh" auth-github >/dev/null 2>&1 || true
+  "$SCRIPT_DIR/kill-stale.sh" auth-github >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
 token_from_env() {
   [[ -f .env ]] || return 0
-  grep -E '^GITHUB_TOKEN=' .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'"
+  local val
+  val=$(grep -E '^GITHUB_TOKEN=' .env | head -1 | cut -d= -f2-)
+  # Strip ONE layer of matched surrounding quotes only — preserve any quote
+  # characters inside the token (e.g. a base64-encoded value) instead of
+  # nuking them all with `tr -d`.
+  if [[ "$val" == \"*\" ]]; then
+    val="${val#\"}"
+    val="${val%\"}"
+  elif [[ "$val" == \'*\' ]]; then
+    val="${val#\'}"
+    val="${val%\'}"
+  fi
+  printf '%s' "$val"
 }
 
 run_gh() {
@@ -55,7 +67,7 @@ say ""
 say "=== GitHub CLI Auth Setup ==="
 say ""
 
-"$(dirname "$0")/kill-stale.sh" auth-github
+"$SCRIPT_DIR/kill-stale.sh" auth-github
 say ""
 
 # Pre-check: is there a valid token already?

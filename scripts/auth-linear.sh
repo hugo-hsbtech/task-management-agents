@@ -40,7 +40,7 @@ READ_PID=""
 cleanup() {
   exec 9>&- 2>/dev/null || true
   [[ -n "$READ_PID"   ]] && kill "$READ_PID"   2>/dev/null || true
-  "$(dirname "$0")/kill-stale.sh" auth-linear >/dev/null 2>&1 || true
+  "$SCRIPT_DIR/kill-stale.sh" auth-linear >/dev/null 2>&1 || true
   [[ -n "$DOCKER_PID" ]] && wait "$DOCKER_PID" 2>/dev/null || true
   rm -f "$STDIN_FIFO" "$LOG_FILE" "$PASTE_FILE"
 }
@@ -82,7 +82,7 @@ say ""
 say "=== Linear OAuth Setup ==="
 say ""
 
-"$(dirname "$0")/kill-stale.sh" auth-linear
+"$SCRIPT_DIR/kill-stale.sh" auth-linear
 say ""
 
 EXISTING_VOL=$(auth_volume hsb-mcp-auth || true)

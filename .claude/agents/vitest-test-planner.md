@@ -228,7 +228,7 @@ Write plan to: `<package-root>/tests/plans/vitest-plan-{source-name}.md`
 
 [Table from factory requirements above]
 
-### MSW Handlers (Tier 5 only)
+### MSW Handlers
 
 [Table from MSW requirements above]
 

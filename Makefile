@@ -30,7 +30,9 @@ down: ## Stop and remove the service container + network
 	@./scripts/down.sh
 
 .PHONY: restart
-restart: down up ## Restart the service
+restart: ## Restart the service (sequential — safe under make -j)
+	@$(MAKE) down
+	@$(MAKE) up
 
 .PHONY: logs
 logs: ## Tail service logs
