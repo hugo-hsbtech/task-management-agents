@@ -3,7 +3,8 @@ name = "hsb-agents"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "claude-agent-sdk>=0.1.73",
+    "pydantic-ai[anthropic]>=0.1.70",
+    "mcp>=1.26.0",
     "pydantic>=2.0",
     "typer>=0.12",
     "rich>=13.0",
@@ -32,10 +33,37 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "hypothesis>=6.100.0",
+    "pytest-cov>=5.0",
+    "mypy>=1.10",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "--cov=src/hsb/agents --cov-report=term-missing"
 markers = [
     "integration: requires live Linear MCP connection and ANTHROPIC_API_KEY",
 ]
+
+[tool.coverage.run]
+source = ["src/hsb/agents"]
+omit = [
+    "src/hsb/agents/intelligence_agent.py",
+    "src/hsb/agents/global_orchestrator.py",
+    "src/hsb/agents/main_orchestrator.py",
+]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == \"__main__\":",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+files = ["src/hsb/agents"]
+exclude = ["intelligence_agent", "global_orchestrator", "main_orchestrator"]

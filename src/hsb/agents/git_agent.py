@@ -6,19 +6,30 @@ Two-layer enforcement (SKILL.md + this file).
 --limit 100 on gh pr list (Pitfall 4).
 """
 from __future__ import annotations
+
 import asyncio
-import json
 import logging
 
-from claude_agent_sdk import (
-    query, ClaudeAgentOptions, AssistantMessage, ResultMessage,
-)
-from dotenv import load_dotenv
-from pydantic import ValidationError
+from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.usage import UsageLimits
 
+from hsb.agents.subprocess_tools import (
+    gh_pr_create,
+    gh_pr_diff,
+    gh_pr_list,
+    gh_pr_view,
+    git_add,
+    git_checkout,
+    git_commit,
+    git_fetch,
+    git_log,
+    git_push_force_with_lease,
+    git_rebase,
+    git_status,
+)
 from hsb.contracts.git import GitInput, GitOutput
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
 MAX_VALIDATION_RETRIES = 3
@@ -32,88 +43,54 @@ GIT_SYSTEM_PROMPT = (
     "epic_id from input determines the base: epic/LIN-{number}. "
     "NEVER target main directly. NEVER target another task branch. "
     "\n\nREBASE_STACK (GITA-04, D-08): When a sibling task PR is merged, enumerate ALL open "
-    "sibling task PRs targeting the EPIC branch via: "
-    "gh pr list --base <epic-branch> --state open --limit 100 --json number,headRefName "
-    "CRITICAL: --limit 100 prevents pagination truncation (Pitfall 4). "
-    "For each sibling (excluding the just-merged): git fetch origin; git checkout <branch>; "
-    "git rebase --onto <epic-branch> <old-tip> <branch>; "
-    "git push --force-with-lease origin <branch> "
-    "CRITICAL: --force-with-lease (NOT bare --force) — prevents overwriting concurrent pushes (Pitfall 3). "
+    "sibling task PRs targeting the EPIC branch via gh_pr_list with base=<epic-branch>. "
+    "CRITICAL: --limit 100 is built into gh_pr_list to prevent pagination truncation (Pitfall 4). "
+    "For each sibling (excluding the just-merged): git_fetch; git_checkout(branch); "
+    "git_rebase(onto=<epic-branch>, old_tip=<old>, branch=<branch>); "
+    "git_push_force_with_lease(branch). "
+    "CRITICAL: only git_push_force_with_lease is available (NOT bare --force) — "
+    "prevents overwriting concurrent pushes (Pitfall 3). "
     "\n\nCAPABILITY BOUNDARY (GITA-05): You MUST NOT: "
     "- Run any merge command (no gh pr merge, no git merge). "
-    "- Run git push without --force-with-lease (use --force-with-lease only). "
     "- Edit or Write any source files. "
     "- Call any Linear MCP tool (you have none). "
-    "\n\nOUTPUT FORMAT: Emit a single JSON object matching GitOutput schema. The schema "
-    "FORBIDS extra fields — do NOT include merged_to_main, linear_status, or anything not in "
-    "the schema. Emit ONLY the JSON object."
+    "\n\nOUTPUT FORMAT: Return a GitOutput object. The schema FORBIDS extra fields."
+)
+
+_git_agent: Agent[None, GitOutput] = Agent(
+    model=AnthropicModel("claude-sonnet-4-6"),
+    output_type=GitOutput,
+    system_prompt=GIT_SYSTEM_PROMPT,
+    tools=[
+        git_checkout,
+        git_push_force_with_lease,
+        git_rebase,
+        git_fetch,
+        git_log,
+        git_status,
+        git_add,
+        git_commit,
+        gh_pr_create,
+        gh_pr_list,
+        gh_pr_view,
+        gh_pr_diff,
+    ],
+    output_retries=MAX_VALIDATION_RETRIES,
 )
 
 
 async def _run_git_agent_async(input: GitInput) -> GitOutput:
-    base_prompt = (
+    prompt = (
         f"Execute git/PR operations for this Builder output:\n```json\n"
         f"{input.model_dump_json(indent=2)}\n```\n\n"
-        f"Return ONLY a JSON object matching GitOutput schema."
-    )
-    options = ClaudeAgentOptions(
-        model="claude-sonnet-4-6",
-        allowed_tools=[
-            "Bash(gh pr create *)",
-            "Bash(gh pr list *)",
-            "Bash(gh pr view *)",
-            "Bash(gh pr diff *)",
-            "Bash(git checkout *)",
-            "Bash(git push --force-with-lease *)",
-            "Bash(git rebase *)",
-            "Bash(git log *)",
-            "Bash(git fetch *)",
-            "Bash(git add *)",
-            "Bash(git commit *)",
-            "Bash(git status *)",
-        ],
-        permission_mode="acceptEdits",
-        system_prompt=GIT_SYSTEM_PROMPT,
-        max_turns=30,
+        f"Return a GitOutput object."
     )
 
-    last_error: Exception | None = None
-    prompt = base_prompt
-    for attempt in range(1, MAX_VALIDATION_RETRIES + 1):
-        result_text: str | None = None
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        print(block.text)
-                    elif hasattr(block, "name"):
-                        print(f"[TOOL] {block.name}")
-            elif isinstance(message, ResultMessage):
-                if message.subtype == "success":
-                    result_text = message.result
-                else:
-                    raise RuntimeError(f"Git Agent failed: {message.subtype}")
-        if result_text is None:
-            logger.warning("Attempt %d: no result text", attempt)
-            continue
-        try:
-            json_start = result_text.index("{")
-            json_end = result_text.rindex("}") + 1
-            raw = json.loads(result_text[json_start:json_end])
-            output = GitOutput.model_validate(raw)
-            logger.info("Git Agent attempt %d: validation succeeded", attempt)
-            return output
-        except (ValueError, json.JSONDecodeError, ValidationError) as e:
-            last_error = e
-            logger.warning("Attempt %d failed: %s", attempt, e)
-            prompt = base_prompt + (
-                f"\n\nPrevious attempt produced invalid output:\n{e}\n"
-                "Return corrected JSON ONLY. Schema forbids extra fields."
-            )
-
-    raise ValueError(
-        f"Git Agent failed validation after {MAX_VALIDATION_RETRIES} attempts: {last_error}"
+    result = await _git_agent.run(
+        prompt,
+        usage_limits=UsageLimits(request_limit=30),
     )
+    return result.output
 
 
 def run_git_agent(input: GitInput) -> GitOutput:

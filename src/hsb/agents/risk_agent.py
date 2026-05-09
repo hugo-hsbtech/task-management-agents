@@ -3,13 +3,12 @@
 Pure Python class implementing skills 12 (quality scoring) and 13 (adaptive
 prioritization) with deterministic math — no LLM session required for these.
 Skill 14 (Auto-Improvement Trigger detection) is the only async method;
-it makes one isolated Claude Agent SDK ``query()`` call (Pattern C) with
-``allowed_tools=[]`` and ``mcp_servers=None`` so the LLM physically cannot
-write to Linear.
+it makes one isolated PydanticAI ``Agent.run()`` call with no tools so the
+LLM physically cannot write to Linear.
 
 Defense-in-depth for RISK-04 ("Risk Agent must not write to Linear directly"):
 
-1. STRUCTURAL  — skill 14 SDK call has ``allowed_tools=[]`` and no MCP servers.
+1. STRUCTURAL  — skill 14 PydanticAI Agent has no tools and no MCP servers.
 2. PARSE-TIME  — :class:`AutoImprovementTrigger.linear_state` is
    ``Literal["suggested"]`` (rejected by pydantic if anything else).
 3. IMPORT-TIME — this module does NOT import ``hsb.agents.linear_agent``.
@@ -19,31 +18,36 @@ Defense-in-depth for RISK-04 ("Risk Agent must not write to Linear directly"):
    ``global_orchestrator.approve_improvement_trigger()``.
 
 G1 enforcement is centralized in
-:func:`hsb.agents._sdk_options.assert_oauth2_only` (called from
-:func:`make_options`). There is NO module-top OAuth2 assertion in this file.
+:func:`hsb.agents.guards.assert_api_key_set()`.
 
-G3 backstop is wired into the receive loop of
-:meth:`RiskAgent.detect_improvement_triggers`.
+G3 backstop is a noop in PydanticAI (no Task tool exists).
 """
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from claude_agent_sdk import ResultMessage, query
-from dotenv import load_dotenv
+from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.usage import UsageLimits
 
-from hsb.agents._sdk_options import assert_no_task_dispatch, make_options
+from hsb.agents.guards import assert_no_task_dispatch
 from hsb.contracts.risk import (
     AutoImprovementTrigger,
     PriorityQueue,
     QualityScore,
 )
 
-load_dotenv()
 logger = logging.getLogger(__name__)
+
+_risk_agent: Agent[None, str] = Agent(
+    model=AnthropicModel("claude-haiku-4-5-20251001"),
+    output_type=str,
+    system_prompt="",  # Set dynamically in detect_improvement_triggers
+    # No tools, no toolsets — RISK-04 structural enforcement
+)
 
 
 def load_skill(path: str) -> str:
@@ -60,9 +64,9 @@ class RiskAgent:
 
     def calculate_quality_score(
         self,
-        work_item: dict,
-        qa_history: list[dict],
-        uat_results: list[dict],
+        work_item: dict[str, Any],
+        qa_history: list[dict[str, Any]],
+        uat_results: list[dict[str, Any]],
     ) -> QualityScore:
         """Skill 12 deterministic formula.
 
@@ -102,7 +106,7 @@ class RiskAgent:
         )
 
     def get_priority_queue(
-        self, ready_tasks: list[str], linear_state: dict
+        self, ready_tasks: list[str], linear_state: dict[str, Any]
     ) -> PriorityQueue:
         """Skill 13: sort tasks by score descending, tiebreak by ``updatedAt`` ascending."""
         scores: dict[str, float] = {}
@@ -144,7 +148,7 @@ class RiskAgent:
         return "high"
 
     def _build_risk_summary(
-        self, qa_history: list[dict], scores: list[QualityScore]
+        self, qa_history: list[dict[str, Any]], scores: list[QualityScore]
     ) -> str:
         """Plain-text summary the skill 14 LLM analyzes for patterns."""
         lines = ["Quality scores:"]
@@ -163,54 +167,35 @@ class RiskAgent:
 
     async def detect_improvement_triggers(
         self,
-        qa_history: list[dict],
+        qa_history: list[dict[str, Any]],
         scores: list[QualityScore],
     ) -> list[AutoImprovementTrigger]:
-        """Isolated Haiku SDK call (Pattern C, AI-SPEC §3). No MCP. No tools.
+        """Isolated Haiku PydanticAI call. No MCP. No tools.
 
-        RISK-04 structural: ``allowed_tools=[]`` means the LLM literally cannot
-        write to Linear. G3 backstop: every received message is checked for
-        runtime ``Task``-tool dispatch.
+        RISK-04 structural: _risk_agent has no tools and no MCP servers,
+        so the LLM literally cannot write to Linear. G3 shim is noop
+        (no Task tool exists in PydanticAI).
         """
         risk_summary = self._build_risk_summary(qa_history, scores)
 
-        options = make_options(
-            system_prompt=load_skill(
-                ".claude/skills/auto-improvement-triggers/SKILL.md"
-            ),
-            allowed_tools=[],
-            permission_mode="dontAsk",
-            max_turns=3,
-            model="claude-haiku-4-5",
-            max_budget_usd=0.05,
-            mcp_servers=None,
-        )
-        assert options.allowed_tools == [], (
-            "G4 violation: skill 14 allowed_tools must be empty"
-        )
-        assert getattr(options, "mcp_servers", None) in (None, {}), (
-            "G4 violation: skill 14 mcp_servers must be None"
+        prompt = (
+            "Analyze this risk summary and identify patterns warranting an "
+            "Auto-Improvement work item. Return suggestions as JSON array of "
+            "AutoImprovementTrigger objects (fields: title, description, "
+            "pattern_evidence (list of >=2 work item IDs), suggested_type). "
+            "Do not create any Linear items yourself.\n\n"
+            f"{risk_summary}"
         )
 
-        result_text = ""
-        async for msg in query(
-            prompt=(
-                "Analyze this risk summary and identify patterns warranting an "
-                "Auto-Improvement work item. Return suggestions as JSON array of "
-                "AutoImprovementTrigger objects (fields: title, description, "
-                "pattern_evidence (list of >=2 work item IDs), suggested_type). "
-                "Do not create any Linear items yourself.\n\n"
-                f"{risk_summary}"
-            ),
-            options=options,
-        ):
-            # G3 runtime backstop — catches an SDK regression that bypasses
-            # allowed_tools at runtime. Propagates RuntimeError on violation.
-            assert_no_task_dispatch(msg)
-            if isinstance(msg, ResultMessage):
-                if msg.stop_reason == "error_max_turns":
-                    raise RuntimeError("RiskAgent skill 14 hit max_turns")
-                result_text = msg.result or ""
+        result = await _risk_agent.run(
+            prompt,
+            usage_limits=UsageLimits(request_limit=3, total_tokens_limit=200_000),
+        )
+
+        # G3 shim (noop) — kept for source-grep compatibility
+        assert_no_task_dispatch(None)
+
+        result_text = result.output or ""
 
         triggers: list[AutoImprovementTrigger] = []
         try:

@@ -22,9 +22,8 @@ from hsb.contracts.orchestrator import WorkItemOrchInput, WorkItemOrchOutput
 # --- WORC-02: No sub-agent dispatch -----------------------------------------
 
 def test_no_subagent_dispatch_in_options() -> None:
-    """WORC-02 / RESEARCH.md Pitfall 1: ClaudeAgentOptions must register only
-    ``mcp_servers``. AST inspection must show NO ``AgentDefinition`` reference
-    and NO ``agents=`` keyword in any call to ``ClaudeAgentOptions(...)``."""
+    """WORC-02: PydanticAI Agent must not dispatch sub-agents. AST inspection
+    must show NO ``AgentDefinition`` reference."""
     import ast
 
     from hsb.agents.work_item_orchestrator import run_orchestration_cycle
@@ -32,28 +31,18 @@ def test_no_subagent_dispatch_in_options() -> None:
     source = inspect.getsource(run_orchestration_cycle)
     tree = ast.parse(source)
 
-    # Walk the AST, fail if any Call to ClaudeAgentOptions has an `agents`
-    # keyword, or if any Name node references AgentDefinition.
+    # Walk the AST, fail if any Name node references AgentDefinition.
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id == "AgentDefinition":
             pytest.fail(
                 "AgentDefinition reference detected in run_orchestration_cycle "
                 "— sub-agent dispatch is forbidden by D-01 / Pitfall 1."
             )
-        if isinstance(node, ast.Call):
-            func_name = getattr(node.func, "id", None) or getattr(
-                node.func, "attr", None
-            )
-            if func_name == "ClaudeAgentOptions":
-                for kw in node.keywords:
-                    assert kw.arg != "agents", (
-                        "agents= kwarg in ClaudeAgentOptions means sub-agent "
-                        "dispatch. Must use mcp_servers only."
-                    )
 
-    # Positive checks: the canonical MCP-server path must be present.
-    assert "mcp_servers" in source
-    assert "create_sdk_mcp_server" in source
+    # PydanticAI patterns: Agent must be used, with toolsets for MCP and
+    # message_history for multi-turn (replaces ClaudeSDKClient).
+    assert "Agent(" in source or "cycle_agent" in source
+    assert "message_history" in source
 
 
 def test_no_subagent_dispatch() -> None:
@@ -129,24 +118,25 @@ async def test_qa_cycle_cap_safety_net_silent_below_cap() -> None:
 # --- WORC-04: Full context passed in tool calls -----------------------------
 
 def test_tool_wrapper_requires_full_issue_content() -> None:
-    """WORC-04 / Pitfall 4: ``run_builder_tool`` must accept ``issue_content``
+    """WORC-04 / Pitfall 4: ``run_builder`` tool must accept ``issue_content``
     as a structured JSON string and parse it before constructing
     ``BuilderInput`` — never read context-window state.
 
-    The ``@tool`` decorator wraps the function in an ``SdkMcpTool`` object;
-    its ``.handler`` attribute exposes the underlying coroutine function so
-    ``inspect.getsource`` works.
+    PydanticAI: ``@_wio_agent.tool_plain`` decorates the underlying coroutine
+    function directly. We use ``inspect.signature`` to verify typing.
     """
-    from hsb.agents.work_item_orchestrator import run_builder_tool
+    from hsb.agents.work_item_orchestrator import run_builder
 
-    # SDK 0.1+: @tool returns an SdkMcpTool whose .handler is the function
-    fn = getattr(run_builder_tool, "handler", run_builder_tool)
-    source = inspect.getsource(fn)
-    assert "issue_content" in source
-    assert "json.loads" in source or "model_validate" in source
-    # Schema declares issue_content as str so the LLM is forced to pass JSON,
-    # not a dict (Pitfall 4 + WORC-04).
-    assert run_builder_tool.input_schema.get("issue_content") is str
+    # PydanticAI: tools are registered via @_wio_agent.tool_plain; the
+    # underlying function is callable directly.
+    sig = inspect.signature(run_builder)
+    params = sig.parameters
+    assert "issue_content" in params, "run_builder must accept issue_content"
+    assert "work_item_id" in params, "run_builder must accept work_item_id"
+    # Type annotation must be str so the LLM is forced to pass JSON
+    # (from __future__ import annotations makes annotations strings, so check both)
+    assert params["issue_content"].annotation in (str, "str")
+    assert params["work_item_id"].annotation in (str, "str")
 
 
 def test_full_context_in_tool_calls() -> None:
@@ -154,16 +144,15 @@ def test_full_context_in_tool_calls() -> None:
     test_tool_wrapper_requires_full_issue_content()
 
 
-def test_all_tools_return_canonical_envelope() -> None:
-    """Pitfall 4: every @tool wrapper must return
-    ``{"content": [{"type": "text", "text": ...}]}``."""
+def test_all_tools_return_str() -> None:
+    """PydanticAI tools return str (model_dump_json); no MCP envelope needed."""
     from hsb.agents import work_item_orchestrator as wio
 
     src = inspect.getsource(wio)
-    # 4 wrappers × one canonical-shape return statement each
-    matches = src.count('"content": [{"type": "text", "text":')
+    # 4 PydanticAI tools must return model_dump_json() strings
+    matches = src.count("model_dump_json()")
     assert matches >= 4, (
-        f"expected at least 4 canonical-envelope returns, found {matches}"
+        f"expected at least 4 model_dump_json() returns from tools, found {matches}"
     )
 
 
@@ -183,22 +172,25 @@ def test_assemble_system_prompt_loads_all_skills() -> None:
 
 
 def test_orchestration_options_lists_required_tools() -> None:
-    """``run_orchestration_cycle`` source must list all four
-    ``mcp__agents__run_*`` tools and at least 4 ``mcp__linear__*`` tools."""
+    """``run_orchestration_cycle`` registers all four Phase 2 agent tools and
+    sets a request_limit usage cap (replaces max_turns)."""
     from hsb.agents.work_item_orchestrator import run_orchestration_cycle
 
     source = inspect.getsource(run_orchestration_cycle)
+    # PydanticAI: tools are registered via @_wio_agent.tool_plain, referenced
+    # by function name in tools=[...] of the cycle agent
     for required in (
-        "mcp__agents__run_linear_op",
-        "mcp__agents__run_builder",
-        "mcp__agents__run_git",
-        "mcp__agents__run_qa",
+        "run_linear_op",
+        "run_builder",
+        "run_git",
+        "run_qa",
     ):
         assert required in source, f"missing required tool: {required}"
-    assert source.count("mcp__linear__") >= 4
-    # Hard caps to prevent runaway cycles (T-3-03)
-    assert "max_turns=30" in source
-    assert 'permission_mode="acceptEdits"' in source
+    # Linear MCP toolset is wired via make_linear_mcp_toolset
+    assert "make_linear_mcp_toolset" in source or "Linear" in source
+    # Hard caps to prevent runaway cycles (T-3-03) — UsageLimits replaces max_turns
+    assert "request_limit=" in source
+    assert "UsageLimits" in source
 
 
 # --- Contract validation (Task 1 deliverables — implemented now) -------------

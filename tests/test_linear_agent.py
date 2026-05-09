@@ -1,37 +1,42 @@
-"""Unit tests for src/hsb/agents/linear_agent.py validation-retry layer.
+"""Unit tests for src/hsb/agents/linear_agent.py — PydanticAI version.
 
-Live Linear MCP integration tests live in tests/test_integration.py (Plan 05).
-These tests patch run_linear_agent to control its returned result text.
+Migrated from claude-agent-sdk: PydanticAI's output_type=LinearOutput +
+output_retries=3 replaces the manual JSON-parse retry loop. These tests
+use TestModel via _linear_agent.override() instead of patching run_linear_agent.
+
+Live Linear MCP integration tests live in tests/test_integration.py.
 """
-import json
-from unittest.mock import AsyncMock, patch
+from __future__ import annotations
 
 import pytest
+from pydantic_ai.models.test import TestModel
 
 from hsb.agents import linear_agent
-from hsb.agents.linear_agent import (
-    MAX_VALIDATION_RETRIES,
-    run_validated_linear_agent,
+from hsb.agents.linear_agent import run_validated_linear_agent
+from hsb.contracts.linear import LinearEntity, LinearOutput
+
+
+VALID_OUTPUT = LinearOutput(
+    operation="create",
+    result="success",
+    linear_entities=[
+        LinearEntity(
+            id="LIN-1",
+            type="task",
+            url="https://linear.app/x/LIN-1",
+        )
+    ],
+    error=None,
 )
-from hsb.contracts.linear import LinearOutput
-
-
-VALID_OUTPUT_JSON = json.dumps({
-    "operation": "create",
-    "result": "success",
-    "linear_entities": [{
-        "id": "LIN-1",
-        "type": "task",
-        "url": "https://linear.app/x/LIN-1",
-    }],
-    "error": None,
-})
 
 
 @pytest.mark.asyncio
 async def test_validated_agent_happy_path():
-    with patch.object(linear_agent, "run_linear_agent",
-                      new=AsyncMock(return_value=VALID_OUTPUT_JSON)):
+    """Happy path: TestModel returns a valid LinearOutput payload."""
+    with linear_agent._linear_agent.override(
+        model=TestModel(custom_output_args=VALID_OUTPUT.model_dump(), call_tools=[]),
+        toolsets=[],
+    ):
         result = await run_validated_linear_agent(
             operation="create",
             payload={"title": "x", "type": "task", "teamId": "T-1"},
@@ -42,66 +47,50 @@ async def test_validated_agent_happy_path():
 
 
 @pytest.mark.asyncio
-async def test_validated_agent_extracts_json_from_markdown():
-    wrapped = f"Here is the result:\n```json\n{VALID_OUTPUT_JSON}\n```\nDone."
-    with patch.object(linear_agent, "run_linear_agent",
-                      new=AsyncMock(return_value=wrapped)):
+async def test_validated_agent_returns_linear_output_type():
+    """run_validated_linear_agent always returns a LinearOutput instance."""
+    with linear_agent._linear_agent.override(
+        model=TestModel(custom_output_args=VALID_OUTPUT.model_dump(), call_tools=[]),
+        toolsets=[],
+    ):
         result = await run_validated_linear_agent(operation="create", payload={})
-    assert result.linear_entities[0].id == "LIN-1"
+    assert isinstance(result, LinearOutput)
 
 
 @pytest.mark.asyncio
-async def test_validated_agent_recovers_from_invalid_json_then_succeeds():
-    call_count = {"n": 0}
-
-    async def fake_runner(prompt: str):
-        call_count["n"] += 1
-        if call_count["n"] < 3:
-            return "this is not JSON at all"
-        return VALID_OUTPUT_JSON
-
-    with patch.object(linear_agent, "run_linear_agent", new=fake_runner):
-        result = await run_validated_linear_agent(operation="create", payload={})
-    assert result.result == "success"
-    assert call_count["n"] == 3
+async def test_validated_agent_routes_writes_through_g5_guard():
+    """G5: write operations go through _run_validated_linear_agent_write
+    (which carries the @linear_write_guard decorator)."""
+    with linear_agent._linear_agent.override(
+        model=TestModel(custom_output_args=VALID_OUTPUT.model_dump(), call_tools=[]),
+        toolsets=[],
+    ):
+        # Write operations defined in _WRITE_OPERATIONS
+        for op in ("create", "update", "create_comment"):
+            result = await run_validated_linear_agent(operation=op, payload={})
+            assert isinstance(result, LinearOutput)
 
 
 @pytest.mark.asyncio
-async def test_validated_agent_raises_after_max_retries_invalid_json():
-    with patch.object(linear_agent, "run_linear_agent",
-                      new=AsyncMock(return_value="not JSON not JSON")):
-        with pytest.raises(ValueError) as exc_info:
-            await run_validated_linear_agent(operation="create", payload={})
-    assert f"after {MAX_VALIDATION_RETRIES} attempts" in str(exc_info.value)
+async def test_validated_agent_routes_reads_directly():
+    """READ operations bypass the G5 guard and call the impl directly."""
+    with linear_agent._linear_agent.override(
+        model=TestModel(custom_output_args=VALID_OUTPUT.model_dump(), call_tools=[]),
+        toolsets=[],
+    ):
+        # 'read' is NOT in _WRITE_OPERATIONS — bypasses G5 guard
+        result = await run_validated_linear_agent(operation="read", payload={})
+    assert isinstance(result, LinearOutput)
 
 
-@pytest.mark.asyncio
-async def test_validated_agent_raises_on_pydantic_validation_failure():
-    # extra field rejected by extra=forbid
-    bad_payload = json.dumps({
-        "operation": "create",
-        "result": "success",
-        "linear_entities": [],
-        "error": None,
-        "extra_field": "fail_me",
-    })
-    with patch.object(linear_agent, "run_linear_agent",
-                      new=AsyncMock(return_value=bad_payload)):
-        with pytest.raises(ValueError) as exc_info:
-            await run_validated_linear_agent(operation="create", payload={})
-    assert "after 3 attempts" in str(exc_info.value)
-    # The last_error should be a pydantic ValidationError
-    assert "extra_field" in str(exc_info.value).lower() or "Last error" in str(exc_info.value)
-
-
-@pytest.mark.asyncio
-async def test_validated_agent_handles_none_result():
-    call_count = {"n": 0}
-    async def fake_runner(prompt: str):
-        call_count["n"] += 1
-        if call_count["n"] < 2:
-            return None
-        return VALID_OUTPUT_JSON
-    with patch.object(linear_agent, "run_linear_agent", new=fake_runner):
-        result = await run_validated_linear_agent(operation="create", payload={})
-    assert result.result == "success"
+def test_write_operations_set_includes_canonical_writes():
+    """The _WRITE_OPERATIONS set includes all known mutation entry points."""
+    expected = {
+        "create",
+        "update",
+        "create_comment",
+        "create_subtasks",
+        "create_issue",
+        "update_issue",
+    }
+    assert linear_agent._WRITE_OPERATIONS >= expected

@@ -12,12 +12,16 @@ import pytest
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _gsd_clear_api_key():
-    """G1 defensive: unset ``ANTHROPIC_API_KEY`` at test session start."""
-    os.environ.pop("ANTHROPIC_API_KEY", None)
+def _ensure_api_key():
+    """G1 (inverted for PydanticAI): ANTHROPIC_API_KEY must be set.
+
+    For unit tests using TestModel, set a fake key — TestModel never calls
+    the API so the fake key is safe. For integration tests, the real key
+    from the environment is used (marked with @pytest.mark.integration).
+    """
+    if "ANTHROPIC_API_KEY" not in os.environ:
+        os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-fake-for-testmodel"
     yield
-    # Do NOT restore on teardown — test sessions are short-lived processes
-    # and we never want a child test process inheriting this env var.
 
 
 @pytest.fixture

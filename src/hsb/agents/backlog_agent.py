@@ -2,33 +2,27 @@
 
 Two-layer capability boundary (Pitfall 1 mitigation):
   Layer 1: .claude/skills/backlog-planning/SKILL.md frontmatter allowed-tools
-  Layer 2: ClaudeAgentOptions.allowed_tools below
+  Layer 2: PydanticAI Agent.tools below
 
-Both layers MUST list the same 4 tools (create_issue, list_issues, get_issue, Read)
+Both layers MUST list the same 4 tools (read_file + Linear MCP read/create)
 and explicitly forbid Linear update/delete, Bash, Edit, Write. The IDEMPOTENCY
 RULE in BACKLOG_SYSTEM_PROMPT enforces the list_issues pre-flight before any
 create_issue call (Pitfall 1, BKPK-05).
 """
 from __future__ import annotations
+
 import asyncio
-import json
 import logging
 from pathlib import Path
 
-from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
-    SystemMessage,
-    AssistantMessage,
-    ResultMessage,
-)
-from dotenv import load_dotenv
-from pydantic import ValidationError
+from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.usage import UsageLimits
 
-from hsb.agents.hooks import LINEAR_HOOKS
+from hsb.agents.filesystem_tools import read_file
+from hsb.agents.linear_middleware import make_linear_mcp_toolset
 from hsb.contracts.backlog import BacklogInput, BacklogOutput
 
-load_dotenv()  # Loads ANTHROPIC_API_KEY from .env
 logger = logging.getLogger(__name__)
 
 MAX_VALIDATION_RETRIES = 3
@@ -46,91 +40,45 @@ BACKLOG_SYSTEM_PROMPT = (
     "search for an existing EPIC with the same title. If one exists, use its existing ID "
     "and skip creation. NEVER create duplicate EPICs. "
     "\n\n"
+    "FILTER REQUIREMENT (Pitfall): "
+    "NEVER call mcp__linear__list_issues without a teamId or projectId filter — "
+    "unfiltered list calls return the entire workspace and exhaust the context budget. "
+    "\n\n"
+    "RETRY ON FAILURE: If a Linear tool call fails, retry up to 3 times with "
+    "exponential backoff (wait 1s, 2s, 4s between attempts). "
+    "\n\n"
     "EPIC titles MUST start with '[EPIC] '. User Story titles SHOULD describe the user "
     "value. Task titles MUST be specific enough to estimate. "
     "\n\n"
-    "OUTPUT FORMAT: Emit a single JSON object as your final result, matching this schema "
-    "exactly: { 'epics': [...], 'traceability': { 'plan_source': '<path>' } }. "
-    "Emit ONLY the JSON object — no prose around it."
+    "OUTPUT FORMAT: Return a BacklogOutput object."
+)
+
+_backlog_agent: Agent[None, BacklogOutput] = Agent(
+    model=AnthropicModel("claude-opus-4-7"),
+    output_type=BacklogOutput,
+    system_prompt=BACKLOG_SYSTEM_PROMPT,
+    tools=[read_file],
+    toolsets=[make_linear_mcp_toolset()],
+    output_retries=MAX_VALIDATION_RETRIES,
 )
 
 
 async def _run_backlog_agent_async(input: BacklogInput) -> BacklogOutput:
-    """Async core: query loop + validation/retry. Synchronous wrapper below."""
+    """Async core: PydanticAI Agent run with structured output."""
     plan_content = Path(input.plan_source).read_text()
-    base_prompt = (
+    prompt = (
         f"Execute backlog planning. Project context:\n```json\n"
         f"{input.project_context.model_dump_json(indent=2)}\n```\n\n"
         f"plan.md content (path: {input.plan_source}):\n```markdown\n"
         f"{plan_content}\n```\n\n"
-        f"Return ONLY a JSON object matching BacklogOutput schema."
+        f"Return a BacklogOutput object."
     )
 
-    options = ClaudeAgentOptions(
-        model="claude-opus-4-7",
-        mcp_servers={
-            "linear": {
-                "command": "npx",
-                "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"],
-            }
-        },
-        allowed_tools=[
-            "mcp__linear__create_issue",
-            "mcp__linear__list_issues",
-            "mcp__linear__get_issue",
-            "Read",
-        ],
-        permission_mode="acceptEdits",
-        system_prompt=BACKLOG_SYSTEM_PROMPT,
-        max_turns=80,  # supports 20+ Linear creates
-        hooks=LINEAR_HOOKS,
+    result = await _backlog_agent.run(
+        prompt,
+        usage_limits=UsageLimits(request_limit=80),
     )
-
-    last_error: Exception | None = None
-    prompt = base_prompt
-    for attempt in range(1, MAX_VALIDATION_RETRIES + 1):
-        result_text: str | None = None
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, SystemMessage) and message.subtype == "init":
-                failed = [
-                    s for s in message.data.get("mcp_servers", [])
-                    if s.get("status") != "connected"
-                ]
-                if failed:
-                    raise RuntimeError(f"Linear MCP failed to connect: {failed}")
-            elif isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        print(block.text)
-                    elif hasattr(block, "name"):
-                        print(f"[TOOL] {block.name}")
-            elif isinstance(message, ResultMessage):
-                if message.subtype == "success":
-                    result_text = message.result
-                else:
-                    raise RuntimeError(f"Backlog Agent failed: {message.subtype}")
-
-        if result_text is None:
-            logger.warning("Attempt %d: no result text", attempt)
-            continue
-        try:
-            json_start = result_text.index("{")
-            json_end = result_text.rindex("}") + 1
-            raw = json.loads(result_text[json_start:json_end])
-            output = BacklogOutput.model_validate(raw)
-            logger.info("Backlog Agent attempt %d: validation succeeded", attempt)
-            return output
-        except (ValueError, json.JSONDecodeError, ValidationError) as e:
-            last_error = e
-            logger.warning("Attempt %d failed: %s", attempt, e)
-            prompt = base_prompt + (
-                f"\n\nPrevious attempt produced invalid output:\n{e}\n"
-                "Return corrected JSON ONLY."
-            )
-
-    raise ValueError(
-        f"Backlog Agent failed validation after {MAX_VALIDATION_RETRIES} attempts: {last_error}"
-    )
+    return result.output
 
 
 def run_backlog_agent(input: BacklogInput) -> BacklogOutput:

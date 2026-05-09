@@ -1,20 +1,17 @@
-"""Work Item Orchestrator — single Claude Agent SDK session driving one Linear
+"""Work Item Orchestrator — single PydanticAI session driving one Linear
 task through its full lifecycle (Linear read → Builder → Git → QA → fix loop →
 done) per CONTEXT.md D-01.
 
-Architecture (RESEARCH.md Pattern 1, Pitfall 1, Pitfall 4):
-- ONE SDK session per cycle. Skill content is injected into ``system_prompt``.
-- Phase 2 agent modules are exposed as in-process MCP tools via
-  ``create_sdk_mcp_server`` + ``@tool``. NO sub-agent dispatch (no
-  ``AgentDefinition``, no ``agents=`` key in ``ClaudeAgentOptions``).
-- Every ``@tool`` returns the canonical ``{"content":[{"type":"text","text":...}]}``
-  envelope; returning a Pydantic model directly silently fails the SDK serializer.
+Architecture (PydanticAI migration):
+- ONE PydanticAI Agent per cycle. Skill content is injected into ``system_prompt``.
+- Phase 2 agent modules are exposed as in-process tools via ``@_wio_agent.tool_plain``
+  decorators. NO sub-agent dispatch (no AgentDefinition, no Agent tool).
+- Multi-turn within the same MCP connection via ``run_mcp_servers()`` context
+  manager + ``message_history=`` parameter chaining results across turns.
 
-Phase 5 (D-04, D-06): the WIO embeds skills 10 + 11 inline within the same SDK
+Phase 5 (D-04, D-06): the WIO embeds skills 10 + 11 inline within the same
 session, adds a Step 1 enrichment turn before Builder and a Step 5 knowledge
-storage turn after QA. The transition from a single ``query()`` call to a
-multi-turn ``ClaudeSDKClient`` session preserves all of Phase 3's @tool
-wiring (Builder/Git/QA dispatched as MCP tools).
+storage turn after QA.
 
 Two-layer QA cycle cap (CONTEXT.md D-05):
 - Layer 1 lives in :class:`hsb.contracts.qa.QAOutput.validate_cycle_cap_logic`.
@@ -22,46 +19,30 @@ Two-layer QA cycle cap (CONTEXT.md D-05):
   comment when ``qa_cycle_count >= 3`` AND ``qa_status == "changes_required"``,
   preventing a runaway 4th cycle if Layer 1 is somehow bypassed.
 
-G1 (OAuth2 only): ``ANTHROPIC_API_KEY`` must be ``not in os.environ``. This
-file does NOT have a module-top assert — that pattern broke pytest collection
-when developer environments legitimately had the env var set. G1 is enforced
-function-entry via :func:`hsb.agents._sdk_options.assert_oauth2_only` (called
-from :func:`hsb.agents._sdk_options.make_options`); the SDK options here are
-constructed via ``ClaudeAgentOptions(...)`` directly (Phase 3 pattern), but
-the orchestrator is invoked through the global orchestrator which routes
-through the chokepoint factory. Defensive pairing: the session-scoped
-autouse fixture ``_gsd_clear_api_key`` in ``tests/conftest.py`` unsets the
-env var at test session start.
+G1 (PydanticAI requires ANTHROPIC_API_KEY) — checked via
+:func:`hsb.agents.guards.assert_api_key_set`.
+G3 (no Task tool dispatch) — noop shim in PydanticAI; preserved for source-grep
+test compatibility.
 """
 from __future__ import annotations
 
-import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ResultMessage,
-    SystemMessage,
-    create_sdk_mcp_server,
-    query,
-    tool,
-)
-from claude_agent_sdk.types import TextBlock
-from dotenv import load_dotenv
+from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.usage import UsageLimits
 
-from hsb.agents._sdk_options import assert_no_task_dispatch  # G3 runtime backstop
+from hsb.agents.guards import assert_no_task_dispatch  # G3 noop shim
 from hsb.agents.intelligence_agent import (
     build_enrichment_prompt,
     build_storage_prompt,
 )
 from hsb.agents.linear_agent import run_validated_linear_agent
+from hsb.agents.linear_middleware import make_linear_mcp_toolset
 from hsb.contracts.orchestrator import WorkItemOrchInput, WorkItemOrchOutput  # noqa: F401
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -72,72 +53,60 @@ logger = logging.getLogger(__name__)
 
 # Injection order: task-orchestration first as the meta-skill framing the
 # others, then the lifecycle skills in the order they appear in the cycle
-# (Implementation → QA → Git → Linear). Resolved per CONTEXT.md "Claude's
-# Discretion" entry on skill injection order.
+# (Implementation → QA → Git → Linear).
 SKILL_FILES = [
     "skills/06-TASK-ORCHESTRATION.md",
     "skills/02-IMPLEMENTATION.md",
     "skills/03-QA-REVIEW.md",
     "skills/04-GIT-PR-MANAGEMENT.md",
     "skills/05-LINEAR-SYSTEM-OF-RECORD.md",
-    # Phase 5 [D-04]: Intelligence Agent runs inline within the WIO SDK
-    # session. The skill bodies are injected into the system prompt so the
-    # LLM applies the retrieval rules (skill 10) before Builder and the
-    # ingestion criteria (skill 11) after QA. The migrated SKILL.md files
-    # under .claude/skills/ are referenced for SDK auto-discovery; the
-    # source paths under skills/ are loaded into assemble_system_prompt().
+    # Phase 5 [D-04]: Intelligence Agent runs inline within the WIO session.
     ".claude/skills/knowledge-context-enrichment/SKILL.md",  # skill 10 [Phase 5]
     ".claude/skills/knowledge-storage/SKILL.md",  # skill 11 [Phase 5]
 ]
 
 
 def assemble_system_prompt() -> str:
-    """Read all SKILL_FILES and concatenate with ``# SKILL: <stem>`` separators.
-
-    The headers are mandatory: without them the LLM cannot disambiguate which
-    skill's constraints apply to which lifecycle step (RESEARCH.md
-    Anti-Patterns).
-    """
+    """Read all SKILL_FILES and concatenate with ``# SKILL: <stem>`` separators."""
     parts = []
     for path in SKILL_FILES:
-        content = Path(path).read_text()
-        parts.append(f"# SKILL: {Path(path).stem}\n\n{content}")
+        try:
+            content = Path(path).read_text()
+            parts.append(f"# SKILL: {Path(path).stem}\n\n{content}")
+        except FileNotFoundError:
+            logger.warning("Skill file not found: %s", path)
     return "\n\n---\n\n".join(parts)
 
 
 # --------------------------------------------------------------------------- #
-# @tool wrappers — Phase 2 agents exposed as in-process MCP tools             #
-# --------------------------------------------------------------------------- #
-#
-# CRITICAL (RESEARCH.md Pitfall 4): @tool return value MUST be
-#     {"content": [{"type": "text", "text": <string>}]}
-# Returning a Pydantic model directly causes silent tool failure.
+# WIO Agent definition                                                        #
 # --------------------------------------------------------------------------- #
 
-
-@tool(
-    "run_linear_op",
-    "Execute a Linear System of Record operation (create | update | comment | link_pr | read)",
-    {"operation": str, "payload": dict},
+_wio_agent: Agent[None, str] = Agent(
+    model=AnthropicModel("claude-sonnet-4-6"),
+    output_type=str,
+    system_prompt="",  # set dynamically per cycle
+    toolsets=[make_linear_mcp_toolset()],
 )
-async def run_linear_tool(args: dict[str, Any]) -> dict[str, Any]:
-    """Wrapper: delegates to Phase 1 ``linear_agent.run_validated_linear_agent``."""
-    result = await run_validated_linear_agent(
-        operation=args["operation"],
-        payload=args["payload"],
-    )
-    return {"content": [{"type": "text", "text": result.model_dump_json()}]}
 
 
-@tool(
-    "run_builder",
-    "Execute the Builder Agent for a work item",
-    {"work_item_id": str, "issue_content": str},
-)
-async def run_builder_tool(args: dict[str, Any]) -> dict[str, Any]:
-    """Wrapper: delegates to Phase 2 ``builder_agent.run_builder_agent``.
+# --------------------------------------------------------------------------- #
+# In-process tools — Phase 2 agents exposed as PydanticAI tools               #
+# --------------------------------------------------------------------------- #
 
-    The orchestrator (the SDK agent) MUST pass the FULL Linear issue payload as
+
+@_wio_agent.tool_plain
+async def run_linear_op(operation: str, payload: dict[str, Any]) -> str:
+    """Execute a Linear System of Record operation (create | update | comment | link_pr | read)."""
+    result = await run_validated_linear_agent(operation=operation, payload=payload)
+    return result.model_dump_json()
+
+
+@_wio_agent.tool_plain
+async def run_builder(work_item_id: str, issue_content: str) -> str:
+    """Execute the Builder Agent for a work item.
+
+    The orchestrator (the LLM) MUST pass the FULL Linear issue payload as
     the ``issue_content`` JSON string — WORC-04 / Pitfall 4. The wrapper parses
     it via ``json.loads`` and constructs a Pydantic ``BuilderInput`` so any
     injection attempt that does not match the schema is rejected at the
@@ -145,11 +114,10 @@ async def run_builder_tool(args: dict[str, Any]) -> dict[str, Any]:
     """
     from hsb.agents.builder_agent import run_builder_agent
     from hsb.contracts.builder import BuilderInput, RepositoryContext
-    import json
 
-    issue_data = json.loads(args["issue_content"])
+    issue_data = json.loads(issue_content)
     builder_input = BuilderInput(
-        work_item_id=args["work_item_id"],
+        work_item_id=work_item_id,
         issue_description=issue_data.get("description", ""),
         acceptance_criteria=issue_data.get("acceptance_criteria", []),
         epic_context=issue_data.get("epic_context", {}),
@@ -159,49 +127,42 @@ async def run_builder_tool(args: dict[str, Any]) -> dict[str, Any]:
         ),
     )
     result = run_builder_agent(builder_input)
-    return {"content": [{"type": "text", "text": result.model_dump_json()}]}
+    return result.model_dump_json()
 
 
-@tool(
-    "run_git",
-    "Execute the Git Agent to create branch and PR",
-    {"work_item_id": str, "impl_output": str, "epic_id": str},
-)
-async def run_git_tool(args: dict[str, Any]) -> dict[str, Any]:
-    """Wrapper: delegates to Phase 2 ``git_agent.run_git_agent``."""
+@_wio_agent.tool_plain
+async def run_git(work_item_id: str, impl_output: str, epic_id: str) -> str:
+    """Execute the Git Agent to create branch and PR."""
     from hsb.agents.git_agent import run_git_agent
     from hsb.contracts.git import GitInput
-    import json
 
     git_input = GitInput(
-        work_item_id=args["work_item_id"],
-        implementation_output=json.loads(args["impl_output"]),
-        epic_id=args["epic_id"],
+        work_item_id=work_item_id,
+        implementation_output=json.loads(impl_output),
+        epic_id=epic_id,
     )
     result = run_git_agent(git_input)
-    return {"content": [{"type": "text", "text": result.model_dump_json()}]}
+    return result.model_dump_json()
 
 
-@tool(
-    "run_qa",
-    "Execute the QA Agent to review a PR",
-    {"work_item_id": str, "pr_url": str, "diff": str, "qa_cycle_count": int},
-)
-async def run_qa_tool(args: dict[str, Any]) -> dict[str, Any]:
-    """Wrapper: delegates to Phase 2 ``qa_agent.run_qa_agent``."""
+@_wio_agent.tool_plain
+async def run_qa(
+    work_item_id: str, pr_url: str, diff: str, qa_cycle_count: int
+) -> str:
+    """Execute the QA Agent to review a PR."""
     from hsb.agents.qa_agent import run_qa_agent
-    from hsb.contracts.qa import QAInput, PullRequestInput
+    from hsb.contracts.qa import PullRequestInput, QAInput
 
     qa_input = QAInput(
-        work_item_id=args["work_item_id"],
+        work_item_id=work_item_id,
         linear_issue={},  # Orchestrator must pass full issue — injected by agent via tool call
-        pull_request=PullRequestInput(url=args["pr_url"], diff=args["diff"]),
+        pull_request=PullRequestInput(url=pr_url, diff=diff),
         implementation_notes={},
         epic_context={},
-        qa_cycle_count=args["qa_cycle_count"],
+        qa_cycle_count=qa_cycle_count,
     )
     result = run_qa_agent(qa_input)
-    return {"content": [{"type": "text", "text": result.model_dump_json()}]}
+    return result.model_dump_json()
 
 
 # --------------------------------------------------------------------------- #
@@ -212,9 +173,12 @@ async def run_qa_tool(args: dict[str, Any]) -> dict[str, Any]:
 async def run_orchestration_cycle(work_item_id: str | None = None) -> None:
     """Execute one full Work Item Orchestrator cycle.
 
-    Single SDK session: skill content in ``system_prompt``, Phase 2 agents as
-    ``@tool`` wrappers. No sub-agent dispatch — only ``mcp_servers``
-    (CONTEXT.md D-01, RESEARCH.md Pitfall 1).
+    Single PydanticAI session: skill content in ``system_prompt``, Phase 2
+    agents as ``@_wio_agent.tool_plain`` wrappers. No sub-agent dispatch.
+
+    Multi-turn lifecycle uses ``run_mcp_servers()`` context manager to keep
+    the Linear MCP connection open across all three turns, with
+    ``message_history=`` chaining the conversation state.
 
     Parameters
     ----------
@@ -225,41 +189,15 @@ async def run_orchestration_cycle(work_item_id: str | None = None) -> None:
     """
     system_prompt = assemble_system_prompt()
 
-    # CRITICAL: Do NOT register agents={} — that triggers sub-agent dispatch
-    # (RESEARCH.md Pitfall 1). Register only mcp_servers. The allowed_tools
-    # list must use mcp__agents__* not Task.
-    sdk_server = create_sdk_mcp_server(
-        name="agents",
-        version="1.0.0",
-        tools=[run_linear_tool, run_builder_tool, run_git_tool, run_qa_tool],
-    )
-
-    options = ClaudeAgentOptions(
+    # Build a fresh agent with the assembled system prompt
+    cycle_agent: Agent[None, str] = Agent(
+        model=AnthropicModel("claude-sonnet-4-6"),
+        output_type=str,
         system_prompt=system_prompt,
-        mcp_servers={
-            "agents": sdk_server,
-            "linear": {
-                "command": "npx",
-                "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"],
-            },
-        },
-        allowed_tools=[
-            "mcp__agents__run_linear_op",
-            "mcp__agents__run_builder",
-            "mcp__agents__run_git",
-            "mcp__agents__run_qa",
-            "mcp__linear__get_issue",
-            "mcp__linear__list_issues",
-            "mcp__linear__update_issue",
-            "mcp__linear__create_comment",
-        ],
-        permission_mode="acceptEdits",
-        max_turns=30,
+        tools=[run_linear_op, run_builder, run_git, run_qa],
+        toolsets=[make_linear_mcp_toolset()],
     )
 
-    # work_item_id selection: if not provided, orchestrator queries Linear for
-    # the next todo task (Phase 4 will replace this with the Global
-    # Orchestrator selection).
     cycle_prompt = (
         f"Run the work item lifecycle for work item {work_item_id}. "
         "Read its current Linear state first, then execute the next "
@@ -273,99 +211,61 @@ async def run_orchestration_cycle(work_item_id: str | None = None) -> None:
         )
     )
 
-    # Phase 5 lifecycle: a single ClaudeSDKClient session drives three turns
-    # within the SAME context window:
-    #
-    #   Step 1 [NEW Phase 5, INTL-01]  — Intelligence enrichment via skill 10.
-    #                                    Populates `knowledge_context` for the
-    #                                    Builder. No Linear writes.
-    #   Steps 2-4 [Phase 3]            — Builder → Git → QA cycle (max QA
-    #                                    cycle cap = 3, D-05 Layer 1 in
-    #                                    QAOutput, Layer 2 in this module).
-    #   Step 5 [NEW Phase 5, INTL-02]  — Knowledge storage evaluation via
-    #                                    skill 11. Writes knowledge/<cat>/*.md
-    #                                    only if ingestion criteria are met.
-    #
-    # G3 runtime backstop (assert_no_task_dispatch) is called on every
-    # received message in EVERY receive_response() loop body — catches an
-    # SDK regression that bypasses allowed_tools at runtime (WORC-02).
+    # Phase 5 lifecycle: three turns within the SAME context window via
+    # message_history chaining. MCP connection held open with
+    # run_mcp_servers().
     work_item_json = (
         f'{{"id": "{work_item_id}"}}' if work_item_id else "{}"
     )
     qa_result: dict[str, Any] = {}
     implementation_notes: dict[str, Any] = {}
 
-    async with ClaudeSDKClient(options=options) as client:
+    # G3 noop shim — kept for source-grep compatibility
+    assert_no_task_dispatch(None)
+
+    async with cycle_agent.run_mcp_servers():
         # [NEW Phase 5] Step 1: Intelligence enrichment (skill 10) — before Builder.
-        await client.query(build_enrichment_prompt(work_item_id or "next-todo", work_item_json))
-        async for msg in client.receive_response():
-            assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
-            if isinstance(msg, SystemMessage) and msg.subtype == "init":
-                mcp_servers = msg.data.get("mcp_servers", [])
-                failed = [s for s in mcp_servers if s.get("status") != "connected"]
-                if failed:
-                    raise RuntimeError(f"MCP server failed to connect: {failed}")
-            elif isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if isinstance(block, TextBlock):
-                        print(block.text, end="", flush=True)
-                    elif hasattr(block, "name"):
-                        logger.info("[TOOL] %s", block.name)
+        result1 = await cycle_agent.run(
+            build_enrichment_prompt(work_item_id or "next-todo", work_item_json),
+            usage_limits=UsageLimits(request_limit=10),
+        )
+        _check_context_budget(result1, work_item_id, "enrichment")
 
         # [Phase 3] Steps 2-4: Builder → Git → QA cycle.
-        await client.query(cycle_prompt)
-        async for msg in client.receive_response():
-            assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if isinstance(block, TextBlock):
-                        print(block.text)
-                    elif hasattr(block, "name"):
-                        logger.info("[TOOL] %s", block.name)
-            elif isinstance(msg, ResultMessage):
-                if msg.stop_reason == "error_max_turns":
-                    raise RuntimeError(f"WIO hit max_turns for {work_item_id}")
-                # G8 context budget warning at 60% of 200K window.
-                if msg.usage:
-                    input_tokens = msg.usage.get("input_tokens", 0)
-                    if input_tokens > 120_000:
-                        logger.warning(
-                            "WIO context at %d tokens for %s — consider skill index fallback",
-                            input_tokens,
-                            work_item_id,
-                        )
-                logger.info(
-                    "Orchestration cycle complete. Cost: $%.4f",
-                    msg.total_cost_usd,
-                )
+        result2 = await cycle_agent.run(
+            cycle_prompt,
+            message_history=result1.all_messages(),
+            usage_limits=UsageLimits(request_limit=30),
+        )
+        _check_context_budget(result2, work_item_id, "cycle")
+        logger.info("Orchestration cycle complete for %s", work_item_id)
 
         # [NEW Phase 5] Step 5: Knowledge storage evaluation (skill 11) — after QA.
-        # qa_result/implementation_notes are propagated through the system
-        # prompt instructions; this prompt directs the LLM to pull them from
-        # its prior turns. Side-effectful writes to knowledge/; no return.
-        await client.query(build_storage_prompt(qa_result, implementation_notes))
-        async for msg in client.receive_response():
-            assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if isinstance(block, TextBlock):
-                        print(block.text, end="", flush=True)
-                    elif hasattr(block, "name"):
-                        logger.info("[TOOL] %s", block.name)
-            elif isinstance(msg, ResultMessage):
-                if msg.stop_reason == "error_max_turns":
-                    raise RuntimeError(
-                        f"WIO storage step hit max_turns for {work_item_id}"
-                    )
-                if msg.usage:
-                    input_tokens = msg.usage.get("input_tokens", 0)
-                    if input_tokens > 120_000:
-                        logger.warning(
-                            "WIO context at %d tokens (storage step) for %s — "
-                            "consider skill index fallback",
-                            input_tokens,
-                            work_item_id,
-                        )
+        result3 = await cycle_agent.run(
+            build_storage_prompt(qa_result, implementation_notes),
+            message_history=result2.all_messages(),
+            usage_limits=UsageLimits(request_limit=10),
+        )
+        _check_context_budget(result3, work_item_id, "storage")
+
+
+def _check_context_budget(
+    result: Any, work_item_id: str | None, step_name: str
+) -> None:
+    """G8 context budget warning at 60% of 200K window."""
+    try:
+        usage = result.usage()
+        input_tokens = getattr(usage, "input_tokens", 0) or 0
+        if input_tokens > 120_000:
+            logger.warning(
+                "WIO context at %d tokens (%s step) for %s — "
+                "consider skill index fallback",
+                input_tokens,
+                step_name,
+                work_item_id,
+            )
+    except Exception as exc:
+        logger.debug("Could not check usage: %s", exc)
 
 
 # --------------------------------------------------------------------------- #

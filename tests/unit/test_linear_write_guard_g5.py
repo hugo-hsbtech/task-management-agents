@@ -9,7 +9,7 @@ import textwrap
 
 import pytest
 
-from hsb.agents._sdk_options import linear_write_guard
+from hsb.agents.guards import linear_write_guard
 
 
 @linear_write_guard
@@ -118,4 +118,4 @@ def test_linear_agent_write_methods_are_guarded():
     assert "linear_write_guard" in src, (
         "G5 violated: linear_agent.py does not import or apply linear_write_guard"
     )
-    assert "from hsb.agents._sdk_options import linear_write_guard" in src
+    assert "from hsb.agents.guards import linear_write_guard" in src

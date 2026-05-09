@@ -2,34 +2,23 @@
 
 SC-5 (Phase 5 success criterion): 'Risk Agent surfaces improvement triggers
 without creating Linear items.' This test provides the AUTOMATED verification:
-with seeded ``qa_history`` meeting the pattern threshold and a stubbed SDK
+with seeded ``qa_history`` meeting the pattern threshold and a TestModel
 returning a valid trigger payload, ``detect_improvement_triggers`` returns
 ≥1 :class:`AutoImprovementTrigger` whose ``linear_state == 'suggested'``.
+
+Migrated from claude-agent-sdk to PydanticAI: replaces ``monkeypatch.setattr(ra, "query", ...)``
+with ``_risk_agent.override(model=TestModel(custom_output_text=...))``.
 """
+from __future__ import annotations
+
 import json
 
 import pytest
-
-
-def _make_result(text: str, stop_reason: str = "end_turn"):
-    """Build a real :class:`ResultMessage` so ``isinstance`` checks in
-    ``risk_agent.detect_improvement_triggers`` succeed."""
-    from claude_agent_sdk import ResultMessage
-
-    return ResultMessage(
-        subtype="success",
-        duration_ms=1,
-        duration_api_ms=1,
-        is_error=False,
-        num_turns=1,
-        session_id="test",
-        stop_reason=stop_reason,
-        result=text,
-    )
+from pydantic_ai.models.test import TestModel
 
 
 @pytest.mark.asyncio
-async def test_triggers_with_fewer_than_two_evidence_refs_filtered(monkeypatch):
+async def test_triggers_with_fewer_than_two_evidence_refs_filtered():
     from hsb.agents import risk_agent as ra
 
     payload = json.dumps(
@@ -49,19 +38,16 @@ async def test_triggers_with_fewer_than_two_evidence_refs_filtered(monkeypatch):
         ]
     )
 
-    async def fake_query(prompt, options):
-        yield _make_result(payload)
-
-    monkeypatch.setattr(ra, "query", fake_query)
-    agent = ra.RiskAgent()
-    result = await agent.detect_improvement_triggers(qa_history=[], scores=[])
+    with ra._risk_agent.override(model=TestModel(custom_output_text=payload, call_tools=[])):
+        agent = ra.RiskAgent()
+        result = await agent.detect_improvement_triggers(qa_history=[], scores=[])
     assert len(result) == 1
     assert result[0].title == "T2"
     assert len(result[0].pattern_evidence) >= 2
 
 
 @pytest.mark.asyncio
-async def test_triggers_linear_state_always_suggested(monkeypatch):
+async def test_triggers_linear_state_always_suggested():
     from hsb.agents import risk_agent as ra
 
     payload = json.dumps(
@@ -75,18 +61,15 @@ async def test_triggers_linear_state_always_suggested(monkeypatch):
         ]
     )
 
-    async def fake_query(prompt, options):
-        yield _make_result(payload)
-
-    monkeypatch.setattr(ra, "query", fake_query)
-    agent = ra.RiskAgent()
-    result = await agent.detect_improvement_triggers(qa_history=[], scores=[])
+    with ra._risk_agent.override(model=TestModel(custom_output_text=payload, call_tools=[])):
+        agent = ra.RiskAgent()
+        result = await agent.detect_improvement_triggers(qa_history=[], scores=[])
     assert len(result) == 1
     assert result[0].linear_state == "suggested"
 
 
 @pytest.mark.asyncio
-async def test_sc5_positive_path_returns_trigger_for_seeded_qa_history(monkeypatch):
+async def test_sc5_positive_path_returns_trigger_for_seeded_qa_history():
     """SC-5 automated verification: seeded qa_history with pattern → ≥1 trigger.
 
     Per AI-SPEC §6 / RISK-04, the production code path returns triggers ONLY
@@ -95,9 +78,6 @@ async def test_sc5_positive_path_returns_trigger_for_seeded_qa_history(monkeypat
     ``detect_improvement_triggers`` DIRECTLY (the operator-delegated CLI path)
     and asserts a trigger is returned given a seeded ``qa_history`` that meets
     the pattern threshold.
-
-    The 05-04 SC-5 human checkpoint cites this test as the automated
-    verification path.
     """
     from hsb.agents import risk_agent as ra
     from hsb.contracts.risk import AutoImprovementTrigger
@@ -137,17 +117,11 @@ async def test_sc5_positive_path_returns_trigger_for_seeded_qa_history(monkeypat
         ]
     )
 
-    async def fake_query(prompt, options):
-        # Defensive: confirm the SDK call config matches RISK-04 / G4.
-        assert options.allowed_tools == []
-        assert getattr(options, "mcp_servers", None) in (None, {})
-        yield _make_result(payload)
-
-    monkeypatch.setattr(ra, "query", fake_query)
-    agent = ra.RiskAgent()
-    result = await agent.detect_improvement_triggers(
-        qa_history=qa_history, scores=[]
-    )
+    with ra._risk_agent.override(model=TestModel(custom_output_text=payload, call_tools=[])):
+        agent = ra.RiskAgent()
+        result = await agent.detect_improvement_triggers(
+            qa_history=qa_history, scores=[]
+        )
 
     # SC-5 assertion: at least one trigger surfaced for the seeded pattern.
     assert len(result) >= 1, (
