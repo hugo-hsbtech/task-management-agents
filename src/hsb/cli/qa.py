@@ -1,13 +1,14 @@
 """QA Agent CLI subcommands (populated by Phase 2 Plan 05)."""
+
 import asyncio
 import subprocess
 
 import typer
 from rich.pretty import pprint
 
-from hsb.agents.qa_agent import run_qa_agent
 from hsb.agents.linear_agent import run_validated_linear_agent  # Phase 1 service
-from hsb.contracts.qa import QAInput, PullRequestInput
+from hsb.agents.qa_agent import run_qa_agent
+from hsb.contracts.qa import PullRequestInput, QAInput
 
 app = typer.Typer(name="qa", help="QA Review Agent commands")
 
@@ -19,10 +20,15 @@ def _qa_callback() -> None:
 
 @app.command("review")
 def qa_review(
-    issue_id: str = typer.Option(..., "--issue-id", help="Linear work item ID (e.g. LIN-123)"),
-    pr_number: int = typer.Option(..., "--pr-number", help="GitHub PR number to review"),
+    issue_id: str = typer.Option(
+        ..., "--issue-id", help="Linear work item ID (e.g. LIN-123)"
+    ),
+    pr_number: int = typer.Option(
+        ..., "--pr-number", help="GitHub PR number to review"
+    ),
     qa_cycle: int = typer.Option(
-        0, "--qa-cycle",
+        0,
+        "--qa-cycle",
         help="Current QA cycle count (0-indexed: 0=first review, 1=second, 2=third)",
     ),
 ):
@@ -42,9 +48,7 @@ def qa_review(
         )
 
     # Fresh fetch — Pitfall 6
-    diff = subprocess.check_output(
-        ["gh", "pr", "diff", str(pr_number)], text=True
-    )
+    diff = subprocess.check_output(["gh", "pr", "diff", str(pr_number)], text=True)
     pr_url = subprocess.check_output(
         ["gh", "pr", "view", str(pr_number), "--json", "url", "--jq", ".url"],
         text=True,

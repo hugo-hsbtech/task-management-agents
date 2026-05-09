@@ -1,6 +1,5 @@
 """INTL-01: WIO Step 1 retrieves Knowledge Store entries and populates
 ``knowledge_context``."""
-import json
 
 import pytest
 

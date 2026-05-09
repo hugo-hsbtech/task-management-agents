@@ -7,16 +7,19 @@ Two public entry points:
 
 Per D-01: OAuth handled by mcp-remote. Per D-02: token refresh automatic.
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
+
 from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
-    SystemMessage,
     AssistantMessage,
+    ClaudeAgentOptions,
     ResultMessage,
+    SystemMessage,
+    query,
 )
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -95,7 +98,15 @@ async def run_linear_agent(prompt: str) -> str | None:
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, SystemMessage) and message.subtype == "init":
             mcp_servers = message.data.get("mcp_servers", [])
-            failed = [s for s in mcp_servers if s.get("status") != "connected"]
+            # Only inspect servers we registered — the SDK init message may
+            # surface globally-registered MCPs (e.g. user-level OAuth servers)
+            # whose auth state is unrelated to this agent.
+            required = {"linear"}
+            failed = [
+                s
+                for s in mcp_servers
+                if s.get("name") in required and s.get("status") != "connected"
+            ]
             if failed:
                 raise RuntimeError(f"Linear MCP server failed to connect: {failed}")
         elif isinstance(message, AssistantMessage):
@@ -147,7 +158,9 @@ async def _run_validated_linear_agent_impl(
             json_end = result_text.rindex("}") + 1
             raw = json.loads(result_text[json_start:json_end])
         except (ValueError, json.JSONDecodeError) as e:
-            logger.warning("Attempt %d: could not parse JSON from result: %s", attempt, e)
+            logger.warning(
+                "Attempt %d: could not parse JSON from result: %s", attempt, e
+            )
             last_error = e
             prompt += (
                 f"\n\nPrevious attempt returned invalid JSON: {e}. "

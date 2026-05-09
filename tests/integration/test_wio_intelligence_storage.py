@@ -1,6 +1,6 @@
 """INTL-02: WIO Step 5 writes Knowledge Store entries with all 8 required
 fields after a QA finding."""
-import json
+
 from pathlib import Path
 
 import pytest

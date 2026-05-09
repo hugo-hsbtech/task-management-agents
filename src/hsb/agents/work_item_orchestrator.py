@@ -33,9 +33,9 @@ through the chokepoint factory. Defensive pairing: the session-scoped
 autouse fixture ``_gsd_clear_api_key`` in ``tests/conftest.py`` unsets the
 env var at test session start.
 """
+
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -47,7 +47,6 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     create_sdk_mcp_server,
-    query,
     tool,
 )
 from claude_agent_sdk.types import TextBlock
@@ -59,7 +58,10 @@ from hsb.agents.intelligence_agent import (
     build_storage_prompt,
 )
 from hsb.agents.linear_agent import run_validated_linear_agent
-from hsb.contracts.orchestrator import WorkItemOrchInput, WorkItemOrchOutput  # noqa: F401
+from hsb.contracts.orchestrator import (  # noqa: F401
+    WorkItemOrchInput,
+    WorkItemOrchOutput,
+)
 
 load_dotenv()
 
@@ -143,9 +145,10 @@ async def run_builder_tool(args: dict[str, Any]) -> dict[str, Any]:
     injection attempt that does not match the schema is rejected at the
     ``extra='forbid'`` boundary BEFORE the Builder agent runs.
     """
+    import json
+
     from hsb.agents.builder_agent import run_builder_agent
     from hsb.contracts.builder import BuilderInput, RepositoryContext
-    import json
 
     issue_data = json.loads(args["issue_content"])
     builder_input = BuilderInput(
@@ -169,9 +172,10 @@ async def run_builder_tool(args: dict[str, Any]) -> dict[str, Any]:
 )
 async def run_git_tool(args: dict[str, Any]) -> dict[str, Any]:
     """Wrapper: delegates to Phase 2 ``git_agent.run_git_agent``."""
+    import json
+
     from hsb.agents.git_agent import run_git_agent
     from hsb.contracts.git import GitInput
-    import json
 
     git_input = GitInput(
         work_item_id=args["work_item_id"],
@@ -190,7 +194,7 @@ async def run_git_tool(args: dict[str, Any]) -> dict[str, Any]:
 async def run_qa_tool(args: dict[str, Any]) -> dict[str, Any]:
     """Wrapper: delegates to Phase 2 ``qa_agent.run_qa_agent``."""
     from hsb.agents.qa_agent import run_qa_agent
-    from hsb.contracts.qa import QAInput, PullRequestInput
+    from hsb.contracts.qa import PullRequestInput, QAInput
 
     qa_input = QAInput(
         work_item_id=args["work_item_id"],
@@ -289,20 +293,28 @@ async def run_orchestration_cycle(work_item_id: str | None = None) -> None:
     # G3 runtime backstop (assert_no_task_dispatch) is called on every
     # received message in EVERY receive_response() loop body — catches an
     # SDK regression that bypasses allowed_tools at runtime (WORC-02).
-    work_item_json = (
-        f'{{"id": "{work_item_id}"}}' if work_item_id else "{}"
-    )
+    work_item_json = f'{{"id": "{work_item_id}"}}' if work_item_id else "{}"
     qa_result: dict[str, Any] = {}
     implementation_notes: dict[str, Any] = {}
 
     async with ClaudeSDKClient(options=options) as client:
         # [NEW Phase 5] Step 1: Intelligence enrichment (skill 10) — before Builder.
-        await client.query(build_enrichment_prompt(work_item_id or "next-todo", work_item_json))
+        await client.query(
+            build_enrichment_prompt(work_item_id or "next-todo", work_item_json)
+        )
         async for msg in client.receive_response():
             assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
             if isinstance(msg, SystemMessage) and msg.subtype == "init":
                 mcp_servers = msg.data.get("mcp_servers", [])
-                failed = [s for s in mcp_servers if s.get("status") != "connected"]
+                # Only inspect servers we registered — the SDK init message
+                # may surface globally-registered MCPs (e.g. user-level OAuth
+                # servers) whose auth state is unrelated to this orchestrator.
+                required = {"agents", "linear"}
+                failed = [
+                    s
+                    for s in mcp_servers
+                    if s.get("name") in required and s.get("status") != "connected"
+                ]
                 if failed:
                     raise RuntimeError(f"MCP server failed to connect: {failed}")
             elif isinstance(msg, AssistantMessage):

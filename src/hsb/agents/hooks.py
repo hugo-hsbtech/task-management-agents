@@ -5,12 +5,16 @@ Implements LINR-05 (exponential backoff + audit log) and prevents:
 - Pitfall 4 (context overflow) via enforce_list_filters PreToolUse hook
 - Pitfall 6 (lost transcript) via pre_compact_handler PreCompact hook
 """
+
 from __future__ import annotations
+
 import asyncio
+import contextlib
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+
 from claude_agent_sdk import HookMatcher
 
 # Module-level retry counter; keyed by tool_use_id (or tool_name as fallback)
@@ -41,7 +45,7 @@ async def linear_retry_hook(input_data: dict, tool_use_id: str | None, context) 
             )
         }
 
-    delay = BASE_DELAY_SECONDS * (2 ** retry_count)
+    delay = BASE_DELAY_SECONDS * (2**retry_count)
     _retry_counts[key] = retry_count + 1
     await asyncio.sleep(delay)
 
@@ -71,10 +75,12 @@ async def linear_audit_hook(input_data: dict, tool_use_id: str | None, context) 
 
     output = input_data.get("tool_output", {})
     # Truncate large outputs so the audit log stays bounded
-    output_repr = json.dumps(output)[:2000] if not isinstance(output, str) else output[:2000]
+    output_repr = (
+        json.dumps(output)[:2000] if not isinstance(output, str) else output[:2000]
+    )
 
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "tool": tool_name,
         "tool_use_id": tool_use_id,
         "tool_output_preview": output_repr,
@@ -85,19 +91,19 @@ async def linear_audit_hook(input_data: dict, tool_use_id: str | None, context) 
     return {}
 
 
-async def pre_compact_handler(input_data: dict, tool_use_id: str | None, context) -> dict:
+async def pre_compact_handler(
+    input_data: dict, tool_use_id: str | None, context
+) -> dict:
     """PreCompact: archive transcript and instruct agent to re-read Linear state.
 
     Prevents Pitfall 6 (silent context loss during auto-compaction).
     """
     transcript_path = input_data.get("transcript_path")
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     archive_path = f".claude/compaction_archive_{ts}.jsonl"
     if transcript_path:
-        try:
+        with contextlib.suppress(FileNotFoundError, PermissionError):
             shutil.copy(transcript_path, archive_path)
-        except (FileNotFoundError, PermissionError):
-            pass  # Best-effort; do not block agent on archive failure
     return {
         "systemMessage": (
             "CONTEXT COMPACTION TRIGGERED. "
@@ -107,7 +113,9 @@ async def pre_compact_handler(input_data: dict, tool_use_id: str | None, context
     }
 
 
-async def enforce_list_filters(input_data: dict, tool_use_id: str | None, context) -> dict:
+async def enforce_list_filters(
+    input_data: dict, tool_use_id: str | None, context
+) -> dict:
     """PreToolUse: block mcp__linear__list_issues without teamId or projectId.
 
     Prevents Pitfall 4 (context overflow on unfiltered list). The hook returns
@@ -135,12 +143,8 @@ LINEAR_HOOKS = {
     "PostToolUseFailure": [
         HookMatcher(matcher="^mcp__linear__", hooks=[linear_retry_hook])
     ],
-    "PostToolUse": [
-        HookMatcher(matcher="^mcp__linear__", hooks=[linear_audit_hook])
-    ],
-    "PreCompact": [
-        HookMatcher(hooks=[pre_compact_handler])
-    ],
+    "PostToolUse": [HookMatcher(matcher="^mcp__linear__", hooks=[linear_audit_hook])],
+    "PreCompact": [HookMatcher(hooks=[pre_compact_handler])],
     "PreToolUse": [
         HookMatcher(matcher="mcp__linear__list_issues", hooks=[enforce_list_filters])
     ],

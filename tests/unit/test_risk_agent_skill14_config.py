@@ -1,4 +1,5 @@
 """RISK-04 + G3 + G4 structural tests for the skill 14 SDK call site."""
+
 import pytest
 
 

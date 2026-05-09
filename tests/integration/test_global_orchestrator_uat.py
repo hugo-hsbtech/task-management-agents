@@ -4,6 +4,7 @@ when all child tasks QA-approved.
 Real Linear test workspace; no mocking. Source-grep tests run without
 fixtures and verify structural properties of the source file.
 """
+
 import re
 
 import pytest

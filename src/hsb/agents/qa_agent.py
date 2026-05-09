@@ -7,19 +7,24 @@ QAAG-04 / Pitfall 2: cycle cap enforced by QAOutput.model_validator (Pydantic), 
 system prompt. The model_validator runs INSIDE QAOutput.model_validate(raw) and
 rejects invalid (qa_cycle_count>=3 + changes_required) combinations.
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 
 from claude_agent_sdk import (
-    query, ClaudeAgentOptions, AssistantMessage, ResultMessage,
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ResultMessage,
+    query,
 )
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from hsb.contracts.qa import QAInput, QAOutput
 from hsb.agents.linear_agent import run_validated_linear_agent
+from hsb.contracts.qa import QAInput, QAOutput
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -99,7 +104,9 @@ async def _run_qa_agent_async(input: QAInput) -> QAOutput:
             json_start = result_text.index("{")
             json_end = result_text.rindex("}") + 1
             raw = json.loads(result_text[json_start:json_end])
-            output = QAOutput.model_validate(raw)  # model_validator runs HERE — cycle cap enforced
+            output = QAOutput.model_validate(
+                raw
+            )  # model_validator runs HERE — cycle cap enforced
             logger.info("QA Agent attempt %d: validation succeeded", attempt)
             return output
         except (ValueError, json.JSONDecodeError, ValidationError) as e:
@@ -124,19 +131,23 @@ def _write_qa_results_to_linear(work_item_id: str, output: QAOutput) -> None:
       2. fix subtasks (max 5) when qa_status == changes_required
     """
     # 1. Increment qa_cycle_count
-    asyncio.run(run_validated_linear_agent(
-        operation="update",
-        payload={
-            "issueId": work_item_id,
-            "qa_cycle_count": output.qa_cycle_count,
-            "qa_status": output.qa_status,
-        },
-    ))
+    asyncio.run(
+        run_validated_linear_agent(
+            operation="update",
+            payload={
+                "issueId": work_item_id,
+                "qa_cycle_count": output.qa_cycle_count,
+                "qa_status": output.qa_status,
+            },
+        )
+    )
     # 2. Create fix subtasks for blocking findings (max 5 by schema)
     if output.qa_status == "changes_required" and output.findings:
         subtasks = [
             {
-                "title": f.suggested_subtask.title if f.suggested_subtask else f"[FIX] {f.title}",
+                "title": f.suggested_subtask.title
+                if f.suggested_subtask
+                else f"[FIX] {f.title}",
                 "description": (
                     f.suggested_subtask.description
                     if f.suggested_subtask
@@ -147,10 +158,12 @@ def _write_qa_results_to_linear(work_item_id: str, output: QAOutput) -> None:
             if f.status == "blocking"
         ][:5]  # defense-in-depth: schema already enforces max 5 findings
         if subtasks:
-            asyncio.run(run_validated_linear_agent(
-                operation="create_subtasks",
-                payload={"parentId": work_item_id, "subtasks": subtasks},
-            ))
+            asyncio.run(
+                run_validated_linear_agent(
+                    operation="create_subtasks",
+                    payload={"parentId": work_item_id, "subtasks": subtasks},
+                )
+            )
 
 
 def run_qa_agent(input: QAInput) -> QAOutput:

@@ -6,6 +6,7 @@ with seeded ``qa_history`` meeting the pattern threshold and a stubbed SDK
 returning a valid trigger payload, ``detect_improvement_triggers`` returns
 ≥1 :class:`AutoImprovementTrigger` whose ``linear_state == 'suggested'``.
 """
+
 import json
 
 import pytest
@@ -145,9 +146,7 @@ async def test_sc5_positive_path_returns_trigger_for_seeded_qa_history(monkeypat
 
     monkeypatch.setattr(ra, "query", fake_query)
     agent = ra.RiskAgent()
-    result = await agent.detect_improvement_triggers(
-        qa_history=qa_history, scores=[]
-    )
+    result = await agent.detect_improvement_triggers(qa_history=qa_history, scores=[])
 
     # SC-5 assertion: at least one trigger surfaced for the seeded pattern.
     assert len(result) >= 1, (

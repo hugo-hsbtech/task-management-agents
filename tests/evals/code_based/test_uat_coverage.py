@@ -4,6 +4,7 @@ Also includes UAT contract schema unit tests since they share fixtures with
 the coverage eval (kept under ``tests/evals/code_based/`` rather than
 ``tests/unit/`` to avoid a separate package).
 """
+
 import pytest
 from pydantic import ValidationError
 

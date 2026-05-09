@@ -25,6 +25,7 @@ G1 enforcement is centralized in
 G3 backstop is wired into the receive loop of
 :meth:`RiskAgent.detect_improvement_triggers`.
 """
+
 from __future__ import annotations
 
 import json
@@ -183,7 +184,6 @@ class RiskAgent:
             max_turns=3,
             model="claude-haiku-4-5",
             max_budget_usd=0.05,
-            mcp_servers=None,
         )
         assert options.allowed_tools == [], (
             "G4 violation: skill 14 allowed_tools must be empty"
@@ -215,10 +215,7 @@ class RiskAgent:
         triggers: list[AutoImprovementTrigger] = []
         try:
             clean = (
-                result_text.strip()
-                .removeprefix("```json")
-                .removesuffix("```")
-                .strip()
+                result_text.strip().removeprefix("```json").removesuffix("```").strip()
             )
             data = json.loads(clean) if clean else []
             for item in data if isinstance(data, list) else []:

@@ -1,5 +1,6 @@
 """INTL-04 + G2 enforcement: WIO ``allowed_tools`` never includes ``Agent``
 or Linear MCP write tools."""
+
 import re
 from pathlib import Path
 
@@ -84,9 +85,7 @@ def test_wio_calls_g3_backstop_in_each_receive_loop():
         for i, line in enumerate(lines)
         if "async for msg in client.receive_response()" in line
     ]
-    assert headers, (
-        "Could not find any client.receive_response() loop in WIO"
-    )
+    assert headers, "Could not find any client.receive_response() loop in WIO"
     for header_idx in headers:
         # Determine the block indent.
         header = lines[header_idx]

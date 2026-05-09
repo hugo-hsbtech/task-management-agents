@@ -4,21 +4,24 @@ Each command delegates to run_validated_linear_agent (the pydantic-validated
 entry point) via asyncio.run() at the CLI boundary. Typer is synchronous —
 asyncio.run() is safe here. NEVER nest asyncio.run() inside an async function.
 """
+
 from __future__ import annotations
+
 import asyncio
-import sys
 
 import typer
 from rich.console import Console
 from rich.pretty import pprint
 
-from hsb.agents.linear_agent import run_validated_linear_agent
-from hsb.contracts.linear import LinearOutput
 # Phase 3 imports — Work Item Orchestrator + rich Table for show-state
 from rich.table import Table
-from hsb.agents.work_item_orchestrator import run_orchestration_cycle
+
+from hsb.agents.linear_agent import run_validated_linear_agent
+
 # Phase 4 import — Main Orchestrator entrypoint for the `hsb run` cycle command
 from hsb.agents.main_orchestrator import run_main_orchestrator
+from hsb.agents.work_item_orchestrator import run_orchestration_cycle
+from hsb.contracts.linear import LinearOutput
 
 app = typer.Typer(name="hsb", help="HSBTech AI Engineering Workflow CLI")
 console = Console()
@@ -39,10 +42,12 @@ app.add_typer(qa_app, name="qa")
 def _dispatch(operation: str, payload: dict) -> LinearOutput:
     """Run validated agent and render the LinearOutput. Exit 1 on failure."""
     try:
-        result = asyncio.run(run_validated_linear_agent(operation=operation, payload=payload))
+        result = asyncio.run(
+            run_validated_linear_agent(operation=operation, payload=payload)
+        )
     except Exception as exc:
         console.print(f"[red]Linear Agent failed:[/red] {exc}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
     pprint(result.model_dump())
     return result
 
@@ -50,10 +55,16 @@ def _dispatch(operation: str, payload: dict) -> LinearOutput:
 @app.command("create-issue")
 def create_issue(
     title: str = typer.Option(..., "--title", help="Issue title"),
-    type: str = typer.Option("task", "--type", help="epic | user_story | task | subtask"),
+    type: str = typer.Option(
+        "task", "--type", help="epic | user_story | task | subtask"
+    ),
     team_id: str = typer.Option(..., "--team-id", help="Linear team ID"),
-    parent_id: str | None = typer.Option(None, "--parent-id", help="Linear parent issue ID (required for non-epic)"),
-    description: str | None = typer.Option(None, "--description", help="Issue description"),
+    parent_id: str | None = typer.Option(
+        None, "--parent-id", help="Linear parent issue ID (required for non-epic)"
+    ),
+    description: str | None = typer.Option(
+        None, "--description", help="Issue description"
+    ),
 ) -> None:
     """Create a Linear issue with correct parent linkage (LINR-01)."""
     payload = {
@@ -68,11 +79,21 @@ def create_issue(
 
 @app.command("update-issue")
 def update_issue(
-    issue_id: str = typer.Option(..., "--issue-id", help="Linear issue ID (e.g. LIN-123)"),
-    status: str | None = typer.Option(None, "--status", help="New workflow status (e.g. todo, in_progress, done)"),
-    qa_status: str | None = typer.Option(None, "--qa-status", help="qa_status field (approved | changes_required)"),
-    uat_status: str | None = typer.Option(None, "--uat-status", help="uat_status field (approved | changes_required)"),
-    assigned_orchestrator: str | None = typer.Option(None, "--assigned-orchestrator", help="assigned_orchestrator field"),
+    issue_id: str = typer.Option(
+        ..., "--issue-id", help="Linear issue ID (e.g. LIN-123)"
+    ),
+    status: str | None = typer.Option(
+        None, "--status", help="New workflow status (e.g. todo, in_progress, done)"
+    ),
+    qa_status: str | None = typer.Option(
+        None, "--qa-status", help="qa_status field (approved | changes_required)"
+    ),
+    uat_status: str | None = typer.Option(
+        None, "--uat-status", help="uat_status field (approved | changes_required)"
+    ),
+    assigned_orchestrator: str | None = typer.Option(
+        None, "--assigned-orchestrator", help="assigned_orchestrator field"
+    ),
 ) -> None:
     """Update a Linear issue's status, qa_status, uat_status, or assigned_orchestrator (LINR-02).
 
@@ -198,7 +219,9 @@ async def _render_next_action(work_item_id: str | None) -> None:
     READ-ONLY — must NOT call any Linear write operation (CLIR-03 / T-3-04).
     """
     payload: dict[str, object] = (
-        {"issueId": work_item_id} if work_item_id else {"filter": {"status": {"eq": "todo"}}}
+        {"issueId": work_item_id}
+        if work_item_id
+        else {"filter": {"status": {"eq": "todo"}}}
     )
     result = await run_validated_linear_agent("read", payload)
 

@@ -1,5 +1,6 @@
 """End-to-end Phase 5 integration test: Risk priority queue + UAT dispatch
 + improvement_triggers."""
+
 import pytest
 
 pytestmark = [pytest.mark.integration]

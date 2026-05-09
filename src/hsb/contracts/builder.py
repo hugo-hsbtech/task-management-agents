@@ -8,14 +8,17 @@ BLDR-04: extra='forbid' on every model — Builder cannot leak git_branch / pr_u
 Pitfall 6: BuilderInput must be constructed with FRESH Linear state — never cached.
 The CLI in src/hsb/cli/builder.py enforces this; the model itself cannot.
 """
+
 from __future__ import annotations
 
 from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class RepositoryContext(BaseModel):
     """Repo context — root_path is required so the agent's cwd is unambiguous."""
+
     root_path: str
     technical_stack: list[str] = Field(default_factory=list)
 
@@ -29,6 +32,7 @@ class BuilderInput(BaseModel):
     ALWAYS fetch fresh Linear state immediately before constructing BuilderInput
     (Pitfall 6). Never pass a cached linear_issue / issue_description.
     """
+
     work_item_id: str
     issue_description: str
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -42,6 +46,7 @@ class BuilderInput(BaseModel):
 
 class FileChanged(BaseModel):
     """A single file changed by the Builder Agent — path + summary of change."""
+
     path: str
     change_summary: str
 
@@ -50,6 +55,7 @@ class FileChanged(BaseModel):
 
 class ValidationResults(BaseModel):
     """Per-validation status. 'not_run' is the safe default when a tool is absent."""
+
     build: Literal["passed", "failed", "not_run"]
     tests: Literal["passed", "failed", "not_run"]
     lint: Literal["passed", "failed", "not_run"]
@@ -60,6 +66,7 @@ class ValidationResults(BaseModel):
 
 class ImplementationNotes(BaseModel):
     """Free-form notes from the Builder for QA + downstream agents."""
+
     decisions: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
@@ -76,6 +83,7 @@ class BuilderOutput(BaseModel):
     If those fields appear, model_config={'extra':'forbid'} rejects the output and the
     retry loop in builder_agent.py forces the agent to correct itself.
     """
+
     work_item_id: str
     implementation_status: Literal["completed", "blocked", "failed"]
     summary: str

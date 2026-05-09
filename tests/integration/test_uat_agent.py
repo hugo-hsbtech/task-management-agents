@@ -5,6 +5,7 @@ workspace per Phase 2 CONTEXT.md integration test strategy. Do NOT mock the
 SDK or Linear MCP. The remaining 8 tests are structural source-grep tests
 that pass without fixtures.
 """
+
 import pytest
 
 from hsb.agents.uat_agent import run_uat_and_validate
@@ -90,9 +91,7 @@ def test_uat_agent_allowed_tools_excludes_write_edit_agent():
         "G2: Agent must not appear"
     )
     for required in ("Read", "Glob", "Grep", "Bash"):
-        assert required in listing, (
-            f"UATA-04: {required} must appear in allowed_tools"
-        )
+        assert required in listing, f"UATA-04: {required} must appear in allowed_tools"
 
 
 def test_uat_agent_uses_make_options_factory():
@@ -106,9 +105,9 @@ def test_uat_agent_uses_make_options_factory():
 def test_uat_agent_prompt_contains_scope_boundary_literal():
     """AI-SPEC §4b.3: SCOPE BOUNDARY literal must appear in the prompt."""
     src = open("src/hsb/agents/uat_agent.py").read()
-    assert "SCOPE BOUNDARY: Only validate the acceptance criteria listed below" in src, (
-        "AI-SPEC §4b.3 violated: SCOPE BOUNDARY literal must appear in base_prompt"
-    )
+    assert (
+        "SCOPE BOUNDARY: Only validate the acceptance criteria listed below" in src
+    ), "AI-SPEC §4b.3 violated: SCOPE BOUNDARY literal must appear in base_prompt"
 
 
 def test_uat_agent_max_retries_is_three():

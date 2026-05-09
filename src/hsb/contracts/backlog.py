@@ -6,14 +6,17 @@ BKPK-05: BacklogOutput.traceability is required so every backlog can be traced b
 All models declare model_config = {"extra": "forbid"} to prevent silent schema drift
 (Pitfall 4 of 02-RESEARCH.md).
 """
+
 from __future__ import annotations
 
 from typing import Optional  # noqa: F401  (kept for forward-compat with future fields)
+
 from pydantic import BaseModel, Field
 
 
 class ProjectContext(BaseModel):
     """Project metadata embedded in BacklogInput."""
+
     name: str
     repository: str
     technical_stack: list[str] = Field(default_factory=list)
@@ -28,6 +31,7 @@ class BacklogInput(BaseModel):
     plan_source is user-specified at runtime via --plan <path> per D-02.
     FAIL if absent — no default value (BKPK-01).
     """
+
     plan_source: str  # absolute path to plan.md (no default)
     project_context: ProjectContext
 
@@ -36,6 +40,7 @@ class BacklogInput(BaseModel):
 
 class TaskItem(BaseModel):
     """A Task — leaf-level work item under a User Story or directly under an EPIC."""
+
     title: str
     description: str
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -45,6 +50,7 @@ class TaskItem(BaseModel):
 
 class UserStory(BaseModel):
     """A User Story — child of an EPIC."""
+
     title: str
     description: str
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -61,6 +67,7 @@ class EpicItem(BaseModel):
     because LLM-generated titles vary and a regex on the model would block valid
     recovery output during retry.
     """
+
     title: str
     description: str
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -72,6 +79,7 @@ class EpicItem(BaseModel):
 
 class BacklogTraceability(BaseModel):
     """Traceability metadata mapping the backlog back to its source plan (BKPK-05)."""
+
     plan_source: str
 
     model_config = {"extra": "forbid"}
@@ -83,6 +91,7 @@ class BacklogOutput(BaseModel):
     Mirrors AGENT-CONTRACTS.md §1 Output exactly.
     epics has min_length=1 — agent must produce at least one EPIC.
     """
+
     epics: list[EpicItem] = Field(min_length=1)
     traceability: BacklogTraceability
 

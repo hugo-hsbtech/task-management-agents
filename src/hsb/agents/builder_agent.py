@@ -8,16 +8,18 @@ Both lists must contain ONLY: Read, Edit, Write, plus pytest/ruff/mypy/python
 bash subcommand patterns. Third defense: BuilderOutput extra='forbid' rejects
 git_branch / pr_url etc.
 """
+
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 
 from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
     AssistantMessage,
+    ClaudeAgentOptions,
     ResultMessage,
+    query,
 )
 from dotenv import load_dotenv
 from pydantic import ValidationError

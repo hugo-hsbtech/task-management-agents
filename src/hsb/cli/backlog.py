@@ -3,6 +3,7 @@
 Wave 0 scaffold: empty typer.Typer() instance under module attribute `app`.
 Plan 02 adds @app.command(...) decorators here without touching cli/main.py.
 """
+
 import typer
 from rich.pretty import pprint
 
@@ -19,8 +20,12 @@ def _backlog_callback() -> None:
 
 @app.command("create")
 def backlog_create(
-    plan: str = typer.Option(..., "--plan", help="Absolute path to plan.md (D-02: required)"),
-    project_name: str = typer.Option(..., "--project-name", help="Project name for traceability"),
+    plan: str = typer.Option(
+        ..., "--plan", help="Absolute path to plan.md (D-02: required)"
+    ),
+    project_name: str = typer.Option(
+        ..., "--project-name", help="Project name for traceability"
+    ),
     repository: str = typer.Option(..., "--repository", help="Repository URL"),
     stack: list[str] = typer.Option(
         None, "--stack", help="Repeatable: --stack python --stack typer"

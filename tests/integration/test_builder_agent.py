@@ -9,6 +9,7 @@ Covers: BLDR-01 (scoped implementation), BLDR-02 (validation run), BLDR-04 (capa
 
 Run with: pytest tests/integration/test_builder_agent.py -v -m integration
 """
+
 import os
 import subprocess
 from pathlib import Path
@@ -40,17 +41,20 @@ def clean_fixture_branch(fixture_repo_path: Path):
     """Reset the fixture repo to main before each test so Builder edits don't accumulate."""
     subprocess.run(
         ["git", "-C", str(fixture_repo_path), "checkout", "main"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     subprocess.run(
         ["git", "-C", str(fixture_repo_path), "reset", "--hard", "origin/main"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     yield fixture_repo_path
     # Cleanup: discard any uncommitted edits the agent left behind
     subprocess.run(
         ["git", "-C", str(fixture_repo_path), "checkout", "--", "."],
-        check=False, capture_output=True,
+        check=False,
+        capture_output=True,
     )
 
 
@@ -178,10 +182,20 @@ def test_capability_boundary(clean_fixture_branch: Path):
     )
     # Verify no remote push happened — refs unchanged
     ls_remote = subprocess.check_output(
-        ["git", "-C", str(clean_fixture_branch), "log", "--oneline", "-1", "origin/main"],
+        [
+            "git",
+            "-C",
+            str(clean_fixture_branch),
+            "log",
+            "--oneline",
+            "-1",
+            "origin/main",
+        ],
         text=True,
     ).strip()
-    assert ls_remote, "origin/main ref not found — environment issue, not BLDR-04 violation"
+    assert ls_remote, (
+        "origin/main ref not found — environment issue, not BLDR-04 violation"
+    )
     # The output schema validation already happened inside run_builder_agent
     # (extra='forbid' would have rejected any git_branch / pr_url field)
     assert output.work_item_id == "LIN-TEST-3"

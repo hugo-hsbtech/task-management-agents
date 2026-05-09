@@ -1,5 +1,7 @@
 """Builder Agent CLI subcommands (populated by Phase 2 Plan 03)."""
+
 import asyncio
+
 import typer
 from rich.pretty import pprint
 
@@ -17,10 +19,18 @@ def _builder_callback() -> None:
 
 @app.command("implement")
 def builder_implement(
-    issue_id: str = typer.Option(..., "--issue-id", help="Linear work item ID (e.g. LIN-123)"),
-    plan: str = typer.Option(..., "--plan", help="Path to plan.md that generated the issue"),
-    repo_root: str = typer.Option(".", "--repo-root", help="Repository root for the implementation"),
-    stack: list[str] = typer.Option(None, "--stack", help="Repeatable: --stack python --stack typer"),
+    issue_id: str = typer.Option(
+        ..., "--issue-id", help="Linear work item ID (e.g. LIN-123)"
+    ),
+    plan: str = typer.Option(
+        ..., "--plan", help="Path to plan.md that generated the issue"
+    ),
+    repo_root: str = typer.Option(
+        ".", "--repo-root", help="Repository root for the implementation"
+    ),
+    stack: list[str] = typer.Option(
+        None, "--stack", help="Repeatable: --stack python --stack typer"
+    ),
 ):
     """Implement a Linear work item locally (BLDR-01..04).
 

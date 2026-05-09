@@ -20,6 +20,7 @@ called inside the ``async for msg in query(...)`` receive loop on every
 message — catches an SDK regression that bypasses ``allowed_tools``
 enforcement at runtime.
 """
+
 from __future__ import annotations
 
 import json
@@ -98,9 +99,7 @@ async def run_uat_and_validate(
     assert "Edit" not in options.allowed_tools, (
         "UATA-04: UAT Agent must not have Edit tool"
     )
-    assert "Agent" not in options.allowed_tools, (
-        "G2 / WORC-02: 'Agent' must not appear"
-    )
+    assert "Agent" not in options.allowed_tools, "G2 / WORC-02: 'Agent' must not appear"
     assert getattr(options, "mcp_servers", None) in (None, {}), (
         "UATA-04: UAT Agent must not have mcp_servers"
     )
@@ -111,8 +110,7 @@ async def run_uat_and_validate(
         prompt = base_prompt
         if last_error:
             prompt += (
-                f"\n\nPrevious attempt failed validation: {last_error}. "
-                "Fix and retry."
+                f"\n\nPrevious attempt failed validation: {last_error}. Fix and retry."
             )
 
         result_text = ""
@@ -129,17 +127,12 @@ async def run_uat_and_validate(
                         print(block.text, end="", flush=True)
             if isinstance(msg, ResultMessage):
                 if msg.stop_reason == "error_max_turns":
-                    raise RuntimeError(
-                        f"UAT Agent hit max_turns for {user_story_id}"
-                    )
+                    raise RuntimeError(f"UAT Agent hit max_turns for {user_story_id}")
                 result_text = msg.result or ""
 
         try:
             clean = (
-                result_text.strip()
-                .removeprefix("```json")
-                .removesuffix("```")
-                .strip()
+                result_text.strip().removeprefix("```json").removesuffix("```").strip()
             )
             data = json.loads(clean)
             data.setdefault("user_story_id", user_story_id)

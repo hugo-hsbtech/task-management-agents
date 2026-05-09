@@ -7,6 +7,7 @@ test SKIPS gracefully when ``TEST_WORK_ITEM_ID`` is not set.
 VALIDATION.md aliases:
 - CLIR-01: ``test_run_next_step``
 """
+
 from __future__ import annotations
 
 import os
@@ -33,16 +34,14 @@ def _require_test_work_item_id() -> str:
 
 # --- CLIR-01: hsb run-next-step triggers one orchestration cycle ------------
 
+
 @pytest.mark.integration
 def test_run_next_step_triggers_lifecycle() -> None:
     """CLIR-01: ``hsb run-next-step`` triggers one orchestration cycle against real Linear."""
     work_item_id = _require_test_work_item_id()
-    result = runner.invoke(
-        app, ["run-next-step", "--work-item-id", work_item_id]
-    )
+    result = runner.invoke(app, ["run-next-step", "--work-item-id", work_item_id])
     assert result.exit_code == 0, (
-        f"run-next-step failed: stdout={result.stdout!r} "
-        f"exception={result.exception!r}"
+        f"run-next-step failed: stdout={result.stdout!r} exception={result.exception!r}"
     )
 
 
@@ -54,6 +53,7 @@ def test_run_next_step() -> None:
 
 # --- CLIR-02 (integration variant) ------------------------------------------
 
+
 @pytest.mark.integration
 def test_show_state_returns_table_output() -> None:
     """CLIR-02: ``hsb show-state`` produces a rich Table against real Linear state.
@@ -63,17 +63,14 @@ def test_show_state_returns_table_output() -> None:
     that at least one D-08 column header (or the Table title) appears in the
     rendered output.
     """
-    if not (
-        os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("LINEAR_API_KEY")
-    ):
+    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("LINEAR_API_KEY")):
         pytest.skip(
             "Neither ANTHROPIC_API_KEY nor LINEAR_API_KEY set — show-state "
             "needs Linear MCP credentials."
         )
     result = runner.invoke(app, ["show-state"])
     assert result.exit_code == 0, (
-        f"show-state failed: stdout={result.stdout!r} "
-        f"exception={result.exception!r}"
+        f"show-state failed: stdout={result.stdout!r} exception={result.exception!r}"
     )
     assert any(
         marker in result.stdout
