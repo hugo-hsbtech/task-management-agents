@@ -45,6 +45,10 @@ shell: ## Open a bash shell inside a fresh container
 auth-linear: ## Run mcp-remote to complete Linear OAuth (one-time, persists in named volume)
 	@./scripts/auth-linear.sh
 
+.PHONY: kill-stale
+kill-stale: ## Remove any lingering hsb-agents containers
+	@./scripts/kill-stale.sh
+
 .PHONY: clean
 clean: ## Stop service and remove volumes + locally-built image
 	@./scripts/clean.sh
