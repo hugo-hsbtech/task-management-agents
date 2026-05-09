@@ -7,30 +7,60 @@ of (cell_type, source) tuples; this script materialises them as canonical
 
 Run from repo root:  uv run python notebooks/_build_notebooks.py
 
-Idempotent — rerunning produces byte-identical output for unchanged specs.
+Output canonicalisation:
+- Cell keys are emitted in nbformat schema order (cell_type, execution_count,
+  id, metadata, outputs, source) so re-running this script is byte-stable.
+- The trailing "\\n" on the last source line is stripped, matching the
+  convention Jupyter Lab uses when it saves a notebook.
+- Embedded code is then handed to ``ruff format --stdin-filename`` so the
+  on-disk shape matches what the ruff-format pre-commit hook would produce.
+  Run twice in a row and the second run is a no-op.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 # (cell_type, cell_id, source)  — keep ids stable so reviewers can navigate.
 Spec = list[tuple[str, str, str]]
 
 
+def _split_source(source: str) -> list[str]:
+    """Split source into lines like Jupyter Lab does on save.
+
+    Each line keeps its trailing newline EXCEPT the last, which Jupyter Lab
+    drops. Without this, every save round-trip produces a diff against what
+    this script generates.
+    """
+    lines = source.splitlines(keepends=True)
+    if lines and lines[-1].endswith("\n"):
+        lines[-1] = lines[-1].rstrip("\n")
+    return lines
+
+
 def render(spec: Spec) -> dict:
     cells = []
     for cell_type, cell_id, source in spec:
-        cell: dict = {
-            "cell_type": cell_type,
-            "id": cell_id,
-            "metadata": {},
-            "source": source.splitlines(keepends=True),
-        }
+        # Key order matches the nbformat 4 schema canonical order Jupyter Lab
+        # writes on save. Diverging here re-orders keys on every regen.
         if cell_type == "code":
-            cell["execution_count"] = None
-            cell["outputs"] = []
+            cell: dict = {
+                "cell_type": cell_type,
+                "execution_count": None,
+                "id": cell_id,
+                "metadata": {},
+                "outputs": [],
+                "source": _split_source(source),
+            }
+        else:
+            cell = {
+                "cell_type": cell_type,
+                "id": cell_id,
+                "metadata": {},
+                "source": _split_source(source),
+            }
         cells.append(cell)
     return {
         "cells": cells,
@@ -549,15 +579,16 @@ Surface added by the Codex alt-runtime work (see spec). Three structural invaria
         "runtime-symbols",
         code(
             """\
-from hsb.runtime import AgentOptions, Message, Runtime, StatefulClient
-from hsb.runtime.protocol import PermissionMode, RuntimeName
-from hsb.runtime.claude import ClaudeRuntime
+import hsb.runtime as runtime_pkg
 from hsb.runtime import codex as codex_module
 from hsb.runtime import codex_guards
+from hsb.runtime.claude import ClaudeRuntime
+from hsb.runtime.protocol import PermissionMode, RuntimeName
 
-# Names that must keep existing — the spec promises them.
+# Names the spec promises must remain on hsb.runtime — hasattr is the actual
+# check (the bare `from ... import` would only fail if the names disappeared).
 for sym in ("AgentOptions", "Message", "Runtime", "StatefulClient"):
-    assert sym in {"AgentOptions", "Message", "Runtime", "StatefulClient"}
+    assert hasattr(runtime_pkg, sym), f"hsb.runtime missing {sym!r}"
 assert PermissionMode.__args__ == (
     "default",
     "acceptEdits",
@@ -1516,7 +1547,6 @@ Pure-Python dispatch controller. Things you can poke without spawning a real WIO
         "setup",
         code(
             """\
-import asyncio
 import os
 import shutil
 import subprocess
@@ -3064,7 +3094,10 @@ else:
 
     print(f"fix subtasks present on board: {len(fix_subtasks)}")
     for s in fix_subtasks[:10]:
-        print(f"  {s.get('id')}  {s.get('status'):<10s}  {s.get('title', '')[:80]}")
+        # `:<10s` raises TypeError on None — fall back to '?' for missing keys.
+        sid = s.get("id") or "?"
+        sstatus = s.get("status") or "?"
+        print(f"  {sid}  {sstatus:<10s}  {s.get('title', '')[:80]}")
     print()
     if fix_subtasks:
         print("Round-trip detected: re-run Phase 8 to dispatch the fix subtasks.")
@@ -3115,7 +3148,10 @@ else:
         print("Final board state:")
         for ent in snapshot.linear_entities or []:
             if isinstance(ent, dict):
-                print(f"  {ent.get('id'):<14s}  {ent.get('status'):<10s}  {ent.get('title', '')[:80]}")
+                # `:<14s`/`:<10s` raise TypeError on None — default to '?'.
+                eid = ent.get("id") or "?"
+                estatus = ent.get("status") or "?"
+                print(f"  {eid:<14s}  {estatus:<10s}  {ent.get('title', '')[:80]}")
         print()
         print("EPIC integration branch awaits human merge — system never merges to main.")"""
         ),
@@ -3227,6 +3263,7 @@ def main() -> None:
         "06_wio_full_loop.ipynb": NB_06,
         "07_full_pipeline_story.ipynb": NB_07,
     }
+    written: list[Path] = []
     for name, spec in targets.items():
         path = here / name
         # ensure_ascii=False keeps em-dashes, en-dashes etc. as raw UTF-8 so
@@ -3234,6 +3271,31 @@ def main() -> None:
         # every commit. indent=1 matches Jupyter Lab's save format.
         path.write_text(json.dumps(render(spec), indent=1, ensure_ascii=False) + "\n")
         print(f"wrote {path.relative_to(here.parent)}  ({len(spec)} cells)")
+        written.append(path)
+
+    # Run ruff format on the written notebooks so the on-disk shape matches
+    # what the ruff-format pre-commit hook produces. Without this, the first
+    # commit after a regeneration always picks up reformat-only diffs.
+    if not written:
+        return
+    try:
+        subprocess.run(
+            ["ruff", "format", *(str(p) for p in written)],
+            check=True,
+            capture_output=True,
+        )
+        print(f"ruff-formatted {len(written)} notebook(s)")
+    except FileNotFoundError:
+        # ruff isn't installed in this env (e.g. minimal runner). Skip with a
+        # clear message — pre-commit will reformat at commit time anyway.
+        print("ruff not available — skipped post-format pass")
+    except subprocess.CalledProcessError as exc:
+        # Don't mask formatter errors — they signal a real problem.
+        raise SystemExit(
+            f"ruff format failed (exit {exc.returncode}):\n"
+            f"{exc.stdout.decode(errors='replace')}\n"
+            f"{exc.stderr.decode(errors='replace')}"
+        ) from exc
 
 
 if __name__ == "__main__":

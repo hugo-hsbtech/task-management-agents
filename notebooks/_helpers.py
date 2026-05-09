@@ -94,9 +94,18 @@ def selected_runtime(agent_name: str) -> str:
     does NOT instantiate the runtime — the notebook may want to render the
     selection without paying the cost of constructing ``CodexRuntime`` (which
     asserts ~/.codex config on init).
+
+    A missing or empty value defaults to ``"claude"`` (the resolver default);
+    any other value is returned as-is so the notebook display matches what
+    ``resolve_runtime`` would see — including the invalid values it would
+    reject. Callers should NOT treat the return as pre-validated.
     """
     env_var = f"HSB_RUNTIME_{agent_name.upper()}"
-    return os.environ.get(env_var, "claude").strip().lower() or "claude"
+    raw = os.environ.get(env_var)
+    if raw is None:
+        return "claude"
+    value = raw.strip().lower()
+    return value or "claude"
 
 
 def runtime_summary() -> str:
