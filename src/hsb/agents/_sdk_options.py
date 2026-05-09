@@ -271,3 +271,42 @@ def resolve_runtime(agent_name: str):
     raise ValueError(
         f"{env_var}={value!r} is invalid. Allowed: 'claude' or 'codex'."
     )
+
+
+def make_agent_options(
+    system_prompt: str,
+    allowed_tools,
+    permission_mode,
+    max_turns: int,
+    model: str,
+    mcp_servers: dict | None = None,
+    cwd: str | None = None,
+    output_schema: dict | None = None,
+    hooks=None,
+):
+    """Runtime-agnostic options factory. Returns AgentOptions.
+
+    Enforces G1 + G2 (same as make_options). Use this when an agent goes
+    through the Runtime Protocol; use make_options() when an agent still
+    calls claude_agent_sdk directly.
+    """
+    from hsb.runtime.protocol import AgentOptions
+
+    assert_oauth2_only()  # G1
+    forbidden = _FORBIDDEN_TOOLS & set(allowed_tools)
+    if forbidden:
+        raise ValueError(
+            f"G2 violation: {forbidden} must not appear in allowed_tools. "
+            "Sub-subagent dispatch is forbidden by WORC-02."
+        )
+    return AgentOptions(
+        system_prompt=system_prompt,
+        allowed_tools=tuple(allowed_tools),
+        permission_mode=permission_mode,
+        max_turns=max_turns,
+        model=model,
+        mcp_servers=mcp_servers,
+        cwd=cwd,
+        output_schema=output_schema,
+        hooks=hooks,
+    )
