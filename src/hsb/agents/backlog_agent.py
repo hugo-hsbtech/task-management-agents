@@ -91,6 +91,10 @@ async def _run_backlog_agent_async(input: BacklogInput) -> BacklogOutput:
         result_text: str | None = None
         async for message in runtime.query(prompt, options):
             sdk_msg = message.raw
+
+            # Claude-only: SystemMessage init exposes per-MCP connection status.
+            # Codex MCP failures surface earlier via verify_codex_mcp() at query
+            # entry, so this path is intentionally Claude-only.
             if isinstance(sdk_msg, SystemMessage) and sdk_msg.subtype == "init":
                 failed = [
                     s
@@ -99,17 +103,36 @@ async def _run_backlog_agent_async(input: BacklogInput) -> BacklogOutput:
                 ]
                 if failed:
                     raise RuntimeError(f"Linear MCP failed to connect: {failed}")
-            elif isinstance(sdk_msg, AssistantMessage):
+                continue
+
+            # Claude AssistantMessage: print text + tool-use names for observability.
+            if isinstance(sdk_msg, AssistantMessage):
                 for block in sdk_msg.content:
                     if hasattr(block, "text"):
                         print(block.text)
                     elif hasattr(block, "name"):
                         print(f"[TOOL] {block.name}")
-            elif isinstance(sdk_msg, ResultMessage):
+                continue
+
+            # Claude ResultMessage: explicit success/failure subtype.
+            if isinstance(sdk_msg, ResultMessage):
                 if sdk_msg.subtype == "success":
                     result_text = sdk_msg.result
                 else:
                     raise RuntimeError(f"Backlog Agent failed: {sdk_msg.subtype}")
+                continue
+
+            # Runtime-agnostic path (covers Codex events): accumulate text from
+            # any Message that carries content, and treat is_final as the final
+            # result sentinel. This is what makes the agent flip-able.
+            if message.text:
+                print(message.text)
+            if message.is_final:
+                # On Codex, the final event carries the model's last message
+                # text in message.text. On Claude this branch is unreachable
+                # (ResultMessage handler above sets result_text and continues).
+                if result_text is None:
+                    result_text = message.text
 
         if result_text is None:
             logger.warning("Attempt %d: no result text", attempt)

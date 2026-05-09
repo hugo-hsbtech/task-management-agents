@@ -149,53 +149,37 @@ async def test_claude_path_yields_valid_backlog_output(monkeypatch, backlog_inpu
 async def test_codex_path_yields_valid_backlog_output(
     monkeypatch, backlog_input, codex_home
 ):
-    """HSB_RUNTIME_BACKLOG=codex: CodexRuntime path produces a valid BacklogOutput.
+    """HSB_RUNTIME_BACKLOG=codex: real CodexRuntime, mocked SDK at the seam.
 
-    The backlog_agent inner loop does isinstance(sdk_msg, ResultMessage) on
-    message.raw. With the Codex runtime, raw events are native Codex objects —
-    none match ResultMessage — so result_text would never be set if the Codex
-    runtime yielded raw Codex events directly.
-
-    We mock resolve_runtime to return a fake runtime that yields Protocol
-    Message objects whose .raw satisfies the agent's isinstance checks (a
-    spec-bound ResultMessage mock), which is the correct end-to-end contract:
-    the Runtime Protocol must produce Messages that the agent can consume.
-    This also lets us assert that start_thread was called on the Codex client.
+    Verifies the runtime-agnostic completion path: backlog_agent must
+    pick up result_text from message.is_final (Codex) — NOT from
+    isinstance(raw, ResultMessage) (Claude-only).
     """
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "codex")
 
-    from claude_agent_sdk import ResultMessage
-    from hsb.runtime.protocol import Message
+    # Fake one Codex event carrying the JSON. CodexRuntime will yield it
+    # then a synthetic is_final=True Message containing the buffered text.
+    fake_event = SimpleNamespace(text=FIXTURE_BACKLOG_JSON)
 
-    fake_result_raw = MagicMock(spec=ResultMessage)
-    fake_result_raw.subtype = "success"
-    fake_result_raw.result = FIXTURE_BACKLOG_JSON
-    fake_result_raw.usage = {}
+    async def _events():
+        yield fake_event
 
-    # Track whether start_thread was called to verify Codex path was taken.
-    codex_thread_called = {"n": 0}
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(
+        return_value=SimpleNamespace(events=_events())
+    )
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
 
-    async def fake_codex_query(prompt, options):
-        codex_thread_called["n"] += 1
-        yield Message(text=FIXTURE_BACKLOG_JSON, is_final=True, raw=fake_result_raw)
-
-    fake_runtime = MagicMock()
-    fake_runtime.query = fake_codex_query
-
-    # Patch resolve_runtime at the backlog_agent module's namespace (where it
-    # was imported via `from hsb.agents._sdk_options import resolve_runtime`).
-    # Also null out LINEAR_HOOKS so make_agent_options passes hooks=None —
-    # CodexRuntime rejects non-None hooks with NotImplementedError.
+    # LINEAR_HOOKS must be None for the Codex path (CodexRuntime rejects hooks).
     with (
-        patch(
-            "hsb.agents.backlog_agent.resolve_runtime", return_value=fake_runtime
-        ),
         patch("hsb.agents.backlog_agent.LINEAR_HOOKS", None),
+        patch("hsb.runtime.codex.Codex", return_value=fake_codex),
     ):
         out = await _run_backlog_agent_async(backlog_input)
 
     assert len(out.epics) == 1
-    assert codex_thread_called["n"] == 1  # runtime.query was called once
+    fake_codex.start_thread.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

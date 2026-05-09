@@ -79,8 +79,8 @@ def make_options(
 ) -> ClaudeAgentOptions:
     """Construct a ``ClaudeAgentOptions`` with G1 + G2 enforcement.
 
-    G1: ``assert_oauth2_only()`` raises ``RuntimeError`` if
-    ``ANTHROPIC_API_KEY`` is set in the environment.
+    G1: raises RuntimeError if any forbidden API-key env var
+    (ANTHROPIC_API_KEY or OPENAI_API_KEY) is set.
 
     G2: raises ``ValueError`` if any tool name in ``_FORBIDDEN_TOOLS``
     (currently ``{"Agent"}``) is present in ``allowed_tools``. WORC-02

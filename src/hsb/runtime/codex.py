@@ -36,6 +36,24 @@ from hsb.runtime.protocol import (
 )
 
 
+def _extract_event_text(evt: Any) -> str:
+    """Pull the text payload from a Codex ThreadEvent.
+
+    Real Codex events vary: AgentMessageItem has a .text on its content
+    blocks; ItemCompletedEvent wraps an item; SimpleNamespace fakes used
+    in tests just have .text. Return "" if nothing readable.
+    """
+    direct = getattr(evt, "text", None)
+    if isinstance(direct, str) and direct:
+        return direct
+    item = getattr(evt, "item", None)
+    if item is not None:
+        item_text = getattr(item, "text", None)
+        if isinstance(item_text, str) and item_text:
+            return item_text
+    return ""
+
+
 _PERMISSION_MAP: dict[PermissionMode, str] = {
     "default": "on-request",
     "acceptEdits": "never",
@@ -100,17 +118,35 @@ class CodexRuntime:
         )
 
         turns_seen = 0
+        final_text_buffer: list[str] = []
+
         async for evt in streamed.events:
             turns_seen += 1
             if turns_seen > options.max_turns:
                 raise RuntimeError(
                     f"Codex exceeded max_turns={options.max_turns}; aborting."
                 )
+
+            # Extract text from the event using the SDK's typed attributes
+            # where present, falling back to a generic .text attr for fakes.
+            evt_text = _extract_event_text(evt)
+            if evt_text:
+                final_text_buffer.append(evt_text)
+
             yield Message(
-                text=getattr(evt, "text", "") or "",
-                is_final=getattr(evt, "is_final", False),
+                text=evt_text,
+                is_final=False,
                 raw=evt,
             )
+
+        # After the stream ends, emit a synthetic final Message carrying the
+        # accumulated text. This is the runtime-agnostic completion sentinel
+        # that runtime-aware agents (e.g. Backlog) consume via message.is_final.
+        yield Message(
+            text="".join(final_text_buffer),
+            is_final=True,
+            raw=None,
+        )
 
     def client(self, options: AgentOptions) -> Any:
         raise NotImplementedError(

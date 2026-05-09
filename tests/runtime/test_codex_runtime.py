@@ -156,3 +156,29 @@ async def test_query_passes_cwd_and_output_schema(codex_home, opts):
     assert thread_options_arg.working_directory == "/tmp"
     turn_options_arg = fake_thread.run_streamed.call_args.args[1]
     assert turn_options_arg.output_schema == {"type": "object"}
+
+
+@pytest.mark.asyncio
+async def test_query_uses_codex_path_override_env(codex_home, opts, monkeypatch):
+    """Setting CODEX_PATH_OVERRIDE makes CodexRuntime pass CodexOptions to Codex()."""
+    from hsb.runtime.codex import CodexRuntime
+
+    monkeypatch.setenv("CODEX_PATH_OVERRIDE", "/usr/local/bin/codex")
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([]))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex) as codex_cls:
+        rt = CodexRuntime(codex_home=codex_home)
+        async for _ in rt.query("p", opts):
+            pass
+
+    # Codex(...) must have been called with a single CodexOptions arg whose
+    # codex_path_override equals our env var.
+    codex_cls.assert_called_once()
+    args = codex_cls.call_args.args
+    assert len(args) == 1
+    codex_opts = args[0]
+    assert codex_opts.codex_path_override == "/usr/local/bin/codex"
