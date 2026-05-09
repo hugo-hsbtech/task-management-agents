@@ -18,8 +18,9 @@ you a place to read agent state interactively while the system is paused.
 | `04_linear_and_knowledge_readonly.ipynb` | Linear MCP read-only + Knowledge Store retrieval + runtime probes | Low (read-only) | None |
 | `05_per_agent_smoke.ipynb` | Backlog / Builder / Git / QA / UAT on minimal fixtures | Variable, gated | Variable, gated |
 | `06_wio_full_loop.ipynb` | One Work Item Orchestrator end-to-end (Claude-only by hard-block) | High, gated | Yes — gated on `HSB_NOTEBOOK_RUN_LIVE=1` |
+| `07_full_pipeline_story.ipynb` | Full pipeline end-to-end: plan → Backlog → Linear → Global+Risk → Main parallel → WIOs → UAT round-trip → Knowledge → skill 14 | Variable, gated per-phase | Yes — gated on `HSB_NOTEBOOK_RUN_LIVE=1` plus per-phase env vars |
 
-Notebooks 04–06 read environment flags before doing anything that costs tokens
+Notebooks 04–07 read environment flags before doing anything that costs tokens
 or touches Linear/git. Default state = explore-only. Set the flag explicitly
 when you want to run live.
 
@@ -77,13 +78,13 @@ The notebooks read these (all optional, all gated):
 
 | Var | Notebook | Purpose |
 |-----|----------|---------|
-| `CLAUDE_CODE_OAUTH_TOKEN` | 04, 05, 06 | OAuth2 token for Claude (G1 — never use `ANTHROPIC_API_KEY`) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | 04, 05, 06, 07 | OAuth2 token for Claude (G1 — never use `ANTHROPIC_API_KEY`) |
 | `CODEX_HOME` | 04, 05 | Override `~/.codex` location for the Codex auth/config probe |
-| `HSB_RUNTIME_<AGENT>` | 04, 05 | Per-agent runtime — `claude` (default) or `codex`. WIO hard-blocked from `codex`. |
-| `HSB_NOTEBOOK_RUN_LIVE` | 04, 05, 06 | Set to `1` to actually call SDK / Linear MCP |
-| `HSB_NOTEBOOK_LINEAR_TEAM_ID` | 04, 05 | Sandbox Linear team ID for read probes |
+| `HSB_RUNTIME_<AGENT>` | 04, 05, 07 | Per-agent runtime — `claude` (default) or `codex`. WIO hard-blocked from `codex`. |
+| `HSB_NOTEBOOK_RUN_LIVE` | 04, 05, 06, 07 | Set to `1` to actually call SDK / Linear MCP |
+| `HSB_NOTEBOOK_LINEAR_TEAM_ID` | 04, 05, 07 | Sandbox Linear team ID for read probes / nb 07 dispatch target |
 | `HSB_NOTEBOOK_LINEAR_ISSUE_ID` | 04 | Linear issue ID for the `get_issue` read probe |
-| `HSB_NOTEBOOK_PLAN_MD` | 05 | Path to a plan.md to drive a Backlog Agent live run |
+| `HSB_NOTEBOOK_PLAN_MD` | 05, 07 | Path to a plan.md to drive Backlog (nb 05 / Phase 2 of nb 07) |
 | `HSB_NOTEBOOK_SCRATCH_DIR` | 03, 05, 06 | Where to put a throwaway git repo for Builder / Git fixtures |
 | `HSB_NOTEBOOK_WIO_TASK_ID` | 06 | Sandbox Linear LIN-ID for the WIO live run |
 
