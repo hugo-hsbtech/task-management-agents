@@ -306,7 +306,15 @@ async def run_orchestration_cycle(work_item_id: str | None = None) -> None:
             assert_no_task_dispatch(msg)  # G3 runtime backstop for G2 (WORC-02)
             if isinstance(msg, SystemMessage) and msg.subtype == "init":
                 mcp_servers = msg.data.get("mcp_servers", [])
-                failed = [s for s in mcp_servers if s.get("status") != "connected"]
+                # Only inspect servers we registered — the SDK init message
+                # may surface globally-registered MCPs (e.g. user-level OAuth
+                # servers) whose auth state is unrelated to this orchestrator.
+                required = {"agents", "linear"}
+                failed = [
+                    s
+                    for s in mcp_servers
+                    if s.get("name") in required and s.get("status") != "connected"
+                ]
                 if failed:
                     raise RuntimeError(f"MCP server failed to connect: {failed}")
             elif isinstance(msg, AssistantMessage):
