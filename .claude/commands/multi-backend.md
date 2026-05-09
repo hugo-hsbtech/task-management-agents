@@ -1,3 +1,6 @@
+> [!NOTE]
+> [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only]
+
 # Backend - Backend-Focused Development
 
 Backend-focused workflow (Research → Ideation → Plan → Execute → Optimize → Review), Codex-led.

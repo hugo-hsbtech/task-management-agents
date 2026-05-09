@@ -161,9 +161,9 @@ Full sandbox rules and the table of what the SDK catches vs. what it does NOT ca
 
 ---
 
-## Ezra Platform Conventions
+## Project Conventions
 
-When working in the Ezra monorepo, follow the project-specific conventions in [references/ezra-conventions.md](references/ezra-conventions.md). Key rules:
+When working in this project, follow the project-specific conventions in [references/ezra-conventions.md](references/ezra-conventions.md). Key rules:
 
 - **Activity shells live in each domain package** (`{domain}/activities.py`), not in the workflows domain
 - **Each domain exports an `ACTIVITIES` list** that the worker app imports

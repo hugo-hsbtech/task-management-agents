@@ -1,11 +1,11 @@
 ---
 name: fastapi-patterns
-description: Use when building or modifying FastAPI services, adding new endpoints, or creating new backend apps in Ezra. Covers Depends-based dependency injection, router composition, lifespan wiring, Pydantic v2 schemas, async handlers, middleware, HTTPException handling, background tasks, and OpenAPI customization for Orval-compatible APIs.
+description: Use when building or modifying FastAPI services, adding new endpoints, or creating new backend apps. Covers Depends-based dependency injection, router composition, lifespan wiring, Pydantic v2 schemas, async handlers, middleware, HTTPException handling, background tasks, and OpenAPI customization for Orval-compatible APIs.
 ---
 
 # FastAPI Patterns
 
-Use this skill when working on Ezra backend services built with FastAPI.
+Use this skill when working on backend services built with FastAPI.
 
 ## When to Use
 
@@ -39,7 +39,7 @@ Read these files before making framework-level changes:
 
 ## App Shape
 
-Ezra apps are independently deployable FastAPI services under `backend/packages/apps/`.
+Apps are independently deployable FastAPI services under `backend/packages/apps/`.
 Each app should expose a `GET /healthz` endpoint and wire shared infrastructure through lifespan.
 
 Minimal app shape:
@@ -233,7 +233,7 @@ Guidelines:
 ## Middleware
 
 Register middleware at app construction time.
-The current Ezra apps already conditionally add CORS middleware based on `CORSSettings`.
+The current apps already conditionally add CORS middleware based on `CORSSettings`.
 
 ```python
 from fastapi.middleware.cors import CORSMiddleware

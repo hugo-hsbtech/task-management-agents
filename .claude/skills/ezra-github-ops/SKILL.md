@@ -1,6 +1,6 @@
 ---
 name: ezra-github-ops
-description: GitHub PR operations via gh CLI. Use when creating reviews, replying to comments, or fetching PR data. CRITICAL - Always create reviews as drafts by omitting the event field.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] GitHub PR operations via gh CLI. Use when creating reviews, replying to comments, or fetching PR data. CRITICAL - Always create reviews as drafts by omitting the event field.
 allowed-tools: Bash
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: coding-standards
-description: Universal coding standards, best practices, and patterns for TypeScript, JavaScript, React, and Node.js development.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Universal coding standards, best practices, and patterns for TypeScript, JavaScript, React, and Node.js development.
 origin: ECC
 ---
 

@@ -5,7 +5,7 @@ description: PydanticAI agent patterns for structured output reliability — Fie
 
 # PydanticAI Agent Patterns
 
-Patterns for building reliable PydanticAI agents with structured output in the Ezra platform.
+Patterns for building reliable PydanticAI agents with structured output in this project.
 
 ## When to Activate
 

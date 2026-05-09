@@ -1,7 +1,6 @@
 ---
 name: product-analytics-ts-posthog
-description: TypeScript product analytics patterns using PostHog JS and Node SDKs — event capture, user identification, super properties, group analytics, Next.js pageview tracking, autocapture configuration, and testing.
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] TypeScript product analytics patterns using PostHog JS and Node SDKs — event capture, user identification, super properties, group analytics, Next.js pageview tracking, autocapture configuration, and testing.
 author: Carlos Melgoza
 ---
 

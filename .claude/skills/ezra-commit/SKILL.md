@@ -1,6 +1,6 @@
 ---
 name: ezra-commit
-description: Create git commits and relevant branches with user approval and no Claude attribution
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Create git commits and relevant branches with user approval and no Claude attribution
 ---
 
 # Commit Changes

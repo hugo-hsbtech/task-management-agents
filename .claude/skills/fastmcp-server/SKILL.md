@@ -1,6 +1,6 @@
 ---
 name: fastmcp-server
-description: Complete guide for building MCP servers with FastMCP 3.0 and scaffolding MCP servers in the Ezra platform. Use when creating Python MCP servers, adding MCP tools, or scaffolding MCP for a backend app. Triggers on "add MCP server to", "scaffold MCP for", "create MCP tools for", "new MCP server", "FastMCP".
+description: Complete guide for building MCP servers with FastMCP 3.0 and scaffolding MCP servers in this project. Use when creating Python MCP servers, adding MCP tools, or scaffolding MCP for a backend app. Triggers on "add MCP server to", "scaffold MCP for", "create MCP tools for", "new MCP server", "FastMCP".
 version: 1.0.0
 author: FastMCP Community
 license: MIT
@@ -17,8 +17,8 @@ Complete reference for building production-ready MCP (Model Context Protocol) se
 **Use FastMCP Server when:**
 - Creating a new MCP server in Python
 - Adding tools, resources, or prompts to an MCP server
-- Scaffolding an MCP server for a new or existing Ezra backend app
-- Adding MCP capabilities to a FastAPI service in the Ezra monorepo
+- Scaffolding an MCP server for a new or existing backend app
+- Adding MCP capabilities to a FastAPI service in this project
 - Implementing authentication (OAuth, OIDC, token verification)
 - Setting up middleware for logging, rate limiting, or authorization
 - Configuring providers (local, filesystem, skills, custom)
@@ -196,9 +196,9 @@ Detailed documentation is organized in the `references/` folder:
 - **providers/skills.md** - Package and distribute component bundles
 - **providers/custom.md** - Build custom providers for any component source
 
-## Ezra Platform Integration
+## Project Integration
 
-When scaffolding MCP servers in the Ezra platform monorepo, use the `ezra-mcp` shared infrastructure domain.
+When scaffolding MCP servers in this project, use the `ezra-mcp` shared infrastructure domain.
 
 ### Shared Infrastructure (`ezra-mcp` domain at `backend/packages/domains/mcp/`)
 

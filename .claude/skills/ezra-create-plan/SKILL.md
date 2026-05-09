@@ -1,6 +1,6 @@
 ---
 name: ezra-create-plan
-description: Create detailed implementation plans through interactive research and iteration
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Create detailed implementation plans through interactive research and iteration
 model: opus
 ---
 
