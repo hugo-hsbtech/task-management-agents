@@ -239,3 +239,35 @@ def linear_write_guard(fn):
         return _async_wrapper
 
     return _sync_wrapper
+
+
+# ---------------------------------------------------------------------------
+# Per-agent runtime resolution. See:
+# docs/superpowers/specs/2026-05-09-codex-oauth-alt-runtime-design.md §5.4
+# ---------------------------------------------------------------------------
+
+def resolve_runtime(agent_name: str):
+    """Return the Runtime implementation for the given agent.
+
+    Reads env var HSB_RUNTIME_<AGENT_NAME_UPPER>; default "claude".
+    WIO is hard-coded to claude — HSB_RUNTIME_WIO=codex raises.
+    """
+    from hsb.runtime.claude import ClaudeRuntime
+    from hsb.runtime.codex import CodexRuntime
+
+    env_var = f"HSB_RUNTIME_{agent_name.upper()}"
+    value = os.environ.get(env_var, "claude").strip().lower()
+
+    if agent_name.lower() == "wio" and value == "codex":
+        raise ValueError(
+            "WIO is not flippable yet — stateful ClaudeSDKClient session has "
+            "no Codex equivalent. Track separately when porting WIO."
+        )
+
+    if value == "claude":
+        return ClaudeRuntime()
+    if value == "codex":
+        return CodexRuntime()
+    raise ValueError(
+        f"{env_var}={value!r} is invalid. Allowed: 'claude' or 'codex'."
+    )
