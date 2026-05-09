@@ -35,6 +35,7 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
     "pre-commit>=4.0",
+    "jupyterlab>=4.0",  # for manual inspection notebooks under notebooks/
 ]
 
 [tool.ruff]
@@ -54,6 +55,7 @@ ignore = [
 "tests/conftest.py" = ["E402"]            # Phase-5 fixtures import after event-loop setup
 "tests/**/*.py" = ["SIM115"]             # structural tests use open().read() by convention
 "tests/*.py" = ["SIM115"]
+"notebooks/*.ipynb" = ["E402", "E701", "F841", "B007"]  # notebook idioms: imports-after-setup, single-line try/except, ad-hoc bindings
 
 [tool.ruff.format]
 quote-style = "double"
