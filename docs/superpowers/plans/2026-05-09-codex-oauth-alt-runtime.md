@@ -1623,7 +1623,7 @@ async def test_backlog_runs_against_live_codex(monkeypatch, tmp_path, session_co
 
     sessions_dir = Path.home() / ".codex" / "sessions"
     sessions_after = sum(1 for _ in sessions_dir.rglob("*"))
-    assert sessions_after >= session_count_before, "Codex did not persist a session"
+    assert sessions_after > session_count_before, "Codex did not persist a session"
 ```
 
 - [ ] **Step 3: Confirm CI skips it**
