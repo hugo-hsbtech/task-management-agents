@@ -12,7 +12,7 @@ services:
     volumes:
       - ./.mcp.json:/app/.mcp.json:ro
       - hsb-mcp-auth:/root/.mcp-auth
-      - hsb-claude-state:/app/.claude
+      - hsb-claude-state:/app/.claude/projects
     stdin_open: true
     tty: true
     command: ["python", "run_loop.py"]
