@@ -15,8 +15,9 @@ import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def _gsd_clear_api_key():
-    """G1 defensive: unset ``ANTHROPIC_API_KEY`` at test session start."""
+    """G1 defensive: unset ``ANTHROPIC_API_KEY`` and ``OPENAI_API_KEY`` at test session start."""
     os.environ.pop("ANTHROPIC_API_KEY", None)
+    os.environ.pop("OPENAI_API_KEY", None)
     yield
     # Do NOT restore on teardown — test sessions are short-lived processes
     # and we never want a child test process inheriting this env var.

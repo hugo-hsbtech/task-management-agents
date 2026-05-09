@@ -1,0 +1,382 @@
+"""CodexRuntime: wraps openai_codex_sdk.Codex behind Runtime Protocol.
+
+API note (openai-codex-sdk v0.1.11):
+- Codex() constructor needs a binary; tests patch hsb.runtime.codex.Codex.
+- start_thread(ThreadOptions(...)) returns a Thread.
+- await thread.run_streamed(TextInput(type="text", text=...), TurnOptions(...))
+  returns a StreamedTurn whose .events is an async iterator.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from hsb.runtime.protocol import AgentOptions
+
+
+@pytest.fixture
+def codex_home(tmp_path):
+    home = tmp_path / "codex_home"
+    home.mkdir()
+    (home / "config.toml").write_text(
+        'forced_login_method = "chatgpt"\nmodel = "gpt-5.4"\n\n'
+        '[mcp_servers.linear]\ncommand = "npx"\nargs = []\n'
+    )
+    (home / "auth.json").write_text("{}")
+    return home
+
+
+@pytest.fixture
+def opts():
+    return AgentOptions(
+        system_prompt="sys-prompt",
+        allowed_tools=("Read",),
+        permission_mode="acceptEdits",
+        max_turns=5,
+        model="gpt-5.4",
+        mcp_servers={"linear": {"command": "npx", "args": []}},
+    )
+
+
+def _make_streamed_turn(events: list):
+    """Build a fake StreamedTurn whose .events is an async iterator over `events`."""
+
+    async def _aiter():
+        for e in events:
+            yield e
+
+    return SimpleNamespace(events=_aiter())
+
+
+def test_init_runs_oauth_check(codex_home):
+    from hsb.runtime.codex import CodexRuntime
+
+    rt = CodexRuntime(codex_home=codex_home)
+    assert rt.name == "codex"
+    assert rt._cached_config["forced_login_method"] == "chatgpt"
+
+
+def test_init_fails_when_oauth_invalid(tmp_path):
+    from hsb.runtime.codex import CodexRuntime
+
+    bad_home = tmp_path / "no_codex"
+    with pytest.raises(RuntimeError, match=r"G1-Codex"):
+        CodexRuntime(codex_home=bad_home)
+
+
+@pytest.mark.asyncio
+async def test_query_rejects_hooks(codex_home, opts):
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_with_hooks = AgentOptions(**{**opts.__dict__, "hooks": ["x"]})
+    rt = CodexRuntime(codex_home=codex_home)
+    with pytest.raises(NotImplementedError, match=r"hooks"):
+        async for _ in rt.query("p", opts_with_hooks):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_query_verifies_mcp(codex_home, opts):
+    """Requesting an MCP server not in config.toml raises before binary spawn."""
+    from hsb.runtime.codex import CodexRuntime
+
+    bad_opts = AgentOptions(
+        **{**opts.__dict__, "mcp_servers": {"missing": {"command": "x"}}}
+    )
+    rt = CodexRuntime(codex_home=codex_home)
+    with pytest.raises(RuntimeError, match=r"missing"):
+        async for _ in rt.query("p", bad_opts):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_query_calls_codex_thread_run(codex_home, opts):
+    from hsb.runtime.codex import CodexRuntime
+
+    fake_event = SimpleNamespace(text="hi from codex")
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([fake_event]))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        msgs = []
+        async for m in rt.query("hello", opts):
+            msgs.append(m)
+
+    fake_codex.start_thread.assert_called_once()
+    thread_options_arg = fake_codex.start_thread.call_args.args[0]
+    assert thread_options_arg.model == "gpt-5.4"
+    assert thread_options_arg.approval_policy == "never"
+
+    # run_streamed received a TextInput with the system+user prompt.
+    fake_thread.run_streamed.assert_awaited_once()
+    call = fake_thread.run_streamed.call_args
+    text_input = call.args[0]
+    assert "<system>sys-prompt</system>" in text_input.text
+    assert "hello" in text_input.text
+
+
+@pytest.mark.asyncio
+async def test_query_translates_permission_mode(codex_home, opts):
+    from hsb.runtime.codex import CodexRuntime
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([]))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    accept_opts = AgentOptions(
+        **{**opts.__dict__, "permission_mode": "bypassPermissions"}
+    )
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        async for _ in rt.query("p", accept_opts):
+            pass
+
+    thread_options_arg = fake_codex.start_thread.call_args.args[0]
+    assert thread_options_arg.approval_policy == "never"
+
+
+@pytest.mark.asyncio
+async def test_query_passes_cwd_and_output_schema(codex_home, opts):
+    from hsb.runtime.codex import CodexRuntime
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([]))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    cwd_opts = AgentOptions(
+        **{**opts.__dict__, "cwd": "/tmp", "output_schema": {"type": "object"}}
+    )
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        async for _ in rt.query("p", cwd_opts):
+            pass
+
+    thread_options_arg = fake_codex.start_thread.call_args.args[0]
+    assert thread_options_arg.working_directory == "/tmp"
+    turn_options_arg = fake_thread.run_streamed.call_args.args[1]
+    assert turn_options_arg.output_schema == {"type": "object"}
+
+
+@pytest.mark.asyncio
+async def test_query_uses_codex_path_override_env(codex_home, opts, monkeypatch):
+    """Setting CODEX_PATH_OVERRIDE makes CodexRuntime pass CodexOptions to Codex()."""
+    from hsb.runtime.codex import CodexRuntime
+
+    monkeypatch.setenv("CODEX_PATH_OVERRIDE", "/usr/local/bin/codex")
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([]))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex) as codex_cls:
+        rt = CodexRuntime(codex_home=codex_home)
+        async for _ in rt.query("p", opts):
+            pass
+
+    # Codex(...) must have been called with a single CodexOptions arg whose
+    # codex_path_override equals our env var.
+    codex_cls.assert_called_once()
+    args = codex_cls.call_args.args
+    assert len(args) == 1
+    codex_opts = args[0]
+    assert codex_opts.codex_path_override == "/usr/local/bin/codex"
+
+
+# ---------------------------------------------------------------------------
+# Coverage-gap tests: lines 49-54, 96, 126, 152
+# ---------------------------------------------------------------------------
+
+
+def test_extract_event_text_item_text_fallback():
+    """Lines 49-54: _extract_event_text falls back to evt.item.text when
+    evt.text is absent/empty but evt.item.text is present."""
+    from hsb.runtime.codex import _extract_event_text
+
+    evt = SimpleNamespace(item=SimpleNamespace(text="from item"))
+    assert _extract_event_text(evt) == "from item"
+
+
+def test_extract_event_text_item_text_empty_returns_empty():
+    """_extract_event_text returns '' when both evt.text and evt.item.text are absent."""
+    from hsb.runtime.codex import _extract_event_text
+
+    evt = SimpleNamespace(item=SimpleNamespace(text=""))
+    assert _extract_event_text(evt) == ""
+
+
+def test_extract_event_text_no_item_returns_empty():
+    """_extract_event_text returns '' when evt has neither text nor item."""
+    from hsb.runtime.codex import _extract_event_text
+
+    evt = SimpleNamespace()
+    assert _extract_event_text(evt) == ""
+
+
+@pytest.mark.asyncio
+async def test_query_unmappable_permission_mode_raises(codex_home, opts, monkeypatch):
+    """Line 96: an unmapped permission_mode in _PERMISSION_MAP raises NotImplementedError.
+
+    Monkeypatching _PERMISSION_MAP to {} forces every permission_mode to be unmapped.
+    """
+    import hsb.runtime.codex as codex_mod
+    from hsb.runtime.codex import CodexRuntime
+
+    monkeypatch.setattr(codex_mod, "_PERMISSION_MAP", {})
+
+    rt = CodexRuntime(codex_home=codex_home)
+    with pytest.raises(NotImplementedError, match=r"has no mapping"):
+        async for _ in rt.query("p", opts):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_query_raises_on_max_turns_exceeded(codex_home, opts):
+    """Exceeding max_turns raises RuntimeError, counting only TurnCompletedEvents.
+
+    A real Codex turn emits many events (item.started/updated/completed,
+    reasoning, tool calls) plus one TurnCompletedEvent. The runtime must
+    increment its budget on the latter only — see codex.py around the
+    `isinstance(evt, TurnCompletedEvent)` check.
+    """
+    from openai_codex_sdk import TurnCompletedEvent, Usage
+
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_one_turn = AgentOptions(
+        **{**opts.__dict__, "max_turns": 1, "mcp_servers": None}
+    )
+    usage = Usage(input_tokens=0, cached_input_tokens=0, output_tokens=0)
+    # Mix in non-turn events to prove they don't count toward the budget;
+    # only the second TurnCompletedEvent should trip max_turns=1.
+    fake_events = [
+        SimpleNamespace(text="some item delta"),
+        TurnCompletedEvent(type="turn.completed", usage=usage),
+        SimpleNamespace(text="more deltas"),
+        TurnCompletedEvent(type="turn.completed", usage=usage),
+    ]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        with pytest.raises(RuntimeError, match=r"max_turns"):
+            async for _ in rt.query("p", opts_one_turn):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_query_does_not_raise_when_only_item_events_emitted(codex_home, opts):
+    """Regression: many non-turn events under a low max_turns must NOT raise.
+
+    Previously the runtime counted every event, so max_turns=1 would trip
+    after the second item-level event even if no turn ever completed.
+    """
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_one_turn = AgentOptions(
+        **{**opts.__dict__, "max_turns": 1, "mcp_servers": None}
+    )
+    fake_events = [SimpleNamespace(text=f"delta {i}") for i in range(10)]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        msgs = [m async for m in rt.query("p", opts_one_turn)]
+
+    assert len(msgs) == len(fake_events) + 1  # +1 for synthetic final
+    assert msgs[-1].is_final is True
+
+
+@pytest.mark.asyncio
+async def test_query_raises_on_failed_turn_loop(codex_home, opts):
+    """Regression: a stream of only TurnFailedEvents must still trip max_turns.
+
+    Without counting failures, a pathological retry loop emitting only
+    TurnFailedEvent (never TurnCompletedEvent) would bypass the budget
+    indefinitely. The runtime treats either turn-terminating event as
+    "one turn consumed."
+    """
+    from openai_codex_sdk import ThreadError, TurnFailedEvent
+
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_one_turn = AgentOptions(
+        **{**opts.__dict__, "max_turns": 1, "mcp_servers": None}
+    )
+    err = ThreadError(message="boom")
+    fake_events = [
+        TurnFailedEvent(type="turn.failed", error=err),
+        TurnFailedEvent(type="turn.failed", error=err),
+    ]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        with pytest.raises(RuntimeError, match=r"max_turns"):
+            async for _ in rt.query("p", opts_one_turn):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_query_counts_mixed_completed_and_failed_turns(codex_home, opts):
+    """Mixed completed + failed turns share the same budget — neither double-counts.
+
+    With max_turns=2: one TurnCompletedEvent + one TurnFailedEvent fits;
+    a third turn-terminating event of either kind trips the limit.
+    """
+    from openai_codex_sdk import ThreadError, TurnCompletedEvent, TurnFailedEvent, Usage
+
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_two_turns = AgentOptions(
+        **{**opts.__dict__, "max_turns": 2, "mcp_servers": None}
+    )
+    usage = Usage(input_tokens=0, cached_input_tokens=0, output_tokens=0)
+    err = ThreadError(message="boom")
+    fake_events = [
+        TurnCompletedEvent(type="turn.completed", usage=usage),
+        TurnFailedEvent(type="turn.failed", error=err),
+        TurnCompletedEvent(type="turn.completed", usage=usage),  # third → trips
+    ]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        with pytest.raises(RuntimeError, match=r"max_turns"):
+            async for _ in rt.query("p", opts_two_turns):
+                pass
+
+
+def test_client_raises_not_implemented(codex_home, opts):
+    """Line 152: client() raises NotImplementedError matching 'not yet wired'."""
+    from hsb.runtime.codex import CodexRuntime
+
+    rt = CodexRuntime(codex_home=codex_home)
+    with pytest.raises(NotImplementedError, match=r"not yet wired"):
+        rt.client(opts)

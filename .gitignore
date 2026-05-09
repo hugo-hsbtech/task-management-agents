@@ -16,3 +16,4 @@ build/
 
 # Phase 4: transient git worktrees created by parallel mode
 .worktrees/
+.claude/worktrees/
