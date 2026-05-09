@@ -27,7 +27,7 @@ This guide is for developers who want to **use** HSBTech (drive a Linear backlog
 |-------------|-----|-------|
 | **Python ≥ 3.12** | Runtime — pinned in `pyproject.toml` | `python3.12 --version` |
 | **`git` ≥ 2.30** | Worktree support for parallel mode | `git --version` |
-| **`gh` CLI** | GitHub PR delivery surface | `gh auth status` should be green |
+| **`gh` CLI** | GitHub PR delivery surface | Install: [cli.github.com](https://cli.github.com/) ([install docs](https://github.com/cli/cli#installation)). Verify with `gh --version`, then `gh auth status` should be green. See [Step 4](#step-4--github-access) below. |
 | **Linear workspace** (sandbox/test) | System of record — agents read and write here | NOT your production workspace; agents will mutate state |
 | **Browser** | One-time Linear MCP OAuth flow | Required only for setup; not for runtime |
 | **Anthropic Claude account** | Claude Agent SDK runtime | OAuth2 token via `claude setup-token` — NOT an API key |
@@ -268,11 +268,52 @@ echo "LINEAR_TEST_ISSUE_ID=LIN-XXX" >> .env
 
 ### Step 4 — GitHub access
 
+HSBTech delivers code via GitHub PRs through the `gh` CLI. If you don't already have it, install it first — official instructions and downloads:
+
+- **Official site:** [cli.github.com](https://cli.github.com/)
+- **Install guide (all platforms):** [github.com/cli/cli#installation](https://github.com/cli/cli#installation)
+- **Manual / official manual page:** [cli.github.com/manual](https://cli.github.com/manual/)
+
+Quick install per platform (consult the links above for alternatives, signed packages, and version pinning):
+
 ```bash
-# Authenticate gh CLI with `repo` scope (read + write)
+# macOS (Homebrew)
+brew install gh
+
+# Linux (Debian / Ubuntu — official apt repo)
+# Full instructions: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+(type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
+  && sudo mkdir -p -m 755 /etc/apt/keyrings \
+  && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+       | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+  && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+       | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+  && sudo apt update \
+  && sudo apt install gh -y
+
+# Linux (Fedora / RHEL)
+sudo dnf install gh
+
+# Windows (winget)
+winget install --id GitHub.cli
+
+# Verify
+gh --version
+```
+
+Then authenticate (the `repo` scope is required for PR create/read/write):
+
+```bash
+# Interactive login — pick GitHub.com → HTTPS → "Login with a web browser"
+gh auth login -s repo
+
+# Confirm
 gh auth status
 # Should show: "Logged in to github.com as <your-handle>"
 ```
+
+**Headless / CI environments:** instead of `gh auth login`, export a personal access token (classic, with `repo` scope) as `GITHUB_TOKEN` — see [GitHub PAT docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens). The `gh` CLI auto-detects it.
 
 For Phase 2+ live integration tests against `hsb-test-fixture`:
 
