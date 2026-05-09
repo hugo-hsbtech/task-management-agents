@@ -52,13 +52,9 @@ class ClaudeRuntime:
 
     @staticmethod
     def _to_message(sdk_msg: Any) -> Message:
-        # Check for ResultMessage first (final=True indicates completion).
         if isinstance(sdk_msg, ResultMessage):
             return Message(text="", is_final=True, raw=sdk_msg)
-        # AssistantMessage: extract text from content blocks.
-        if isinstance(sdk_msg, AssistantMessage) or hasattr(sdk_msg, "content"):
-            content = getattr(sdk_msg, "content", None)
-            text = "".join(getattr(b, "text", "") for b in (content or []))
+        if isinstance(sdk_msg, AssistantMessage):
+            text = "".join(getattr(b, "text", "") for b in (sdk_msg.content or []))
             return Message(text=text, is_final=False, raw=sdk_msg)
-        # Fallback for unknown message types.
         return Message(text="", is_final=False, raw=sdk_msg)

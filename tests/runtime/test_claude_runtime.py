@@ -4,6 +4,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import AssistantMessage, ResultMessage
 
 from hsb.runtime.claude import ClaudeRuntime
 from hsb.runtime.protocol import AgentOptions
@@ -28,9 +29,9 @@ def test_name_is_claude():
 @pytest.mark.asyncio
 async def test_query_translates_options_and_yields_messages(opts):
     fake_text_block = MagicMock(text="result chunk")
-    fake_assistant = MagicMock()
+    fake_assistant = MagicMock(spec=AssistantMessage)
     fake_assistant.content = [fake_text_block]
-    fake_result = MagicMock()
+    fake_result = MagicMock(spec=ResultMessage)
     fake_result.usage = {"output_tokens": 10}
 
     async def fake_query_iter(prompt, options):
