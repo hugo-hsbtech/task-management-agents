@@ -1,0 +1,34 @@
+# Multi-org isolation: scripts wrap every Compose call with
+# `docker compose -p ${HSB_PROJECT:-task-management-agents}`, so the named
+# volumes below are physically prefixed per org (e.g. org-acme_hsb-mcp-auth).
+# `container_name` is daemon-global, so only one project can be `up` at a
+# time — switch orgs with `make down` then re-`up` under the new project.
+services:
+  hsb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hsb-agents:local
+    container_name: hsb-agents
+    # mcp-remote binds to 127.0.0.1 inside the container; with bridge networking
+    # Docker -p NAT can't reach loopback-only listeners (browser OAuth callback
+    # silently fails). Sharing the host netns makes container loopback == host
+    # loopback. Linux-only.
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./.mcp.json:/app/.mcp.json:ro
+      - hsb-mcp-auth:/root/.mcp-auth
+      - hsb-gh-auth:/root/.config/gh
+      - hsb-claude-state:/app/.claude/projects
+    stdin_open: true
+    tty: true
+    command: ["python", "run_loop.py"]
+
+volumes:
+  hsb-mcp-auth:
+  hsb-gh-auth:
+  hsb-claude-state:

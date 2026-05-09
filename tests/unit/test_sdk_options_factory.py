@@ -117,9 +117,8 @@ class _StubAssistantMessage:
 def test_g3_raises_on_task_tool_in_assistant_message(monkeypatch):
     """G3: ``AssistantMessage`` with content block ``name=='Task'`` raises ``RuntimeError``."""
     monkeypatch.setattr(
-        "claude_agent_sdk.AssistantMessage",
+        "hsb.agents._sdk_options.AssistantMessage",
         _StubAssistantMessage,
-        raising=False,
     )
     msg = _StubAssistantMessage(content=[_StubBlock(name="Task")])
     with pytest.raises(RuntimeError) as exc:
@@ -130,9 +129,8 @@ def test_g3_raises_on_task_tool_in_assistant_message(monkeypatch):
 def test_g3_does_not_raise_on_text_only_assistant_message(monkeypatch):
     """G3 happy path: ``AssistantMessage`` with only ``TextBlock``s is allowed."""
     monkeypatch.setattr(
-        "claude_agent_sdk.AssistantMessage",
+        "hsb.agents._sdk_options.AssistantMessage",
         _StubAssistantMessage,
-        raising=False,
     )
     msg = _StubAssistantMessage(content=[_StubBlock(name=None, text="hello")])
     assert_no_task_dispatch(msg)  # no raise
