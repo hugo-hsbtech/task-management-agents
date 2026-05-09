@@ -7,8 +7,8 @@ options at the seam.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Iterable, Literal, Protocol
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Literal, Protocol
 
 
 PermissionMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]

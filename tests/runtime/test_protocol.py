@@ -1,6 +1,7 @@
 """Tests for the runtime-agnostic Protocol surface."""
 from __future__ import annotations
 
+import dataclasses
 import pytest
 from typing import get_type_hints
 
@@ -15,7 +16,7 @@ def test_agent_options_is_frozen_dataclass():
         max_turns=5,
         model="claude-opus-4-7",
     )
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         opts.system_prompt = "modified"  # type: ignore[misc]
 
 
