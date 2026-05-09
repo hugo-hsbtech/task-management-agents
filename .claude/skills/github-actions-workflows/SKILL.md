@@ -1,7 +1,7 @@
 ---
 name: github-actions-workflows
 description: >
-  GitHub Actions CI/CD workflow authoring and debugging for the Ezra monorepo.
+  GitHub Actions CI/CD workflow authoring and debugging for this project.
   Always use this skill when touching .github/workflows/ files, debugging CI
   failures, adding services to CI, or discussing GitHub Actions in any way —
   even for small changes like fixing a failing check or adding a new step.
@@ -10,12 +10,11 @@ description: >
   matrix strategies, reusable workflows, composite actions, or Slack
   notifications for CI. If the user mentions "CI", "pipeline", "workflow",
   "deploy workflow", "GitHub Actions", or "actions YAML", this skill applies.
-origin: Ezra
 ---
 
 # GitHub Actions Workflows
 
-CI/CD workflow authoring and debugging for the Ezra multi-server, multi-client monorepo.
+CI/CD workflow authoring and debugging for this project.
 
 ## When to Activate
 

@@ -1,6 +1,6 @@
 ---
 name: ezra-scaffold-frontend-package-tests
-description: Scaffold Vitest testing infrastructure for a new shared frontend package (unit + integration, no E2E). Use when creating a new package in frontend/packages/, when user says "add tests to", "scaffold tests for", "setup testing for" a shared package, or when a new package like hooks, forms, or validators needs vitest config and smoke tests. Also use when retrofitting tests onto an existing package that has no tests yet. Do NOT use for frontend apps (use ezra-scaffold-frontend-app-tests instead).
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Scaffold Vitest testing infrastructure for a new shared frontend package (unit + integration, no E2E). Use when creating a new package in frontend/packages/, when user says "add tests to", "scaffold tests for", "setup testing for" a shared package, or when a new package like hooks, forms, or validators needs vitest config and smoke tests. Also use when retrofitting tests onto an existing package that has no tests yet. Do NOT use for frontend apps (use ezra-scaffold-frontend-app-tests instead).
 ---
 
 # ezra-scaffold-frontend-package-tests

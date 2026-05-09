@@ -1,6 +1,6 @@
 ---
 name: backend-patterns
-description: Backend architecture patterns, API design, database optimization, and server-side best practices for Node.js, Express, and Next.js API routes.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Backend architecture patterns, API design, database optimization, and server-side best practices for Node.js, Express, and Next.js API routes.
 origin: ECC
 ---
 

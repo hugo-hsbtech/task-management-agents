@@ -1,7 +1,6 @@
 ---
 name: next-best-practices
-description: Next.js best practices - file conventions, RSC boundaries, data patterns, async APIs, metadata, error handling, route handlers, image/font optimization, bundling
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Next.js best practices - file conventions, RSC boundaries, data patterns, async APIs, metadata, error handling, route handlers, image/font optimization, bundling
 author: Carlos Melgoza
 ---
 

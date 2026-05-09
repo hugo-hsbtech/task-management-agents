@@ -1,6 +1,6 @@
 ---
 name: ezra-review-docs
-description: Rigorous documentation reviewer for "fresh eyes" passes. Finds concrete problems, checks template compliance, and makes targeted fixes.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Rigorous documentation reviewer for "fresh eyes" passes. Finds concrete problems, checks template compliance, and makes targeted fixes.
 allowed-tools: Read, Glob, Grep, Edit, Write, Task
 ---
 

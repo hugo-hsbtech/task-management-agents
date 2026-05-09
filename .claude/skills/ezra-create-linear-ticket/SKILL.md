@@ -1,6 +1,6 @@
 ---
 name: ezra-create-linear-ticket
-description: Create well-structured Linear tickets via MCP following Ezra's hierarchy (Initiative > Project > Issue > Sub-Issue). Use when creating tickets, filing bugs, breaking down features, or converting Slack threads into Linear issues. Triggers on "create ticket", "file issue", "linear ticket", "track this".
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Create well-structured Linear tickets via MCP following Ezra's hierarchy (Initiative > Project > Issue > Sub-Issue). Use when creating tickets, filing bugs, breaking down features, or converting Slack threads into Linear issues. Triggers on "create ticket", "file issue", "linear ticket", "track this".
 ---
 
 # Create Linear Ticket

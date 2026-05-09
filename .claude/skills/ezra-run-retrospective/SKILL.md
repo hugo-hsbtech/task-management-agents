@@ -1,6 +1,6 @@
 ---
 name: ezra-run-retrospective
-description: Automated retrospective that reviews session history to identify improvements.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Automated retrospective that reviews session history to identify improvements.
 version: 1.0.0
 allowed-tools: Read, Write, Edit, Grep, Glob
 ---

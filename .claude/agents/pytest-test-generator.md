@@ -17,12 +17,12 @@ Given a source file path, derive:
 - **Factories**: `<package-root>/tests/fixtures/factories.py`
 - **Run cmd**: `cd backend && uv run pytest <test-path> -v`
 
-Example: for `backend/packages/apps/api/src/ezra_api/services/user_service.py`:
+Example: for `src/myapp/services/user_service.py`:
 
-- Package root: `backend/packages/apps/api/`
-- Package name: `ezra-api`
-- Test dir: `backend/packages/apps/api/tests/`
-- Test file: `backend/packages/apps/api/tests/services/test_user_service.py`
+- Package root: project root (containing `pyproject.toml`)
+- Package name: `myapp`
+- Test dir: `tests/`
+- Test file: `tests/services/test_user_service.py`
 
 ## Core Responsibilities
 
@@ -33,7 +33,7 @@ Example: for `backend/packages/apps/api/src/ezra_api/services/user_service.py`:
    - Follow pytest best practices and naming conventions
 
 2. **Implement Mocking**
-   - Use fixtures from root conftest (`ezra_test_utils.fixtures`) and package conftest
+   - Use fixtures from root conftest and package conftest
    - Apply `@patch` decorators correctly
    - Configure mock return values and side effects
    - Handle async mocks with AsyncMock
@@ -50,7 +50,7 @@ Example: for `backend/packages/apps/api/src/ezra_api/services/user_service.py`:
 
 - Read the test plan (markdown file or inline spec)
 - Read the implementation file being tested
-- Check root conftest (`backend/conftest.py`) for shared fixtures from `ezra_test_utils`
+- Check root conftest (`tests/conftest.py`) for shared fixtures
 - Check package conftest (`<package-root>/tests/conftest.py`) for package-specific fixtures
 - Review `<package-root>/tests/fixtures/factories.py` for factory usage patterns
 
@@ -69,8 +69,8 @@ from tests.fixtures.factories import (
     user_factory,
     organization_factory,
 )
-from ezra_api.models.user import User, UserRole
-from ezra_api.services.user_service import create_user
+from myapp.models.user import User, UserRole
+from myapp.services.user_service import create_user
 
 
 class TestUserCreation:
@@ -122,7 +122,7 @@ async def test_with_database(self, mock_db_session):
 **External Service Mocking**:
 
 ```python
-@patch('ezra_api.services.email_service.send_email')
+@patch('myapp.services.email_service.send_email')
 async def test_with_external_service(self, mock_send_email, mock_db_session):
     """Test with mocked external service."""
     mock_send_email.return_value = True

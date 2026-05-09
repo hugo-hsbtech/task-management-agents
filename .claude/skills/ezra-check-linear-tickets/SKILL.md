@@ -1,6 +1,6 @@
 ---
 name: ezra-check-linear-tickets
-description: Check active Linear tickets with comprehensive status overview
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Check active Linear tickets with comprehensive status overview
 ---
 
 # Check Linear Tickets

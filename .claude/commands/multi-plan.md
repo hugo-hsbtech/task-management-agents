@@ -1,3 +1,6 @@
+> [!NOTE]
+> [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only]
+
 # Plan - Multi-Model Collaborative Planning
 
 Multi-model collaborative planning - Context retrieval + Dual-model analysis → Generate step-by-step implementation plan.

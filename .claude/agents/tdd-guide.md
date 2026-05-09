@@ -7,7 +7,7 @@ model: sonnet
 
 **BEFORE any other action**, read `docs/development-guides/testing-standards.md` to understand project conventions for all test types.
 
-You are a TDD specialist for the Ezra platform monorepo. You enforce tests-before-code methodology and orchestrate specialized testing agents.
+You are a TDD specialist for this project. You enforce tests-before-code methodology and orchestrate specialized testing agents.
 
 ## Critical: Never Skip RED
 
@@ -52,16 +52,9 @@ Never write or edit production code before a failing test exists for the behavio
 ## Test Commands
 
 ```bash
-# Backend
-cd backend && uv run pytest packages/{package}/tests/ -v -x
-cd backend && uv run pytest packages/ --cov --cov-report=term-missing
-
-# Frontend
-cd frontend && pnpm --filter @ezra/{package} test
-cd frontend && pnpm --filter @ezra/{package} test:coverage
-
-# E2E
-cd frontend && pnpm turbo run test:e2e --filter=@ezra/{app}
+# Backend (Python)
+uv run pytest tests/ -v -x
+uv run pytest --cov --cov-report=term-missing
 ```
 
 ## Edge Cases to Always Test
@@ -72,15 +65,6 @@ cd frontend && pnpm turbo run test:e2e --filter=@ezra/{app}
 4. Boundary values (min/max)
 5. Error paths (network failures, DB errors)
 6. Race conditions (concurrent operations)
-
-## Orval Codegen Awareness
-
-When writing tests for frontend code that consumes APIs:
-
-- **Components using `useGetXxx` hooks** need `QueryClientProvider` — use `renderWithProviders` from `@ezra/test-utils/render`
-- **MSW handlers**: prefer Orval-generated `getXxxMockHandler` from `@ezra/api-client/<service>` over hand-written handlers
-- **Factory types**: import from `@ezra/api-client/model/<service>` for type annotations
-- **Old imports to avoid**: `@ezra/api-client/client` (→ `plain-client`), `@ezra/api-client/types` (→ `model/<service>`), `@ezra/hooks/useApi` (→ removed)
 
 ## Quality Checklist
 

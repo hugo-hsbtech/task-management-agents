@@ -1,6 +1,6 @@
 ---
 name: ezra-scaffold-app
-description: Scaffold a new frontend or backend app in the Ezra platform monorepo. Use when creating a new Next.js frontend app or FastAPI backend app, when user says "add app", "new app", "scaffold app", "create app", or "new service". Handles all registration points — workspace, Docker Compose, Dockerfile, CI/CD, infrastructure stubs.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Scaffold a new frontend or backend app in the Ezra platform monorepo. Use when creating a new Next.js frontend app or FastAPI backend app, when user says "add app", "new app", "scaffold app", "create app", or "new service". Handles all registration points — workspace, Docker Compose, Dockerfile, CI/CD, infrastructure stubs.
 ---
 
 # ezra-scaffold-app

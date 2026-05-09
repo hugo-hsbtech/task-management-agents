@@ -1,7 +1,6 @@
 ---
 name: feature-flags-posthog
 description: PostHog feature flag API patterns — create, target, discover stale flags, archive, delete, and cross-project lifecycle management. Use with feature-flags-ts-posthog or feature-flags-fastapi-posthog for SDK evaluation code.
-origin: Ezra
 author: Carlos Melgoza
 ---
 

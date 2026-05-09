@@ -15,14 +15,14 @@ Given a source or test file path, derive:
 - **Package name**: read `[project].name` from that `pyproject.toml`
 - **Test dir**: `<package-root>/tests/`
 - **Factories**: `<package-root>/tests/fixtures/factories.py`
-- **Run cmd**: `cd backend && uv run pytest <test-path> -v`
-- **Lint cmd**: `cd backend && uv run ruff check <test-file-path>`
+- **Run cmd**: `uv run pytest <test-path> -v`
+- **Lint cmd**: `uv run ruff check <test-file-path>`
 
-Example: for `backend/packages/apps/api/tests/services/test_user_service.py`:
+Example: for `tests/services/test_user_service.py`:
 
-- Package root: `backend/packages/apps/api/`
-- Run: `cd backend && uv run pytest packages/apps/api/tests/services/test_user_service.py -v`
-- Lint: `cd backend && uv run ruff check packages/apps/api/tests/services/test_user_service.py`
+- Package root: project root (containing `pyproject.toml`)
+- Run: `uv run pytest tests/services/test_user_service.py -v`
+- Lint: `uv run ruff check tests/services/test_user_service.py`
 
 ## Core Responsibilities
 
@@ -50,16 +50,16 @@ Example: for `backend/packages/apps/api/tests/services/test_user_service.py`:
 
 ```bash
 # Run specific test file
-cd backend && uv run pytest packages/apps/api/tests/test_user_service.py -v
+uv run pytest tests/test_user_service.py -v
 
 # Run with full output
-cd backend && uv run pytest packages/apps/api/tests/test_user_service.py -vv --tb=short
+uv run pytest tests/test_user_service.py -vv --tb=short
 
 # Run specific test
-cd backend && uv run pytest packages/apps/api/tests/test_user_service.py::test_create_user -vv
+uv run pytest tests/test_user_service.py::test_create_user -vv
 
 # Lint the test file
-cd backend && uv run ruff check packages/apps/api/tests/test_user_service.py
+uv run ruff check tests/test_user_service.py
 ```
 
 ### Step 2: Analyze Error Types
@@ -67,7 +67,7 @@ cd backend && uv run ruff check packages/apps/api/tests/test_user_service.py
 **Import Errors**:
 
 ```
-ImportError: cannot import name 'UserRole' from 'ezra_api.models.user'
+ImportError: cannot import name 'UserRole' from 'myapp.models.user'
 ```
 
 Fix: Check the actual module and correct the import path

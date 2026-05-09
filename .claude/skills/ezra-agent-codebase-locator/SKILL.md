@@ -1,6 +1,6 @@
 ---
 name: ezra-agent-codebase-locator
-description: Locates files, directories, and components relevant to a feature or task. Call `codebase-locator` with human language prompt describing what you're looking for. Basically a "Super Grep/Glob/LS tool" — Use it if you find yourself desiring to use one of these tools more than once.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Locates files, directories, and components relevant to a feature or task. Call `codebase-locator` with human language prompt describing what you're looking for. Basically a "Super Grep/Glob/LS tool" — Use it if you find yourself desiring to use one of these tools more than once.
 allowed-tools: Grep, Glob, LS
 model: sonnet
 ---

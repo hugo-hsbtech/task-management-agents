@@ -1,6 +1,6 @@
 ---
 name: domain-organization
-description: Advisory skill for evaluating and organizing backend domain packages according to DDD best practices, capability-oriented design, and Ezra conventions. Use when creating new domains, reviewing existing domain boundaries, refactoring packages, or deciding where new business logic should live.
+description: Advisory skill for evaluating and organizing backend domain packages according to DDD best practices and capability-oriented design. Use when creating new domains, reviewing existing domain boundaries, refactoring packages, or deciding where new business logic should live.
 ---
 
 # Domain Organization

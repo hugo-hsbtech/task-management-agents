@@ -1,6 +1,6 @@
 ---
 name: ezra-iterate-plan
-description: Iterate on existing implementation plans with thorough research and updates
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Iterate on existing implementation plans with thorough research and updates
 model: opus
 ---
 

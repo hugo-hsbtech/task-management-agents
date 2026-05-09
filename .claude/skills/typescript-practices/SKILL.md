@@ -1,7 +1,6 @@
 ---
 name: typescript-practices
-description: TypeScript practices for TS/TSX, Node.js, and React work. Use when implementing, refactoring, or reviewing TypeScript; designing shared types or public APIs; validating external data; tightening strictness; or fixing type errors. Prioritizes boundary-first design, explicit contracts, discriminated unions, exhaustive handling, runtime validation, and avoiding unsafe `any` or suppressions by default.
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] TypeScript practices for TS/TSX, Node.js, and React work. Use when implementing, refactoring, or reviewing TypeScript; designing shared types or public APIs; validating external data; tightening strictness; or fixing type errors. Prioritizes boundary-first design, explicit contracts, discriminated unions, exhaustive handling, runtime validation, and avoiding unsafe `any` or suppressions by default.
 author: Carlos Melgoza
 ---
 

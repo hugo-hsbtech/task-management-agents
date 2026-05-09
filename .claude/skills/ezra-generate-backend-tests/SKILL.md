@@ -1,6 +1,6 @@
 ---
 name: ezra-generate-backend-tests
-description: Generate pytest tests for Python backend code with planning, generation, and automated healing
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Generate pytest tests for Python backend code with planning, generation, and automated healing
 ---
 
 # Backend Test Generation Workflow

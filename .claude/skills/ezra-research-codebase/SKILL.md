@@ -1,6 +1,6 @@
 ---
 name: ezra-research-codebase
-description: Document codebase as-is with comprehensive research
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Document codebase as-is with comprehensive research
 model: opus
 ---
 

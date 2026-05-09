@@ -1,7 +1,6 @@
 ---
 name: error-tracking
 description: Universal error tracking patterns — error capture, context enrichment, breadcrumbs, PII scrubbing, before-send filtering, performance tracing, and alerting hygiene
-origin: Ezra
 author: Carlos Melgoza
 ---
 

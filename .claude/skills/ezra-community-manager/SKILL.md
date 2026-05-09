@@ -1,6 +1,6 @@
 ---
 name: ezra-community-manager
-description: "Generate WhatsApp community content for the Ezra referral network. Use when creating deal pitches, 'looking for deals' posts, 'looking for introductions' posts, or any community announcement. Triggers on: 'community post', 'deal pitch', 'looking for deals', 'write announcement', 'referral community', 'WhatsApp announcement', 'community manager'. Do NOT use for general marketing tasks unrelated to the WhatsApp community — use the individual marketing skills (copywriting, social-content, marketing-psychology, referral-program) instead."
+description: "[NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Generate WhatsApp community content for the Ezra referral network. Use when creating deal pitches, 'looking for deals' posts, 'looking for introductions' posts, or any community announcement. Triggers on: 'community post', 'deal pitch', 'looking for deals', 'write announcement', 'referral community', 'WhatsApp announcement', 'community manager'. Do NOT use for general marketing tasks unrelated to the WhatsApp community — use the individual marketing skills (copywriting, social-content, marketing-psychology, referral-program) instead."
 version: 1.0.0
 tags: [marketing, whatsapp, community, referral, deal-flow]
 ---

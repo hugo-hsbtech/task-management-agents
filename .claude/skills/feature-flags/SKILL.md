@@ -1,7 +1,6 @@
 ---
 name: feature-flags
 description: Universal feature flag patterns — flag types, naming conventions, lifecycle management, fail-safe defaults, and cleanup checklists. Provider-agnostic. Use with feature-flags-posthog, feature-flags-ts-posthog, or feature-flags-fastapi-posthog for implementation.
-origin: Ezra
 author: Carlos Melgoza
 ---
 

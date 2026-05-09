@@ -1,7 +1,7 @@
 ---
 name: ezra-create-pr
 description: |
-  Orchestrate full PR preparation — code review, lint/format/test with auto-healing, documentation review, and PR creation via gh CLI. Use when dev says "prepare PR", "create PR", "submit PR", "PR ready", "open PR", "push PR", "ready for review", "ship it", "send PR", "merge request". Do NOT use for just reviewing code (use ezra-review-code) or just committing (use ezra-commit).
+  [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Orchestrate full PR preparation — code review, lint/format/test with auto-healing, documentation review, and PR creation via gh CLI. Use when dev says "prepare PR", "create PR", "submit PR", "PR ready", "open PR", "push PR", "ready for review", "ship it", "send PR", "merge request". Do NOT use for just reviewing code (use ezra-review-code) or just committing (use ezra-commit).
 ---
 
 # PR Creation Workflow
