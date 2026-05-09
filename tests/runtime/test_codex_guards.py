@@ -70,3 +70,20 @@ def test_verify_mcp_handles_empty_section():
     parsed: dict = {}
     with pytest.raises(RuntimeError, match=r"linear"):
         verify_codex_mcp(parsed, ["linear"])
+
+
+# ---------------------------------------------------------------------------
+# Coverage-gap test: line 26
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_codex_home_fallback_to_home_dot_codex(monkeypatch):
+    """Line 26: when codex_home arg is None and CODEX_HOME env is unset,
+    _resolve_codex_home returns Path.home() / '.codex'."""
+    from pathlib import Path
+
+    from hsb.runtime.codex_guards import _resolve_codex_home
+
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    result = _resolve_codex_home(None)
+    assert result == Path.home() / ".codex"

@@ -72,3 +72,53 @@ async def test_query_forwards_hooks_unchanged(opts):
             pass
         sdk_options = q.call_args.kwargs["options"]
         assert sdk_options.hooks == sentinel_hooks
+
+
+# ---------------------------------------------------------------------------
+# Coverage-gap tests: lines 31, 48, 60
+# ---------------------------------------------------------------------------
+
+
+def test_client_raises_not_implemented(opts):
+    """Line 31: client() raises NotImplementedError matching 'not yet wired'."""
+    rt = ClaudeRuntime()
+    with pytest.raises(NotImplementedError, match=r"not yet wired"):
+        rt.client(opts)
+
+
+@pytest.mark.asyncio
+async def test_translate_sets_cwd_when_provided(opts):
+    """Line 48: _translate includes cwd in kwargs when options.cwd is not None."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    opts_with_cwd = AgentOptions(**{**opts.__dict__, "cwd": "/some/path"})
+
+    async def fake_iter(prompt, options):
+        if False:
+            yield
+
+    with patch(
+        "hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_iter
+    ) as q:
+        rt = ClaudeRuntime()
+        async for _ in rt.query("p", opts_with_cwd):
+            pass
+
+    sdk_options = q.call_args.kwargs["options"]
+    assert sdk_options.cwd == "/some/path"
+
+
+def test_to_message_unknown_type_returns_empty_non_final():
+    """Line 60: _to_message with an unknown message type returns Message(text='', is_final=False)."""
+    from claude_agent_sdk import SystemMessage
+
+    from hsb.runtime.claude import ClaudeRuntime
+    from hsb.runtime.protocol import Message
+
+    # SystemMessage is neither AssistantMessage nor ResultMessage — hits the fallback.
+    unknown = MagicMock(spec=SystemMessage)
+    result = ClaudeRuntime._to_message(unknown)
+    assert isinstance(result, Message)
+    assert result.text == ""
+    assert result.is_final is False
+    assert result.raw is unknown

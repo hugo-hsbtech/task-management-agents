@@ -182,3 +182,87 @@ async def test_query_uses_codex_path_override_env(codex_home, opts, monkeypatch)
     assert len(args) == 1
     codex_opts = args[0]
     assert codex_opts.codex_path_override == "/usr/local/bin/codex"
+
+
+# ---------------------------------------------------------------------------
+# Coverage-gap tests: lines 49-54, 96, 126, 152
+# ---------------------------------------------------------------------------
+
+
+def test_extract_event_text_item_text_fallback():
+    """Lines 49-54: _extract_event_text falls back to evt.item.text when
+    evt.text is absent/empty but evt.item.text is present."""
+    from hsb.runtime.codex import _extract_event_text
+
+    evt = SimpleNamespace(item=SimpleNamespace(text="from item"))
+    assert _extract_event_text(evt) == "from item"
+
+
+def test_extract_event_text_item_text_empty_returns_empty():
+    """_extract_event_text returns '' when both evt.text and evt.item.text are absent."""
+    from hsb.runtime.codex import _extract_event_text
+
+    evt = SimpleNamespace(item=SimpleNamespace(text=""))
+    assert _extract_event_text(evt) == ""
+
+
+def test_extract_event_text_no_item_returns_empty():
+    """_extract_event_text returns '' when evt has neither text nor item."""
+    from hsb.runtime.codex import _extract_event_text
+
+    evt = SimpleNamespace()
+    assert _extract_event_text(evt) == ""
+
+
+@pytest.mark.asyncio
+async def test_query_unmappable_permission_mode_raises(codex_home, opts, monkeypatch):
+    """Line 96: an unmapped permission_mode in _PERMISSION_MAP raises NotImplementedError.
+
+    Monkeypatching _PERMISSION_MAP to {} forces every permission_mode to be unmapped.
+    """
+    import hsb.runtime.codex as codex_mod
+    from hsb.runtime.codex import CodexRuntime
+
+    monkeypatch.setattr(codex_mod, "_PERMISSION_MAP", {})
+
+    rt = CodexRuntime(codex_home=codex_home)
+    with pytest.raises(NotImplementedError, match=r"has no mapping"):
+        async for _ in rt.query("p", opts):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_query_raises_on_max_turns_exceeded(codex_home, opts):
+    """Line 126: exceeding max_turns raises RuntimeError."""
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_one_turn = AgentOptions(
+        **{**opts.__dict__, "max_turns": 1, "mcp_servers": None}
+    )
+    # Two events to force turns_seen > max_turns on the second event.
+    fake_events = [
+        SimpleNamespace(text="turn 1"),
+        SimpleNamespace(text="turn 2"),
+    ]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(
+        return_value=_make_streamed_turn(fake_events)
+    )
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        with pytest.raises(RuntimeError, match=r"max_turns"):
+            async for _ in rt.query("p", opts_one_turn):
+                pass
+
+
+def test_client_raises_not_implemented(codex_home, opts):
+    """Line 152: client() raises NotImplementedError matching 'not yet wired'."""
+    from hsb.runtime.codex import CodexRuntime
+
+    rt = CodexRuntime(codex_home=codex_home)
+    with pytest.raises(NotImplementedError, match=r"not yet wired"):
+        rt.client(opts)
