@@ -9,7 +9,7 @@
           {
             "type": "command",
             "if": "Bash(git commit *)",
-            "command": "REPO_ROOT=$(git rev-parse --show-toplevel) && if git diff --cached --name-only | grep -q '^backend/.*\\.py$'; then cd \"$REPO_ROOT/backend\" && uv run ruff check . && uv run ruff format --check .; fi"
+            "command": "REPO_ROOT=$(git rev-parse --show-toplevel) && if git diff --cached --name-only | grep -q '^backend/.*\\.py$'; then cd \"$REPO_ROOT/src\" && uv run ruff check . && uv run ruff format --check .; fi"
           }
         ]
       }
