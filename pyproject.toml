@@ -8,6 +8,7 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.0",
     "python-dotenv>=1.0",
+    "openai-codex-sdk>=0.1.11",
 ]
 
 [project.scripts]
@@ -35,6 +36,7 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
     "pre-commit>=4.0",
+    "jupyterlab>=4.0",  # for manual inspection notebooks under notebooks/
 ]
 
 [tool.ruff]
@@ -54,6 +56,7 @@ ignore = [
 "tests/conftest.py" = ["E402"]            # Phase-5 fixtures import after event-loop setup
 "tests/**/*.py" = ["SIM115"]             # structural tests use open().read() by convention
 "tests/*.py" = ["SIM115"]
+"notebooks/*.ipynb" = ["E402", "E701", "F841", "B007"]  # notebook idioms: imports-after-setup, single-line try/except, ad-hoc bindings
 
 [tool.ruff.format]
 quote-style = "double"
@@ -70,4 +73,5 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 markers = [
     "integration: requires live Linear MCP connection and ANTHROPIC_API_KEY",
+    "live_codex: real Codex subscription smoke test (manual, opt-in via -m live_codex)",
 ]

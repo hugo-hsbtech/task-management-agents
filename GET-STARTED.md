@@ -152,6 +152,76 @@ env | grep -i ANTHROPIC_API_KEY
 
 If you previously had `ANTHROPIC_API_KEY` set anywhere (`.env`, shell config, CI), unset it everywhere before running HSBTech.
 
+### Step 1.5 — OpenAI Codex OAuth2 (only if any HSB_RUNTIME_*=codex)
+
+Required only if you plan to flip any agent to the Codex runtime
+(e.g. `export HSB_RUNTIME_BACKLOG=codex`). Skip this step if you stay on Claude.
+
+**Why:** quota is consumed against the operator's ChatGPT subscription seat
+(Plus / Pro / Business / Edu / Enterprise). API-key auth is forbidden by the
+extended G1 guard (`assert_oauth2_only` rejects `OPENAI_API_KEY`).
+
+**1. Install the Codex CLI binary** (the `openai-codex-sdk` Python package needs to find a `codex` binary):
+
+Option A — let the SDK manage the binary (simplest, vendored):
+```bash
+uv run python -c "from openai_codex_sdk import Codex; print(Codex.install(version='LATEST_COMPATIBLE'))"
+# Replace LATEST_COMPATIBLE with the version compatible with the pinned openai-codex-sdk.
+# This downloads the binary into the package's vendor/ dir (per find_codex_path).
+```
+
+Option B — reuse a globally-installed binary (good if you already have one):
+```bash
+npm i -g @openai/codex      # or: brew install codex
+codex --version             # confirm install
+export CODEX_PATH_OVERRIDE="$(which codex)"   # CodexRuntime reads this env var
+```
+
+Then verify either path:
+```bash
+uv run python -c "from openai_codex_sdk import Codex; Codex(); print('binary OK')"
+```
+
+**2. Pin OAuth-only:** create or edit `~/.codex/config.toml`:
+
+```toml
+forced_login_method = "chatgpt"
+model = "gpt-5.4"
+approval_policy = "never"
+
+[mcp_servers.linear]
+command = "npx"
+args    = ["-y", "mcp-remote", "https://mcp.linear.app/mcp"]
+```
+
+**3. Login (VPS-friendly device flow):**
+
+```bash
+codex login --device-auth
+# CLI prints a one-time code. Paste it at chatgpt.com/codex/device on any
+# browser-capable machine — does not need to be the same machine.
+```
+
+**4. Verify:**
+
+```bash
+test -f ~/.codex/auth.json && echo "auth OK"
+grep '^forced_login_method' ~/.codex/config.toml
+env | grep -i OPENAI_API_KEY     # must be empty
+```
+
+**Caveats when flipping an agent to Codex:**
+
+- The `LINEAR_HOOKS` (Linear MCP write-guard hooks) used by Backlog/QA on the
+  Claude path **do not run on the Codex path**. Codex has no equivalent of
+  `claude_agent_sdk.HookMatcher`. Flipping disables those guards for that
+  agent's runs.
+- The Work Item Orchestrator (WIO) is **not flippable** in this iteration.
+  Setting `HSB_RUNTIME_WIO=codex` raises at startup. Tracked separately.
+- The exact `openai-codex-sdk` PyPI version pinned in `pyproject.toml`
+  expects a compatible `@openai/codex` CLI version. If JSON-RPC errors
+  appear at runtime, upgrade the CLI: `npm i -g @openai/codex@latest`.
+
 ### Step 2 — Linear MCP OAuth (one-time, out-of-band)
 
 The Linear MCP server (`mcp.linear.app/mcp`) uses OAuth 2.1, brokered locally by `mcp-remote` (a Node helper that proxies STDIO ↔ remote MCP and handles the OAuth dance). The token is cached at `~/.mcp-auth/mcp-remote-<version>/` (e.g. `~/.mcp-auth/mcp-remote-0.1.37/`) and reused by every subsequent agent invocation.
