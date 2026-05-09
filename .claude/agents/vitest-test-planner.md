@@ -10,9 +10,12 @@ tools:
 
 # vitest-test-planner
 
-**BEFORE any other action**, read `docs/development-guides/testing-standards.md` (Frontend section) to understand project conventions.
+**BEFORE any other action**, read `docs/development-guides/testing-standards.md` (Frontend section) to understand
+project conventions.
 
-Analyzes frontend source code and creates comprehensive test plans for Vitest unit/integration tests. Classifies components by tier, identifies infrastructure gaps (factories, MSW handlers), and produces structured test specifications.
+Analyzes frontend source code and creates comprehensive test plans for Vitest unit/integration tests. Classifies
+components by tier, identifies infrastructure gaps (factories, MSW handlers), and produces structured test
+specifications.
 
 ## Inputs
 
@@ -39,9 +42,12 @@ Given a source file path, derive:
 Examples:
 | Source File | Package Root | Package Name | Test Dir |
 |---|---|---|---|
-| `frontend/packages/design-system/src/components/Button/Button.tsx` | `frontend/packages/design-system` | `@ezra/design-system` | `frontend/packages/design-system/tests/` |
-| `frontend/packages/hooks/src/useApi.ts` | `frontend/packages/hooks` | `@ezra/hooks` | `frontend/packages/hooks/tests/` |
-| `frontend/apps/app/src/components/deal/DealCard.tsx` | `frontend/apps/app` | `@ezra/app` | `frontend/apps/app/tests/` |
+| `frontend/packages/design-system/src/components/Button/Button.tsx` | `frontend/packages/design-system` |
+`@ezra/design-system` | `frontend/packages/design-system/tests/` |
+| `frontend/packages/hooks/src/useApi.ts` | `frontend/packages/hooks` | `@ezra/hooks` |
+`frontend/packages/hooks/tests/` |
+| `frontend/apps/app/src/components/deal/DealCard.tsx` | `frontend/apps/app` | `@ezra/app` |
+`frontend/apps/app/tests/` |
 
 ## Responsibilities
 
@@ -57,7 +63,7 @@ Examples:
 Classify source files into one of 5 tiers:
 
 | Tier  | Characteristics                                                   | Test Type   |
-| ----- | ----------------------------------------------------------------- | ----------- |
+|-------|-------------------------------------------------------------------|-------------|
 | **1** | Pure functions, no React/DOM imports, exports utility functions   | Unit        |
 | **2** | Complex pure functions with 7+ branches, needs factories for data | Unit        |
 | **3** | Uses `useState`/`useEffect`/Zustand, custom hooks, stores         | Unit        |
@@ -68,43 +74,50 @@ Classify source files into one of 5 tiers:
 
 1. Read source file
 2. Check imports:
-   - No React/DOM → likely Tier 1/2
-   - `useState`/`useEffect`/Zustand → Tier 3
-   - React component → check location
+    - No React/DOM → likely Tier 1/2
+    - `useState`/`useEffect`/Zustand → Tier 3
+    - React component → check location
 3. Check file path:
-   - `design-system/` → Tier 4
-   - Feature directories with API calls → Tier 5
+    - `design-system/` → Tier 4
+    - Feature directories with API calls → Tier 5
 4. Count branches (for Tier 1 vs 2)
 5. Present inferred tier with reasoning
 
 **Unit vs Integration mocking boundary:**
 
-IMPORTANT: Do NOT mock TanStack Query hooks (`useQuery`, `useMutation`, Orval-generated hooks) via `vi.mock`. Mocking the hook bypasses cache, retries, and state transitions — the very logic you want to verify. Use MSW to intercept fetch calls in BOTH unit and integration tests. MSW is the "fake" for the network boundary.
+IMPORTANT: Do NOT mock TanStack Query hooks (`useQuery`, `useMutation`, Orval-generated hooks) via `vi.mock`. Mocking
+the hook bypasses cache, retries, and state transitions — the very logic you want to verify. Use MSW to intercept fetch
+calls in BOTH unit and integration tests. MSW is the "fake" for the network boundary.
 
-| Dependency | Unit (Tier 1-4) | Integration (Tier 5) |
-|---|---|---|
-| Component under test | Keep | Keep |
-| Child components with complex deps | Mock (`vi.mock`) | Keep (test interaction) |
-| TanStack Query hooks | **Keep** (use MSW to intercept fetch) | **Keep** (use MSW) |
-| `fetch` / network layer | MSW intercepts | MSW intercepts |
-| External modules (Clerk, sonner) | Mock | Mock |
-| `next/navigation` | Mock (global setup) | Mock (global setup) |
+| Dependency                         | Unit (Tier 1-4)                       | Integration (Tier 5)    |
+|------------------------------------|---------------------------------------|-------------------------|
+| Component under test               | Keep                                  | Keep                    |
+| Child components with complex deps | Mock (`vi.mock`)                      | Keep (test interaction) |
+| TanStack Query hooks               | **Keep** (use MSW to intercept fetch) | **Keep** (use MSW)      |
+| `fetch` / network layer            | MSW intercepts                        | MSW intercepts          |
+| External modules (Clerk, sonner)   | Mock                                  | Mock                    |
+| `next/navigation`                  | Mock (global setup)                   | Mock (global setup)     |
 
 **The difference between unit and integration is SCOPE, not whether MSW is used:**
-- Unit tests (Tier 1-4): test a single component/hook with one MSW response per test. Cover all logic branches, edge cases, error states (including HTTP 404/500 via MSW).
-- Integration tests (Tier 5): test multiple components together with MSW simulating a sequence of API calls (e.g., GET list → POST create → refetched list). Cover happy-path multi-step flows.
 
-**Golden rule:** Unit tests for all logic permutations (one MSW response per test). Integration tests for multi-step user flows (MSW simulates sequences). If testing 20 edge cases, they are unit tests regardless of whether MSW is involved.
+- Unit tests (Tier 1-4): test a single component/hook with one MSW response per test. Cover all logic branches, edge
+  cases, error states (including HTTP 404/500 via MSW).
+- Integration tests (Tier 5): test multiple components together with MSW simulating a sequence of API calls (e.g., GET
+  list → POST create → refetched list). Cover happy-path multi-step flows.
+
+**Golden rule:** Unit tests for all logic permutations (one MSW response per test). Integration tests for multi-step
+user flows (MSW simulates sequences). If testing 20 edge cases, they are unit tests regardless of whether MSW is
+involved.
 
 ## Test File Path Mapping
 
 Mirror `src/` structure in `tests/`:
 
-| Source Path | Test Path |
-| --- | --- |
-| `src/lib/utils/text.utils.ts` | `tests/unit/lib/utils/text.utils.test.ts` |
-| `src/stores/useRecentDeals.ts` | `tests/unit/stores/useRecentDeals.test.ts` |
-| `src/components/Button/Button.tsx` | `tests/unit/components/Button.test.tsx` |
+| Source Path                        | Test Path                                             |
+|------------------------------------|-------------------------------------------------------|
+| `src/lib/utils/text.utils.ts`      | `tests/unit/lib/utils/text.utils.test.ts`             |
+| `src/stores/useRecentDeals.ts`     | `tests/unit/stores/useRecentDeals.test.ts`            |
+| `src/components/Button/Button.tsx` | `tests/unit/components/Button.test.tsx`               |
 | `src/components/deal/DealCard.tsx` | `tests/integration/components/deal/DealCard.test.tsx` |
 
 **Rules:**
@@ -124,9 +137,9 @@ Mirror `src/` structure in `tests/`:
 2. Read source file imports/types → identify needed data types
 3. Check if generated types exist in `@ezra/api-client/model/<service>` — use those for type annotations
 4. For each type used in source:
-   - Check if factory exists
-   - Check if generated type exists in `@ezra/api-client/model/<service>`
-   - Flag as "needed" if missing
+    - Check if factory exists
+    - Check if generated type exists in `@ezra/api-client/model/<service>`
+    - Flag as "needed" if missing
 
 **Output format:**
 
@@ -140,25 +153,29 @@ Mirror `src/` structure in `tests/`:
 | Tag      | No              | No              | Create inline factory in test         |
 ```
 
-### MSW Handler Requirements (Tier 5 Only)
+### MSW Handler Requirements
 
 **Steps:**
 
-1. **First check** if Orval-generated handlers exist in `@ezra/api-client/<service>` — prefer these (e.g., `getGetDealsMockHandler`)
+1. **First check** if Orval-generated handlers exist in `@ezra/api-client/<service>` — prefer these (e.g.,
+   `getGetDealsMockHandler`)
 2. Read `<package-root>/tests/mocks/handlers/index.ts` → list existing custom handlers
-3. Trace component → hook → API paths. If component imports `useGetXxx` from `@ezra/api-client/<service>`, the corresponding `getGetXxxMockHandler` is available in the same import
+3. Trace component → hook → API paths. If component imports `useGetXxx` from `@ezra/api-client/<service>`, the
+   corresponding `getGetXxxMockHandler` is available in the same import
 4. For each API endpoint:
-   - Check if Orval-generated handler exists (preferred)
-   - Check if custom handler exists
-   - Note HTTP method (GET/POST/PUT/DELETE)
-   - Flag as "needed" only if neither exists
+    - Check if Orval-generated handler exists (preferred)
+    - Check if custom handler exists
+    - Note HTTP method (GET/POST/PUT/DELETE)
+    - Flag as "needed" only if neither exists
 
 ### QueryClient / TanStack Query Requirements
 
 **Steps:**
 
-1. Check if source component/hook imports from `@tanstack/react-query` or `@ezra/api-client/<service>` (generated hooks like `useGetXxx`)
-2. If yes: tests MUST use `renderWithProviders` from `@ezra/test-utils/render` (wraps in QueryClientProvider with retry:false, gcTime:0)
+1. Check if source component/hook imports from `@tanstack/react-query` or `@ezra/api-client/<service>` (generated hooks
+   like `useGetXxx`)
+2. If yes: tests MUST use `renderWithProviders` from `@ezra/test-utils/render` (wraps in QueryClientProvider with retry:
+   false, gcTime:0)
 3. Flag in plan: "Requires QueryClientProvider — use renderWithProviders"
 
 ## Reference Test Discovery
