@@ -9,7 +9,7 @@ Translation table (Backlog-scoped surface):
                     "default"/"plan"                  → "on-request"
   cwd             → ThreadOptions(workingDirectory=...)
   output_schema   → TurnOptions(outputSchema=...)
-  max_turns       → counted via TurnCompletedEvent boundaries; aborts once exceeded
+  max_turns       → counted via Turn{Completed,Failed}Event boundaries; aborts once exceeded
   hooks           → NotImplementedError (Claude-only HookMatcher API)
   allowed_tools   → currently passthrough; tighter mapping deferred until needed
 """
@@ -24,6 +24,7 @@ from openai_codex_sdk import (
     TextInput,
     ThreadOptions,
     TurnCompletedEvent,
+    TurnFailedEvent,
     TurnOptions,
 )
 from openai_codex_sdk.types import CodexOptions
@@ -126,12 +127,12 @@ class CodexRuntime:
         final_text_buffer: list[str] = []
 
         async for evt in streamed.events:
-            # Count turn boundaries, not raw stream events: a single agent
-            # turn emits many events (item.started/updated/completed,
-            # reasoning, tool calls) plus exactly one TurnCompletedEvent.
-            # Counting events conflates the two and trips the budget after
-            # ~1 turn even when max_turns=80.
-            if isinstance(evt, TurnCompletedEvent):
+            # Count turn-terminating events (success or failure), not raw
+            # stream events. A single agent turn emits many item-level events
+            # plus exactly one of {TurnCompletedEvent, TurnFailedEvent}.
+            # Counting either ensures the budget is consumed even by a
+            # pathological retry loop that only ever fails turns.
+            if isinstance(evt, TurnCompletedEvent | TurnFailedEvent):
                 turns_seen += 1
                 if turns_seen > options.max_turns:
                     raise RuntimeError(

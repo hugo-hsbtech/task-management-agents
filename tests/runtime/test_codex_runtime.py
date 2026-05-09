@@ -305,6 +305,74 @@ async def test_query_does_not_raise_when_only_item_events_emitted(codex_home, op
     assert msgs[-1].is_final is True
 
 
+@pytest.mark.asyncio
+async def test_query_raises_on_failed_turn_loop(codex_home, opts):
+    """Regression: a stream of only TurnFailedEvents must still trip max_turns.
+
+    Without counting failures, a pathological retry loop emitting only
+    TurnFailedEvent (never TurnCompletedEvent) would bypass the budget
+    indefinitely. The runtime treats either turn-terminating event as
+    "one turn consumed."
+    """
+    from openai_codex_sdk import ThreadError, TurnFailedEvent
+
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_one_turn = AgentOptions(
+        **{**opts.__dict__, "max_turns": 1, "mcp_servers": None}
+    )
+    err = ThreadError(message="boom")
+    fake_events = [
+        TurnFailedEvent(type="turn.failed", error=err),
+        TurnFailedEvent(type="turn.failed", error=err),
+    ]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        with pytest.raises(RuntimeError, match=r"max_turns"):
+            async for _ in rt.query("p", opts_one_turn):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_query_counts_mixed_completed_and_failed_turns(codex_home, opts):
+    """Mixed completed + failed turns share the same budget — neither double-counts.
+
+    With max_turns=2: one TurnCompletedEvent + one TurnFailedEvent fits;
+    a third turn-terminating event of either kind trips the limit.
+    """
+    from openai_codex_sdk import ThreadError, TurnCompletedEvent, TurnFailedEvent, Usage
+
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_two_turns = AgentOptions(
+        **{**opts.__dict__, "max_turns": 2, "mcp_servers": None}
+    )
+    usage = Usage(input_tokens=0, cached_input_tokens=0, output_tokens=0)
+    err = ThreadError(message="boom")
+    fake_events = [
+        TurnCompletedEvent(type="turn.completed", usage=usage),
+        TurnFailedEvent(type="turn.failed", error=err),
+        TurnCompletedEvent(type="turn.completed", usage=usage),  # third → trips
+    ]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        with pytest.raises(RuntimeError, match=r"max_turns"):
+            async for _ in rt.query("p", opts_two_turns):
+                pass
+
+
 def test_client_raises_not_implemented(codex_home, opts):
     """Line 152: client() raises NotImplementedError matching 'not yet wired'."""
     from hsb.runtime.codex import CodexRuntime
