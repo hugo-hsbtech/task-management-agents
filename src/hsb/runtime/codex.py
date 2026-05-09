@@ -9,20 +9,21 @@ Translation table (Backlog-scoped surface):
                     "default"/"plan"                  → "on-request"
   cwd             → ThreadOptions(workingDirectory=...)
   output_schema   → TurnOptions(outputSchema=...)
-  max_turns       → tracked locally; aborts iteration once exceeded
+  max_turns       → counted via TurnCompletedEvent boundaries; aborts once exceeded
   hooks           → NotImplementedError (Claude-only HookMatcher API)
   allowed_tools   → currently passthrough; tighter mapping deferred until needed
 """
+
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 from openai_codex_sdk import (
     Codex,
     TextInput,
     ThreadOptions,
+    TurnCompletedEvent,
     TurnOptions,
 )
 from openai_codex_sdk.types import CodexOptions
@@ -34,6 +35,10 @@ from hsb.runtime.protocol import (
     PermissionMode,
     RuntimeName,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
 
 
 def _extract_event_text(evt: Any) -> str:
@@ -121,11 +126,17 @@ class CodexRuntime:
         final_text_buffer: list[str] = []
 
         async for evt in streamed.events:
-            turns_seen += 1
-            if turns_seen > options.max_turns:
-                raise RuntimeError(
-                    f"Codex exceeded max_turns={options.max_turns}; aborting."
-                )
+            # Count turn boundaries, not raw stream events: a single agent
+            # turn emits many events (item.started/updated/completed,
+            # reasoning, tool calls) plus exactly one TurnCompletedEvent.
+            # Counting events conflates the two and trips the budget after
+            # ~1 turn even when max_turns=80.
+            if isinstance(evt, TurnCompletedEvent):
+                turns_seen += 1
+                if turns_seen > options.max_turns:
+                    raise RuntimeError(
+                        f"Codex exceeded max_turns={options.max_turns}; aborting."
+                    )
 
             # Extract text from the event using the SDK's typed attributes
             # where present, falling back to a generic .text attr for fakes.

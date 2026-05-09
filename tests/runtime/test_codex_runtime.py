@@ -6,6 +6,7 @@ API note (openai-codex-sdk v0.1.11):
 - await thread.run_streamed(TextInput(type="text", text=...), TurnOptions(...))
   returns a StreamedTurn whose .events is an async iterator.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -42,14 +43,17 @@ def opts():
 
 def _make_streamed_turn(events: list):
     """Build a fake StreamedTurn whose .events is an async iterator over `events`."""
+
     async def _aiter():
         for e in events:
             yield e
+
     return SimpleNamespace(events=_aiter())
 
 
 def test_init_runs_oauth_check(codex_home):
     from hsb.runtime.codex import CodexRuntime
+
     rt = CodexRuntime(codex_home=codex_home)
     assert rt.name == "codex"
     assert rt._cached_config["forced_login_method"] == "chatgpt"
@@ -57,6 +61,7 @@ def test_init_runs_oauth_check(codex_home):
 
 def test_init_fails_when_oauth_invalid(tmp_path):
     from hsb.runtime.codex import CodexRuntime
+
     bad_home = tmp_path / "no_codex"
     with pytest.raises(RuntimeError, match=r"G1-Codex"):
         CodexRuntime(codex_home=bad_home)
@@ -65,6 +70,7 @@ def test_init_fails_when_oauth_invalid(tmp_path):
 @pytest.mark.asyncio
 async def test_query_rejects_hooks(codex_home, opts):
     from hsb.runtime.codex import CodexRuntime
+
     opts_with_hooks = AgentOptions(**{**opts.__dict__, "hooks": ["x"]})
     rt = CodexRuntime(codex_home=codex_home)
     with pytest.raises(NotImplementedError, match=r"hooks"):
@@ -76,6 +82,7 @@ async def test_query_rejects_hooks(codex_home, opts):
 async def test_query_verifies_mcp(codex_home, opts):
     """Requesting an MCP server not in config.toml raises before binary spawn."""
     from hsb.runtime.codex import CodexRuntime
+
     bad_opts = AgentOptions(
         **{**opts.__dict__, "mcp_servers": {"missing": {"command": "x"}}}
     )
@@ -123,7 +130,9 @@ async def test_query_translates_permission_mode(codex_home, opts):
     fake_codex = MagicMock()
     fake_codex.start_thread = MagicMock(return_value=fake_thread)
 
-    accept_opts = AgentOptions(**{**opts.__dict__, "permission_mode": "bypassPermissions"})
+    accept_opts = AgentOptions(
+        **{**opts.__dict__, "permission_mode": "bypassPermissions"}
+    )
 
     with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
         rt = CodexRuntime(codex_home=codex_home)
@@ -233,22 +242,32 @@ async def test_query_unmappable_permission_mode_raises(codex_home, opts, monkeyp
 
 @pytest.mark.asyncio
 async def test_query_raises_on_max_turns_exceeded(codex_home, opts):
-    """Line 126: exceeding max_turns raises RuntimeError."""
+    """Exceeding max_turns raises RuntimeError, counting only TurnCompletedEvents.
+
+    A real Codex turn emits many events (item.started/updated/completed,
+    reasoning, tool calls) plus one TurnCompletedEvent. The runtime must
+    increment its budget on the latter only — see codex.py around the
+    `isinstance(evt, TurnCompletedEvent)` check.
+    """
+    from openai_codex_sdk import TurnCompletedEvent, Usage
+
     from hsb.runtime.codex import CodexRuntime
 
     opts_one_turn = AgentOptions(
         **{**opts.__dict__, "max_turns": 1, "mcp_servers": None}
     )
-    # Two events to force turns_seen > max_turns on the second event.
+    usage = Usage(input_tokens=0, cached_input_tokens=0, output_tokens=0)
+    # Mix in non-turn events to prove they don't count toward the budget;
+    # only the second TurnCompletedEvent should trip max_turns=1.
     fake_events = [
-        SimpleNamespace(text="turn 1"),
-        SimpleNamespace(text="turn 2"),
+        SimpleNamespace(text="some item delta"),
+        TurnCompletedEvent(type="turn.completed", usage=usage),
+        SimpleNamespace(text="more deltas"),
+        TurnCompletedEvent(type="turn.completed", usage=usage),
     ]
 
     fake_thread = MagicMock()
-    fake_thread.run_streamed = AsyncMock(
-        return_value=_make_streamed_turn(fake_events)
-    )
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
     fake_codex = MagicMock()
     fake_codex.start_thread = MagicMock(return_value=fake_thread)
 
@@ -257,6 +276,33 @@ async def test_query_raises_on_max_turns_exceeded(codex_home, opts):
         with pytest.raises(RuntimeError, match=r"max_turns"):
             async for _ in rt.query("p", opts_one_turn):
                 pass
+
+
+@pytest.mark.asyncio
+async def test_query_does_not_raise_when_only_item_events_emitted(codex_home, opts):
+    """Regression: many non-turn events under a low max_turns must NOT raise.
+
+    Previously the runtime counted every event, so max_turns=1 would trip
+    after the second item-level event even if no turn ever completed.
+    """
+    from hsb.runtime.codex import CodexRuntime
+
+    opts_one_turn = AgentOptions(
+        **{**opts.__dict__, "max_turns": 1, "mcp_servers": None}
+    )
+    fake_events = [SimpleNamespace(text=f"delta {i}") for i in range(10)]
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn(fake_events))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        msgs = [m async for m in rt.query("p", opts_one_turn)]
+
+    assert len(msgs) == len(fake_events) + 1  # +1 for synthetic final
+    assert msgs[-1].is_final is True
 
 
 def test_client_raises_not_implemented(codex_home, opts):
