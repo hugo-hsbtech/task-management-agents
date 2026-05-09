@@ -1,11 +1,11 @@
 ---
 name: tdd-workflow
-description: Enforces strict RED-GREEN-REFACTOR test-driven development for the Ezra monorepo. Use when the user explicitly wants TDD methodology — says "write tests first", "TDD", "test-driven", or wants to implement a feature with tests before code. Do NOT use when the user just wants to generate tests for existing code (use /ezra-generate-backend-tests or /ezra-generate-frontend-tests instead).
+description: Enforces strict RED-GREEN-REFACTOR test-driven development for this project. Use when the user explicitly wants TDD methodology — says "write tests first", "TDD", "test-driven", or wants to implement a feature with tests before code. Do NOT use when the user just wants to generate tests for existing code.
 ---
 
 # Test-Driven Development Workflow
 
-Enforces TDD methodology for the Ezra platform monorepo. All test patterns and conventions live in `docs/development-guides/testing-standards.md` — read it before writing any tests.
+Enforces TDD methodology for this project. All test patterns and conventions live in `docs/development-guides/testing-standards.md` — read it before writing any tests.
 
 ## When to Use This vs Other Testing Skills
 

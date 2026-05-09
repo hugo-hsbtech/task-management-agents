@@ -1,6 +1,6 @@
 ---
 name: ezra-address-pr-comments
-description: Analyze and address unresolved review comments for pull requests with thoughtful responses and code fixes
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Analyze and address unresolved review comments for pull requests with thoughtful responses and code fixes
 disable-model-invocation: true
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, Task, WebFetch, TodoWrite, AskUserQuestion, mcp__ide__getDiagnostics, ezra-github-ops
 context: fork

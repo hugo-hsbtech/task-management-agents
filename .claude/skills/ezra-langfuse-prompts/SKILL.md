@@ -1,6 +1,6 @@
 ---
 name: ezra-langfuse-prompts
-description: Use when the task is "create a Langfuse prompt", "list Langfuse prompts", "version this prompt in Langfuse", or "connect a Langfuse-managed prompt to a PydanticAI agent". Focuses on prompt management through the Langfuse Python SDK and minimal integration with `ezra_llm`.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Use when the task is "create a Langfuse prompt", "list Langfuse prompts", "version this prompt in Langfuse", or "connect a Langfuse-managed prompt to a PydanticAI agent". Focuses on prompt management through the Langfuse Python SDK and minimal integration with `ezra_llm`.
 allowed-tools: Bash
 ---
 

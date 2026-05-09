@@ -1,6 +1,6 @@
 ---
 name: ezra-review-code
-description: Perform FAANG-level code review analyzing necessity, correctness, and completeness of changes
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Perform FAANG-level code review analyzing necessity, correctness, and completeness of changes
 disable-model-invocation: true
 ---
 

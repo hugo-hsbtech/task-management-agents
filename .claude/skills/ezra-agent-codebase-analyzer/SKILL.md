@@ -1,6 +1,6 @@
 ---
 name: ezra-agent-codebase-analyzer
-description: Analyzes codebase implementation details. Call the codebase-analyzer agent when you need to find detailed information about specific components. As always, the more detailed your request prompt, the better! :)
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Analyzes codebase implementation details. Call the codebase-analyzer agent when you need to find detailed information about specific components. As always, the more detailed your request prompt, the better! :)
 allowed-tools: Read, Grep, Glob, LS
 model: sonnet
 ---

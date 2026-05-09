@@ -1,6 +1,6 @@
 ---
 name: ezra-triage-sentry-issues
-description: Triage Sentry error issues into Linear bug tickets with deduplication
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Triage Sentry error issues into Linear bug tickets with deduplication
 ---
 
 # Sentry Issue Triage Skill

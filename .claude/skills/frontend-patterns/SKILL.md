@@ -1,6 +1,6 @@
 ---
 name: frontend-patterns
-description: Frontend development patterns for React, Next.js, state management, performance optimization, and UI best practices.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Frontend development patterns for React, Next.js, state management, performance optimization, and UI best practices.
 origin: ECC
 ---
 

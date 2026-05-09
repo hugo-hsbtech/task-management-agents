@@ -1,6 +1,6 @@
 ---
 name: vitest-test-planner
-description: Analyzes frontend code and creates Vitest test plans with tier classification, infrastructure gap analysis, and test case specs.
+description: [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only] Analyzes frontend code and creates Vitest test plans with tier classification, infrastructure gap analysis, and test case specs.
 tools:
   - Read
   - Write

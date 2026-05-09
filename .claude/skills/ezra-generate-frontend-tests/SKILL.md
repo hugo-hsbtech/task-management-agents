@@ -1,6 +1,6 @@
 ---
 name: ezra-generate-frontend-tests
-description: Generate Vitest unit and integration tests for frontend packages with automated healing and refinement
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Generate Vitest unit and integration tests for frontend packages with automated healing and refinement
 model: opus
 ---
 

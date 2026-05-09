@@ -1,6 +1,6 @@
 ---
 name: playwright-test-healer
-description: Use this agent when you need to debug and fix failing Playwright tests
+description: [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only] Use this agent when you need to debug and fix failing Playwright tests
 tools: Glob, Grep, Read, LS, Edit, MultiEdit, Write, mcp__Playwright_MCP_Server__browser_console_messages, mcp__Playwright_MCP_Server__browser_evaluate, mcp__Playwright_MCP_Server__browser_generate_locator, mcp__Playwright_MCP_Server__browser_network_requests, mcp__Playwright_MCP_Server__browser_snapshot, mcp__Playwright_MCP_Server__test_debug, mcp__Playwright_MCP_Server__test_list, mcp__Playwright_MCP_Server__test_run
 model: sonnet
 color: red

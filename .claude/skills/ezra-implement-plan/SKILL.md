@@ -1,6 +1,6 @@
 ---
 name: ezra-implement-plan
-description: Implement technical plans from docs/plans/ with verification
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Implement technical plans from docs/plans/ with verification
 ---
 
 # Implement Plan

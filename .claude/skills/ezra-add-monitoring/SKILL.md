@@ -1,7 +1,6 @@
 ---
 name: ezra-add-monitoring
-description: Add error tracking to Ezra backend code via the ezra_observability port. Use when adding a new FastAPI route, a new Temporal activity, a new background task, a new external API integration, or any code path that needs error capture, user context, or breadcrumbs. Triggers on "add monitoring", "add sentry", "capture this error", "track this", "instrument this endpoint", "report this exception", "add error tracking". Do NOT use for tracing/profiling work (errors-only scope today) or for Sentry adapter internals — see error-tracking-fastapi-sentry for adapter author work.
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Add error tracking to Ezra backend code via the ezra_observability port. Use when adding a new FastAPI route, a new Temporal activity, a new background task, a new external API integration, or any code path that needs error capture, user context, or breadcrumbs. Triggers on "add monitoring", "add sentry", "capture this error", "track this", "instrument this endpoint", "report this exception", "add error tracking". Do NOT use for tracing/profiling work (errors-only scope today) or for Sentry adapter internals — see error-tracking-fastapi-sentry for adapter author work.
 author: Carlos Melgoza
 ---
 

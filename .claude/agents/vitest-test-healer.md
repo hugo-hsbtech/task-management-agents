@@ -1,6 +1,6 @@
 ---
 name: vitest-test-healer
-description: Fixes failing Vitest tests by analyzing errors, applying targeted fixes, and running TypeScript checks.
+description: [NOT APPLICABLE — TypeScript/frontend tooling; this project is Python-only] Fixes failing Vitest tests by analyzing errors, applying targeted fixes, and running TypeScript checks.
 tools:
   - Read
   - Edit

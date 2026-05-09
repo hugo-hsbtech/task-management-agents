@@ -1,6 +1,6 @@
 ---
 name: ezra-scaffold-backend-tests
-description: Scaffold pytest testing infrastructure for a new backend package. Use when creating a new app in backend/packages/apps/ or a new domain in backend/packages/domains/, when user says "add tests to", "scaffold tests for", "setup testing for" a backend package, or when a new package needs conftest.py, factories, and smoke tests. Also use when retrofitting tests onto an existing package that has no tests yet.
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Scaffold pytest testing infrastructure for a new backend package. Use when creating a new app in backend/packages/apps/ or a new domain in backend/packages/domains/, when user says "add tests to", "scaffold tests for", "setup testing for" a backend package, or when a new package needs conftest.py, factories, and smoke tests. Also use when retrofitting tests onto an existing package that has no tests yet.
 ---
 
 # ezra-scaffold-backend-tests

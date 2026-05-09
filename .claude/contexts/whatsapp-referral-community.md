@@ -1,3 +1,6 @@
+> [!NOTE]
+> This context belongs to the Ezra deal-flow WhatsApp community and is not applicable in this engineering project.
+
 # Product Marketing Context
 
 *Last updated: 2026-04-15*

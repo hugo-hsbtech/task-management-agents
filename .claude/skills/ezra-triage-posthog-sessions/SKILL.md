@@ -1,6 +1,6 @@
 ---
 name: ezra-triage-posthog-sessions
-description: Triage PostHog session recordings into Linear bug tickets with deduplication
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Triage PostHog session recordings into Linear bug tickets with deduplication
 ---
 
 # PostHog Session Triage Skill

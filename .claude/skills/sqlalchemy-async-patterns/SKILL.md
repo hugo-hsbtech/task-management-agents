@@ -1,11 +1,11 @@
 ---
 name: sqlalchemy-async-patterns
-description: SQLAlchemy 2.0 async patterns for Ezra backend services, including typed Mapped models, AsyncSession usage, async_sessionmaker, eager loading, 2.0-style queries, session-per-request wiring, multi-tenant filtering, and connection-pool configuration.
+description: SQLAlchemy 2.0 async patterns for backend services, including typed Mapped models, AsyncSession usage, async_sessionmaker, eager loading, 2.0-style queries, session-per-request wiring, multi-tenant filtering, and connection-pool configuration.
 ---
 
 # SQLAlchemy Async Patterns
 
-Use this skill when building or changing Ezra backend persistence code with
+Use this skill when building or changing backend persistence code with
 SQLAlchemy 2.0's async APIs.
 
 ## First Reads
@@ -28,7 +28,7 @@ Read these files before changing ORM or session behavior:
 4. Prefer explicit eager loading over implicit lazy loads. Async code should not surprise you with hidden IO.
 5. Keep query construction in services or repositories, not in route handlers.
 6. Encode tenant or organization scoping in explicit predicates or repository helpers. Do not rely on hidden global filters.
-7. Reuse Ezra's shared `Base` from `ezra_core.database` so Alembic can see all metadata.
+7. Reuse the project's shared `Base` from `ezra_core.database` so Alembic can see all metadata.
 
 ## Model Declarations
 
@@ -71,7 +71,7 @@ Guidelines:
 
 ## Engine and Session Factory
 
-Ezra currently centralizes this in `ezra_core.database`:
+This project currently centralizes this in `ezra_core.database`:
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -200,7 +200,7 @@ await session.commit()
 
 ## Upsert Pattern
 
-Ezra's current auth service uses a dialect-agnostic select-then-update/insert flow:
+The current auth service uses a dialect-agnostic select-then-update/insert flow:
 
 ```python
 stmt = select(User).where(User.clerk_id == clerk_id)

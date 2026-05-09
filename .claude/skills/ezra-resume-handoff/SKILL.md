@@ -1,6 +1,6 @@
 ---
 name: ezra-resume-handoff
-description: Resume work from handoff document with context analysis and validation
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Resume work from handoff document with context analysis and validation
 ---
 
 # Resume work from a handoff document

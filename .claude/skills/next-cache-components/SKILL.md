@@ -1,7 +1,6 @@
 ---
 name: next-cache-components
-description: Next.js 16 Cache Components - PPR, use cache directive, cacheLife, cacheTag, updateTag
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Next.js 16 Cache Components - PPR, use cache directive, cacheLife, cacheTag, updateTag
 author: Carlos Melgoza
 ---
 

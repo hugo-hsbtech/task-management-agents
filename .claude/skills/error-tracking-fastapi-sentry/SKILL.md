@@ -1,7 +1,6 @@
 ---
 name: error-tracking-fastapi-sentry
-description: Sentry SDK internals for the ezra_observability Sentry adapter — sentry_sdk.init configuration, StarletteIntegration/FastApiIntegration/SqlalchemyIntegration setup, EventScrubber denylist, before_send filters, PII rules, and adapter-level tests. ADAPTER AUTHORS ONLY. App code must use `from ezra_observability import get_observability` (see ezra-add-monitoring).
-origin: Ezra
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Sentry SDK internals for the ezra_observability Sentry adapter — sentry_sdk.init configuration, StarletteIntegration/FastApiIntegration/SqlalchemyIntegration setup, EventScrubber denylist, before_send filters, PII rules, and adapter-level tests. ADAPTER AUTHORS ONLY. App code must use `from ezra_observability import get_observability` (see ezra-add-monitoring).
 author: Carlos Melgoza
 ---
 

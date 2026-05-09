@@ -1,6 +1,6 @@
 ---
 name: ezra-community-marketer
-description: Generate WhatsApp community content for the Ezra referral network. Use when creating deal pitches from data rooms, "looking for deals" posts, "looking for introductions" posts, or any community announcement. Triggers on "community post", "deal pitch", "looking for deals", "write announcement", "referral community".
+description: [NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] Generate WhatsApp community content for the Ezra referral network. Use when creating deal pitches from data rooms, "looking for deals" posts, "looking for introductions" posts, or any community announcement. Triggers on "community post", "deal pitch", "looking for deals", "write announcement", "referral community".
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: sonnet
 ---

@@ -1,6 +1,6 @@
 ---
 name: ezra-timelinesai-whatsapp
-description: "TimelinesAI API patterns for WhatsApp automation in Ezra. Use when building n8n workflows, agents, or services that interact with WhatsApp via TimelinesAI. Covers: posting to communities, reading messages, file uploads, webhooks, sub-group readability, and known limitations. Triggers on: 'TimelinesAI', 'WhatsApp API', 'WhatsApp automation', 'post to community', 'WhatsApp webhook', 'community announcement'."
+description: "[NOT APPLICABLE — Ezra-specific reference; do not invoke in this project] TimelinesAI API patterns for WhatsApp automation in Ezra. Use when building n8n workflows, agents, or services that interact with WhatsApp via TimelinesAI. Covers: posting to communities, reading messages, file uploads, webhooks, sub-group readability, and known limitations. Triggers on: 'TimelinesAI', 'WhatsApp API', 'WhatsApp automation', 'post to community', 'WhatsApp webhook', 'community announcement'."
 version: 1.0.0
 tags: [whatsapp, timelinesai, automation, community, n8n]
 ---
