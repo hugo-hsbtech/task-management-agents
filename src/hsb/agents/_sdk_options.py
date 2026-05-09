@@ -40,9 +40,14 @@ logger = logging.getLogger(__name__)
 
 _FORBIDDEN_TOOLS = {"Agent"}  # G2: WORC-02
 
+_FORBIDDEN_API_KEY_VARS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
 
 def assert_oauth2_only() -> None:
-    """G1 (AI-SPEC §6) — function-entry-time guard.
+    """G1 (AI-SPEC §6) — function-entry-time guard. Rejects metered API keys
+    for either runtime. Operators must use OAuth tokens:
+      - Claude:  CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
+      - Codex:   ~/.codex/auth.json       (from `codex login --device-auth`)
 
     Called from :func:`make_options` before every ``ClaudeAgentOptions``
     construction. Function-time (NOT module-import-time) so test environments
@@ -51,10 +56,12 @@ def assert_oauth2_only() -> None:
     autouse fixture in ``tests/conftest.py`` that unsets the env var at
     session start.
     """
-    if "ANTHROPIC_API_KEY" in os.environ:
+    forbidden = [v for v in _FORBIDDEN_API_KEY_VARS if v in os.environ]
+    if forbidden:
         raise RuntimeError(
-            "G1 violation: ANTHROPIC_API_KEY is set — forbidden. "
-            "Use CLAUDE_CODE_OAUTH_TOKEN only."
+            f"G1 violation: {', '.join(forbidden)} set — forbidden. "
+            "Use OAuth tokens only (CLAUDE_CODE_OAUTH_TOKEN for Claude, "
+            "`codex login --device-auth` for Codex)."
         )
 
 
@@ -72,8 +79,8 @@ def make_options(
 ) -> ClaudeAgentOptions:
     """Construct a ``ClaudeAgentOptions`` with G1 + G2 enforcement.
 
-    G1: ``assert_oauth2_only()`` raises ``RuntimeError`` if
-    ``ANTHROPIC_API_KEY`` is set in the environment.
+    G1: raises RuntimeError if any forbidden API-key env var
+    (ANTHROPIC_API_KEY or OPENAI_API_KEY) is set.
 
     G2: raises ``ValueError`` if any tool name in ``_FORBIDDEN_TOOLS``
     (currently ``{"Agent"}``) is present in ``allowed_tools``. WORC-02
@@ -232,3 +239,74 @@ def linear_write_guard(fn):
         return _async_wrapper
 
     return _sync_wrapper
+
+
+# ---------------------------------------------------------------------------
+# Per-agent runtime resolution. See:
+# docs/superpowers/specs/2026-05-09-codex-oauth-alt-runtime-design.md §5.4
+# ---------------------------------------------------------------------------
+
+def resolve_runtime(agent_name: str):
+    """Return the Runtime implementation for the given agent.
+
+    Reads env var HSB_RUNTIME_<AGENT_NAME_UPPER>; default "claude".
+    WIO is hard-coded to claude — HSB_RUNTIME_WIO=codex raises.
+    """
+    from hsb.runtime.claude import ClaudeRuntime
+    from hsb.runtime.codex import CodexRuntime
+
+    env_var = f"HSB_RUNTIME_{agent_name.upper()}"
+    value = os.environ.get(env_var, "claude").strip().lower()
+
+    if agent_name.lower() == "wio" and value == "codex":
+        raise ValueError(
+            "WIO is not flippable yet — stateful ClaudeSDKClient session has "
+            "no Codex equivalent. Track separately when porting WIO."
+        )
+
+    if value == "claude":
+        return ClaudeRuntime()
+    if value == "codex":
+        return CodexRuntime()
+    raise ValueError(
+        f"{env_var}={value!r} is invalid. Allowed: 'claude' or 'codex'."
+    )
+
+
+def make_agent_options(
+    system_prompt: str,
+    allowed_tools,
+    permission_mode,
+    max_turns: int,
+    model: str,
+    mcp_servers: dict | None = None,
+    cwd: str | None = None,
+    output_schema: dict | None = None,
+    hooks=None,
+):
+    """Runtime-agnostic options factory. Returns AgentOptions.
+
+    Enforces G1 + G2 (same as make_options). Use this when an agent goes
+    through the Runtime Protocol; use make_options() when an agent still
+    calls claude_agent_sdk directly.
+    """
+    from hsb.runtime.protocol import AgentOptions
+
+    assert_oauth2_only()  # G1
+    forbidden = _FORBIDDEN_TOOLS & set(allowed_tools)
+    if forbidden:
+        raise ValueError(
+            f"G2 violation: {forbidden} must not appear in allowed_tools. "
+            "Sub-subagent dispatch is forbidden by WORC-02."
+        )
+    return AgentOptions(
+        system_prompt=system_prompt,
+        allowed_tools=tuple(allowed_tools),
+        permission_mode=permission_mode,
+        max_turns=max_turns,
+        model=model,
+        mcp_servers=mcp_servers,
+        cwd=cwd,
+        output_schema=output_schema,
+        hooks=hooks,
+    )

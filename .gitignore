@@ -16,6 +16,7 @@ build/
 
 # Phase 4: transient git worktrees created by parallel mode
 .worktrees/
+.claude/worktrees/
 
 # Jupyter notebook checkpoints — local-only, never commit
 .ipynb_checkpoints/
