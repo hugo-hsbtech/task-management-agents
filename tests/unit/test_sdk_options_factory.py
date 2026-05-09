@@ -103,39 +103,125 @@ def test_g1_module_import_does_not_assert(monkeypatch):
     assert hasattr(mod, "make_options")
 
 
-class _StubBlock:
-    def __init__(self, name=None, text=None):
-        self.name = name
-        self.text = text
+def test_g3_raises_on_task_tool_in_assistant_message():
+    """G3: real ``AssistantMessage`` with ``ToolUseBlock(name='Task')`` raises ``RuntimeError``.
 
+    The production function uses a module-level import of ``AssistantMessage``
+    from ``claude_agent_sdk``, so monkeypatching the module attribute after
+    import has no effect. Instead, we use a real ``AssistantMessage`` instance
+    (with a real ``ToolUseBlock``) so the ``isinstance`` check succeeds.
+    """
+    from claude_agent_sdk import AssistantMessage
+    from claude_agent_sdk.types import ToolUseBlock
 
-class _StubAssistantMessage:
-    def __init__(self, content):
-        self.content = content
-
-
-def test_g3_raises_on_task_tool_in_assistant_message(monkeypatch):
-    """G3: ``AssistantMessage`` with content block ``name=='Task'`` raises ``RuntimeError``."""
-    monkeypatch.setattr(
-        "claude_agent_sdk.AssistantMessage",
-        _StubAssistantMessage,
-        raising=False,
-    )
-    msg = _StubAssistantMessage(content=[_StubBlock(name="Task")])
+    block = ToolUseBlock(id="tu_1", name="Task", input={})
+    msg = AssistantMessage(content=[block], model="claude-haiku-4-5")
     with pytest.raises(RuntimeError) as exc:
         assert_no_task_dispatch(msg)
     assert "G3" in str(exc.value)
 
 
-def test_g3_does_not_raise_on_text_only_assistant_message(monkeypatch):
+def test_g3_does_not_raise_on_text_only_assistant_message():
     """G3 happy path: ``AssistantMessage`` with only ``TextBlock``s is allowed."""
-    monkeypatch.setattr(
-        "claude_agent_sdk.AssistantMessage",
-        _StubAssistantMessage,
-        raising=False,
-    )
-    msg = _StubAssistantMessage(content=[_StubBlock(name=None, text="hello")])
+    from claude_agent_sdk import AssistantMessage
+    from claude_agent_sdk.types import TextBlock
+
+    block = TextBlock(text="hello")
+    msg = AssistantMessage(content=[block], model="claude-haiku-4-5")
     assert_no_task_dispatch(msg)  # no raise
+
+
+def test_g3_raises_on_task_tool_in_result_message():
+    """G3 backstop: ``ResultMessage`` with ``usage.tool_uses`` entry ``name=='Task'`` raises."""
+    from claude_agent_sdk import ResultMessage
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=1,
+        duration_api_ms=1,
+        is_error=False,
+        num_turns=1,
+        session_id="test",
+        usage={"tool_uses": [{"name": "Task", "count": 1}]},
+    )
+    with pytest.raises(RuntimeError) as exc:
+        assert_no_task_dispatch(msg)
+    assert "G3" in str(exc.value)
+
+
+def test_g3_does_not_raise_on_safe_tool_in_result_message():
+    """G3 happy path: ``ResultMessage`` with a non-Task tool entry does not raise."""
+    from claude_agent_sdk import ResultMessage
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=1,
+        duration_api_ms=1,
+        is_error=False,
+        num_turns=1,
+        session_id="test",
+        usage={"tool_uses": [{"name": "Read", "count": 2}]},
+    )
+    assert_no_task_dispatch(msg)  # no raise
+
+
+def test_g3_does_not_raise_on_result_message_with_null_usage():
+    """G3 resilience: ``ResultMessage`` with ``usage=None`` does not crash."""
+    from claude_agent_sdk import ResultMessage
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=1,
+        duration_api_ms=1,
+        is_error=False,
+        num_turns=1,
+        session_id="test",
+        usage=None,
+    )
+    assert_no_task_dispatch(msg)  # no raise, no AttributeError
+
+
+def test_linear_write_guard_sync_denies_when_called_from_risk_agent(monkeypatch):
+    """G5: sync Linear write originating from risk_agent.py raises ``PermissionError``.
+
+    Patches the stack-inspection helper so the test does not need to actually
+    call from inside risk_agent.py.
+    """
+    import hsb.agents._sdk_options as opts_mod
+    from hsb.agents._sdk_options import linear_write_guard
+
+    @linear_write_guard
+    def my_write_fn():
+        return "wrote"
+
+    monkeypatch.setattr(
+        opts_mod,
+        "_stack_includes_risk_agent_excluding_delegated",
+        lambda: True,
+    )
+
+    with pytest.raises(PermissionError) as exc:
+        my_write_fn()
+    assert "RISK-04" in str(exc.value)
+
+
+def test_linear_write_guard_sync_allows_when_not_from_risk_agent(monkeypatch):
+    """G5 happy path: sync Linear write NOT from risk_agent.py succeeds."""
+    import hsb.agents._sdk_options as opts_mod
+    from hsb.agents._sdk_options import linear_write_guard
+
+    @linear_write_guard
+    def my_write_fn():
+        return "wrote"
+
+    monkeypatch.setattr(
+        opts_mod,
+        "_stack_includes_risk_agent_excluding_delegated",
+        lambda: False,
+    )
+
+    result = my_write_fn()
+    assert result == "wrote"
 
 
 def test_conftest_fixture_clears_anthropic_api_key():
