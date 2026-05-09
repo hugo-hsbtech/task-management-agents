@@ -2,53 +2,71 @@ SHELL := /usr/bin/env bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up run down logs shell auth-linear ps restart clean
+# ── Help ─────────────────────────────────────────────────────────────────────
 
+.PHONY: help
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
+# ── Service ───────────────────────────────────────────────────────────────────
+
+.PHONY: build
 build: ## Build the Docker image
 	@./scripts/build.sh
 
+.PHONY: up
 up: ## Start the service in detached mode
 	@./scripts/up.sh
 
+.PHONY: run
 run: ## Run the service in foreground (logs stream, exits when container exits)
 	@./scripts/run.sh
 
+.PHONY: down
 down: ## Stop and remove the service container + network
 	@./scripts/down.sh
 
+.PHONY: restart
+restart: down up ## Restart the service
+
+.PHONY: logs
 logs: ## Tail service logs
 	@./scripts/logs.sh
 
-shell: ## Open a bash shell inside a fresh container
-	@./scripts/shell.sh
-
-auth-linear: ## Run mcp-remote to complete Linear OAuth (one-time, persists in named volume)
-	@./scripts/auth-linear.sh
-
+.PHONY: ps
 ps: ## Show service status
 	@./scripts/ps.sh
 
-restart: down up ## Restart the service
+.PHONY: shell
+shell: ## Open a bash shell inside a fresh container
+	@./scripts/shell.sh
 
+.PHONY: auth-linear
+auth-linear: ## Run mcp-remote to complete Linear OAuth (one-time, persists in named volume)
+	@./scripts/auth-linear.sh
+
+.PHONY: clean
 clean: ## Stop service and remove volumes + locally-built image
 	@./scripts/clean.sh
 
-.PHONY: lint fmt fmt-check typecheck test
+# ── Quality ───────────────────────────────────────────────────────────────────
 
-lint:
+.PHONY: lint
+lint: ## Lint source files
 	uv run ruff check src/ tests/
 
-fmt:
+.PHONY: fmt
+fmt: ## Format source files
 	uv run ruff format src/ tests/
 
-fmt-check:
+.PHONY: fmt-check
+fmt-check: ## Check formatting without writing
 	uv run ruff format --check src/ tests/
 
-typecheck:
+.PHONY: typecheck
+typecheck: ## Run type checker
 	uv run mypy src/
 
-test:
+.PHONY: test
+test: ## Run test suite
 	uv run pytest tests/
