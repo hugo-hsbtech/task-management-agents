@@ -40,9 +40,14 @@ logger = logging.getLogger(__name__)
 
 _FORBIDDEN_TOOLS = {"Agent"}  # G2: WORC-02
 
+_FORBIDDEN_API_KEY_VARS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
 
 def assert_oauth2_only() -> None:
-    """G1 (AI-SPEC §6) — function-entry-time guard.
+    """G1 (AI-SPEC §6) — function-entry-time guard. Rejects metered API keys
+    for either runtime. Operators must use OAuth tokens:
+      - Claude:  CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
+      - Codex:   ~/.codex/auth.json       (from `codex login --device-auth`)
 
     Called from :func:`make_options` before every ``ClaudeAgentOptions``
     construction. Function-time (NOT module-import-time) so test environments
@@ -51,10 +56,12 @@ def assert_oauth2_only() -> None:
     autouse fixture in ``tests/conftest.py`` that unsets the env var at
     session start.
     """
-    if "ANTHROPIC_API_KEY" in os.environ:
+    forbidden = [v for v in _FORBIDDEN_API_KEY_VARS if v in os.environ]
+    if forbidden:
         raise RuntimeError(
-            "G1 violation: ANTHROPIC_API_KEY is set — forbidden. "
-            "Use CLAUDE_CODE_OAUTH_TOKEN only."
+            f"G1 violation: {', '.join(forbidden)} set — forbidden. "
+            "Use OAuth tokens only (CLAUDE_CODE_OAUTH_TOKEN for Claude, "
+            "`codex login --device-auth` for Codex)."
         )
 
 
