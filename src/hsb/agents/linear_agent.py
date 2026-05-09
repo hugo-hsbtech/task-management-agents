@@ -98,7 +98,15 @@ async def run_linear_agent(prompt: str) -> str | None:
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, SystemMessage) and message.subtype == "init":
             mcp_servers = message.data.get("mcp_servers", [])
-            failed = [s for s in mcp_servers if s.get("status") != "connected"]
+            # Only inspect servers we registered — the SDK init message may
+            # surface globally-registered MCPs (e.g. user-level OAuth servers)
+            # whose auth state is unrelated to this agent.
+            required = {"linear"}
+            failed = [
+                s
+                for s in mcp_servers
+                if s.get("name") in required and s.get("status") != "connected"
+            ]
             if failed:
                 raise RuntimeError(f"Linear MCP server failed to connect: {failed}")
         elif isinstance(message, AssistantMessage):

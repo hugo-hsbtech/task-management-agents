@@ -10,8 +10,6 @@ RULE in BACKLOG_SYSTEM_PROMPT enforces the list_issues pre-flight before any
 create_issue call (Pitfall 1, BKPK-05).
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
@@ -22,7 +20,6 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from hsb.agents._sdk_options import make_agent_options, resolve_runtime
-
 from hsb.agents.hooks import LINEAR_HOOKS
 from hsb.contracts.backlog import BacklogInput, BacklogOutput
 
@@ -127,12 +124,11 @@ async def _run_backlog_agent_async(input: BacklogInput) -> BacklogOutput:
             # result sentinel. This is what makes the agent flip-able.
             if message.text:
                 print(message.text)
-            if message.is_final:
-                # On Codex, the final event carries the model's last message
-                # text in message.text. On Claude this branch is unreachable
-                # (ResultMessage handler above sets result_text and continues).
-                if result_text is None:
-                    result_text = message.text
+            # On Codex, the final event carries the model's last message
+            # text in message.text. On Claude this branch is unreachable
+            # (ResultMessage handler above sets result_text and continues).
+            if message.is_final and result_text is None:
+                result_text = message.text
 
         if result_text is None:
             logger.warning("Attempt %d: no result text", attempt)
