@@ -5,6 +5,11 @@ services:
       dockerfile: Dockerfile
     image: hsb-agents:local
     container_name: hsb-agents
+    # mcp-remote binds to 127.0.0.1 inside the container; with bridge networking
+    # Docker -p NAT can't reach loopback-only listeners (browser OAuth callback
+    # silently fails). Sharing the host netns makes container loopback == host
+    # loopback. Linux-only.
+    network_mode: host
     env_file:
       - .env
     environment:
