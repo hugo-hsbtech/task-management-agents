@@ -4,9 +4,9 @@
 
 **Goal:** Add per-agent runtime flippability between Claude Code and OpenAI Codex CLI via env var (`HSB_RUNTIME_<AGENT>=codex`), OAuth-only on both sides; ship the flip on the Backlog Agent as the pilot.
 
-**Architecture:** A new `src/hsb/runtime/` package introduces a `Runtime` Protocol with two implementations — `ClaudeRuntime` (wraps `claude_agent_sdk.query`) and `CodexRuntime` (wraps `codex_app_server.Codex`). The existing `_sdk_options.make_options()` chokepoint grows two siblings: `make_agent_options()` (returns runtime-agnostic `AgentOptions`) and `resolve_runtime(agent_name)` (env-var-driven). Backlog Agent migrates from direct `claude_agent_sdk` imports to the runtime adapter.
+**Architecture:** A new `src/hsb/runtime/` package introduces a `Runtime` Protocol with two implementations — `ClaudeRuntime` (wraps `claude_agent_sdk.query`) and `CodexRuntime` (wraps `openai_codex_sdk.Codex`). The existing `_sdk_options.make_options()` chokepoint grows two siblings: `make_agent_options()` (returns runtime-agnostic `AgentOptions`) and `resolve_runtime(agent_name)` (env-var-driven). Backlog Agent migrates from direct `claude_agent_sdk` imports to the runtime adapter.
 
-**Tech Stack:** Python 3.12+, `claude-agent-sdk` (existing), `openai-codex-sdk` (new — provides `codex_app_server`), `pydantic`, `tomllib` (stdlib), `pytest`, `pytest-asyncio`.
+**Tech Stack:** Python 3.12+, `claude-agent-sdk` (existing), `openai-codex-sdk` (new — provides `openai_codex_sdk`), `pydantic`, `tomllib` (stdlib), `pytest`, `pytest-asyncio`.
 
 **Spec:** [`docs/superpowers/specs/2026-05-09-codex-oauth-alt-runtime-design.md`](../specs/2026-05-09-codex-oauth-alt-runtime-design.md)
 
@@ -31,9 +31,9 @@ Expected: pyproject.toml gains `"openai-codex-sdk>=X.Y.Z"` under `[project] depe
 - [ ] **Step 2: Verify import works**
 
 ```bash
-uv run python -c "from codex_app_server import Codex, AsyncCodex, Thread, AsyncThread; print('codex_app_server OK')"
+uv run python -c "from openai_codex_sdk import Codex, Thread, ThreadOptions, TurnOptions, TextInput; print('openai_codex_sdk OK')"
 ```
-Expected: `codex_app_server OK`
+Expected: `openai_codex_sdk OK`. (Module is `openai_codex_sdk`, not `openai_codex_sdk`. Async support is via `await Thread.run_streamed(...)` on the same `Thread` class — no separate AsyncThread.)
 
 - [ ] **Step 3: Commit**
 
@@ -119,7 +119,7 @@ Create `src/hsb/runtime/__init__.py`:
 """hsb.runtime — runtime-agnostic adapter layer.
 
 Two implementations: ClaudeRuntime (claude_agent_sdk) and CodexRuntime
-(codex_app_server). Selection is per-agent via environment variable
+(openai_codex_sdk). Selection is per-agent via environment variable
 HSB_RUNTIME_<AGENT_NAME>. See docs/superpowers/specs/2026-05-09-codex-oauth-alt-runtime-design.md.
 """
 from hsb.runtime.protocol import AgentOptions, Message, Runtime, StatefulClient
@@ -133,7 +133,7 @@ Create `src/hsb/runtime/protocol.py`:
 """Runtime-agnostic Protocol and option shape.
 
 These types are the lowest common denominator between claude_agent_sdk
-and codex_app_server. They are NOT re-exports of either SDK's types —
+and openai_codex_sdk. They are NOT re-exports of either SDK's types —
 each Runtime implementation translates AgentOptions into its native
 options at the seam.
 """
@@ -673,10 +673,18 @@ git commit -m "feat(runtime): Codex G1-equivalent guards (forced_login_method + 
 - [ ] **Step 1: Write the failing test**
 
 ```python
-"""CodexRuntime: wraps codex_app_server.Codex behind Runtime Protocol."""
+"""CodexRuntime: wraps openai_codex_sdk.Codex behind Runtime Protocol.
+
+API note (openai-codex-sdk v0.1.11):
+- Codex() constructor needs a binary; tests patch hsb.runtime.codex.Codex.
+- start_thread(ThreadOptions(...)) returns a Thread.
+- await thread.run_streamed(TextInput(type="text", text=...), TurnOptions(...))
+  returns a StreamedTurn whose .events is an async iterator.
+"""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -707,6 +715,14 @@ def opts():
     )
 
 
+def _make_streamed_turn(events: list):
+    """Build a fake StreamedTurn whose .events is an async iterator over `events`."""
+    async def _aiter():
+        for e in events:
+            yield e
+    return SimpleNamespace(events=_aiter())
+
+
 def test_init_runs_oauth_check(codex_home):
     from hsb.runtime.codex import CodexRuntime
     rt = CodexRuntime(codex_home=codex_home)
@@ -733,7 +749,7 @@ async def test_query_rejects_hooks(codex_home, opts):
 
 @pytest.mark.asyncio
 async def test_query_verifies_mcp(codex_home, opts):
-    """Requesting an MCP server not in config.toml raises before subprocess spawn."""
+    """Requesting an MCP server not in config.toml raises before binary spawn."""
     from hsb.runtime.codex import CodexRuntime
     bad_opts = AgentOptions(
         **{**opts.__dict__, "mcp_servers": {"missing": {"command": "x"}}}
@@ -748,13 +764,11 @@ async def test_query_verifies_mcp(codex_home, opts):
 async def test_query_calls_codex_thread_run(codex_home, opts):
     from hsb.runtime.codex import CodexRuntime
 
-    fake_event = MagicMock(text="hi from codex")
+    fake_event = SimpleNamespace(text="hi from codex")
     fake_thread = MagicMock()
-    fake_thread.run_stream = MagicMock(return_value=iter([fake_event]))
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([fake_event]))
     fake_codex = MagicMock()
-    fake_codex.__enter__ = MagicMock(return_value=fake_codex)
-    fake_codex.__exit__ = MagicMock(return_value=False)
-    fake_codex.thread_start = MagicMock(return_value=fake_thread)
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
 
     with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
         rt = CodexRuntime(codex_home=codex_home)
@@ -762,14 +776,17 @@ async def test_query_calls_codex_thread_run(codex_home, opts):
         async for m in rt.query("hello", opts):
             msgs.append(m)
 
-    fake_codex.thread_start.assert_called_once()
-    start_kwargs = fake_codex.thread_start.call_args.kwargs
-    assert start_kwargs["model"] == "gpt-5.4"
-    # System prompt prepended into the user prompt as <system> block.
-    run_call = fake_thread.run_stream.call_args
-    sent_prompt = run_call.args[0] if run_call.args else run_call.kwargs.get("prompt", "")
-    assert "<system>sys-prompt</system>" in sent_prompt
-    assert "hello" in sent_prompt
+    fake_codex.start_thread.assert_called_once()
+    thread_options_arg = fake_codex.start_thread.call_args.args[0]
+    assert thread_options_arg.model == "gpt-5.4"
+    assert thread_options_arg.approvalPolicy == "never"
+
+    # run_streamed received a TextInput with the system+user prompt.
+    fake_thread.run_streamed.assert_awaited_once()
+    call = fake_thread.run_streamed.call_args
+    text_input = call.args[0]
+    assert "<system>sys-prompt</system>" in text_input.text
+    assert "hello" in text_input.text
 
 
 @pytest.mark.asyncio
@@ -777,11 +794,9 @@ async def test_query_translates_permission_mode(codex_home, opts):
     from hsb.runtime.codex import CodexRuntime
 
     fake_thread = MagicMock()
-    fake_thread.run_stream = MagicMock(return_value=iter([]))
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([]))
     fake_codex = MagicMock()
-    fake_codex.__enter__ = MagicMock(return_value=fake_codex)
-    fake_codex.__exit__ = MagicMock(return_value=False)
-    fake_codex.thread_start = MagicMock(return_value=fake_thread)
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
 
     accept_opts = AgentOptions(**{**opts.__dict__, "permission_mode": "bypassPermissions"})
 
@@ -790,8 +805,32 @@ async def test_query_translates_permission_mode(codex_home, opts):
         async for _ in rt.query("p", accept_opts):
             pass
 
-    config_arg = fake_codex.thread_start.call_args.kwargs["config"]
-    assert config_arg["approval_policy"] == "never"
+    thread_options_arg = fake_codex.start_thread.call_args.args[0]
+    assert thread_options_arg.approvalPolicy == "never"
+
+
+@pytest.mark.asyncio
+async def test_query_passes_cwd_and_output_schema(codex_home, opts):
+    from hsb.runtime.codex import CodexRuntime
+
+    fake_thread = MagicMock()
+    fake_thread.run_streamed = AsyncMock(return_value=_make_streamed_turn([]))
+    fake_codex = MagicMock()
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
+
+    cwd_opts = AgentOptions(
+        **{**opts.__dict__, "cwd": "/tmp", "output_schema": {"type": "object"}}
+    )
+
+    with patch("hsb.runtime.codex.Codex", return_value=fake_codex):
+        rt = CodexRuntime(codex_home=codex_home)
+        async for _ in rt.query("p", cwd_opts):
+            pass
+
+    thread_options_arg = fake_codex.start_thread.call_args.args[0]
+    assert thread_options_arg.workingDirectory == "/tmp"
+    turn_options_arg = fake_thread.run_streamed.call_args.args[1]
+    assert turn_options_arg.outputSchema == {"type": "object"}
 ```
 
 - [ ] **Step 2: Run test to confirm failure**
@@ -806,26 +845,34 @@ Expected: ImportError — `hsb.runtime.codex` does not exist.
 Create `src/hsb/runtime/codex.py`:
 
 ```python
-"""CodexRuntime — wraps codex_app_server.Codex.
+"""CodexRuntime — wraps openai_codex_sdk.Codex.
 
 Translation table (Backlog-scoped surface):
-  system_prompt   → prepended to prompt as <system>...</system> block
-  model           → Codex.thread_start(model=...)
+  system_prompt   → prepended to prompt as <system>...</system> block in TextInput
+  model           → ThreadOptions(model=...)
   mcp_servers     → verified against ~/.codex/config.toml; not configured here
-  permission_mode → approval_policy ("bypassPermissions"/"acceptEdits" → "never";
-                    "default"/"plan" → "on-request")
-  cwd             → thread.run_stream(cwd=...)
-  output_schema   → thread.run_stream(output_schema=...)
-  max_turns       → tracked locally; aborts thread once exceeded
+  permission_mode → ThreadOptions(approvalPolicy=...)
+                    "bypassPermissions"/"acceptEdits" → "never"
+                    "default"/"plan"                  → "on-request"
+  cwd             → ThreadOptions(workingDirectory=...)
+  output_schema   → TurnOptions(outputSchema=...)
+  max_turns       → tracked locally; aborts iteration once exceeded
   hooks           → NotImplementedError (Claude-only HookMatcher API)
-  allowed_tools   → translated where expressible; NotImplementedError otherwise
+  allowed_tools   → currently passthrough; tighter mapping deferred until needed
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from codex_app_server import Codex
+from openai_codex_sdk import (
+    Codex,
+    CodexOptions,
+    TextInput,
+    ThreadOptions,
+    TurnOptions,
+)
 
 from hsb.runtime.codex_guards import assert_codex_oauth_only, verify_codex_mcp
 from hsb.runtime.protocol import (
@@ -842,6 +889,18 @@ _PERMISSION_MAP: dict[PermissionMode, str] = {
     "plan": "on-request",
     "bypassPermissions": "never",
 }
+
+
+def _build_codex_options() -> CodexOptions | None:
+    """Honor CODEX_PATH_OVERRIDE so operators can reuse a globally-installed
+    `codex` binary (npm i -g @openai/codex) without populating the SDK's
+    vendor dir. Returns None when no override is set, letting the SDK fall
+    back to find_codex_path().
+    """
+    override = os.environ.get("CODEX_PATH_OVERRIDE")
+    if override:
+        return CodexOptions(codex_path_override=override)
+    return None
 
 
 class CodexRuntime:
@@ -868,34 +927,42 @@ class CodexRuntime:
                 "has no mapping."
             )
 
-        full_prompt = f"<system>{options.system_prompt}</system>\n\n{prompt}"
-        thread_config: dict[str, Any] = {"approval_policy": approval_policy}
+        full_text = f"<system>{options.system_prompt}</system>\n\n{prompt}"
 
-        run_kwargs: dict[str, Any] = {}
-        if options.cwd is not None:
-            run_kwargs["cwd"] = options.cwd
-        if options.output_schema is not None:
-            run_kwargs["output_schema"] = options.output_schema
+        thread_options = ThreadOptions(
+            model=options.model,
+            approvalPolicy=approval_policy,
+            workingDirectory=options.cwd,
+        )
+        turn_options = TurnOptions(
+            outputSchema=options.output_schema,
+        )
 
-        with Codex() as codex:
-            thread = codex.thread_start(model=options.model, config=thread_config)
-            turns_seen = 0
-            for evt in thread.run_stream(full_prompt, **run_kwargs):
-                turns_seen += 1
-                if turns_seen > options.max_turns:
-                    raise RuntimeError(
-                        f"Codex exceeded max_turns={options.max_turns}; aborting."
-                    )
-                yield Message(
-                    text=getattr(evt, "text", "") or "",
-                    is_final=getattr(evt, "is_final", False),
-                    raw=evt,
+        codex_opts = _build_codex_options()
+        codex = Codex(codex_opts) if codex_opts is not None else Codex()
+        thread = codex.start_thread(thread_options)
+        streamed = await thread.run_streamed(
+            TextInput(type="text", text=full_text),
+            turn_options,
+        )
+
+        turns_seen = 0
+        async for evt in streamed.events:
+            turns_seen += 1
+            if turns_seen > options.max_turns:
+                raise RuntimeError(
+                    f"Codex exceeded max_turns={options.max_turns}; aborting."
                 )
+            yield Message(
+                text=getattr(evt, "text", "") or "",
+                is_final=getattr(evt, "is_final", False),
+                raw=evt,
+            )
 
     def client(self, options: AgentOptions) -> Any:
         raise NotImplementedError(
             "CodexRuntime.client() not yet wired — WIO port pending. "
-            "Use codex_app_server.Thread directly until then."
+            "Use openai_codex_sdk.Thread directly until then."
         )
 ```
 
@@ -904,13 +971,13 @@ class CodexRuntime:
 ```bash
 uv run pytest tests/runtime/test_codex_runtime.py -v
 ```
-Expected: 6 passed.
+Expected: 7 passed (init oauth check, init oauth-invalid, hooks rejection, mcp verify, thread/run translation, permission mode, cwd+output_schema).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/hsb/runtime/codex.py tests/runtime/test_codex_runtime.py
-git commit -m "feat(runtime): CodexRuntime — wraps codex_app_server behind Runtime Protocol"
+git commit -m "feat(runtime): CodexRuntime — wraps openai_codex_sdk behind Runtime Protocol"
 ```
 
 ---
@@ -1406,13 +1473,18 @@ async def test_claude_path_yields_valid_backlog_output(monkeypatch, backlog_inpu
 async def test_codex_path_yields_valid_backlog_output(monkeypatch, backlog_input, codex_home):
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "codex")
 
-    fake_event = MagicMock(text=FIXTURE_BACKLOG_JSON, is_final=True)
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    async def _events():
+        yield SimpleNamespace(text=FIXTURE_BACKLOG_JSON, is_final=True)
+
     fake_thread = MagicMock()
-    fake_thread.run_stream = MagicMock(return_value=iter([fake_event]))
+    fake_thread.run_streamed = AsyncMock(
+        return_value=SimpleNamespace(events=_events())
+    )
     fake_codex = MagicMock()
-    fake_codex.__enter__ = MagicMock(return_value=fake_codex)
-    fake_codex.__exit__ = MagicMock(return_value=False)
-    fake_codex.thread_start = MagicMock(return_value=fake_thread)
+    fake_codex.start_thread = MagicMock(return_value=fake_thread)
 
     # Backlog uses LINEAR_HOOKS, which CodexRuntime rejects. For the parity
     # test we patch hooks to None to exercise the Codex path. (Real flip:
@@ -1422,13 +1494,13 @@ async def test_codex_path_yields_valid_backlog_output(monkeypatch, backlog_input
         out = await _run_backlog_agent_async(backlog_input)
 
     assert len(out.epics) == 1
-    fake_codex.thread_start.assert_called_once()
+    fake_codex.start_thread.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_pydantic_retry_does_not_swap_runtimes(monkeypatch, backlog_input):
     """First Claude attempt yields invalid JSON, retry yields valid; both must
-    hit claude_agent_sdk.query, never codex_app_server.Codex.
+    hit claude_agent_sdk.query, never openai_codex_sdk.Codex.
     """
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "claude")
 
@@ -1596,11 +1668,25 @@ Required only if you plan to flip any agent to the Codex runtime
 (Plus / Pro / Business / Edu / Enterprise). API-key auth is forbidden by the
 extended G1 guard (`assert_oauth2_only` rejects `OPENAI_API_KEY`).
 
-**1. Install the Codex CLI:**
+**1. Install the Codex CLI binary** (the `openai-codex-sdk` Python package needs to find a `codex` binary):
 
+Option A — let the SDK manage the binary (simplest, vendored):
+```bash
+uv run python -c "from openai_codex_sdk import Codex; print(Codex.install(version='LATEST_COMPATIBLE'))"
+# Replace LATEST_COMPATIBLE with the version compatible with the pinned openai-codex-sdk.
+# This downloads the binary into the package's vendor/ dir (per find_codex_path).
+```
+
+Option B — reuse a globally-installed binary (good if you already have one):
 ```bash
 npm i -g @openai/codex      # or: brew install codex
 codex --version             # confirm install
+export CODEX_PATH_OVERRIDE="$(which codex)"   # CodexRuntime reads this env var
+```
+
+Then verify either path:
+```bash
+uv run python -c "from openai_codex_sdk import Codex; Codex(); print('binary OK')"
 ```
 
 **2. Pin OAuth-only:** create or edit `~/.codex/config.toml`:
@@ -1722,7 +1808,7 @@ to OpenAI Codex CLI (subscription quota, OAuth-only). Spec:
 
 **WIO migration is not mechanical** — it uses `ClaudeSDKClient` (stateful
 session with `@tool` decorators and inline cycle-cap state machine). Porting
-requires implementing `CodexRuntime.client()` against `codex_app_server.Thread`
+requires implementing `CodexRuntime.client()` against `openai_codex_sdk.Thread`
 and re-deriving the in-session tool surface. Tracked separately.
 ```
 

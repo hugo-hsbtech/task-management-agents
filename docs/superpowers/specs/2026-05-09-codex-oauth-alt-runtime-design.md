@@ -43,9 +43,9 @@ A new `src/hsb/runtime/` package introduces a `Runtime` Protocol and two impleme
 ┌────────────────────────┐  ┌────────────────────────────┐
 │  ClaudeRuntime         │  │  CodexRuntime              │
 │  ───────────           │  │  ────────────              │
-│  claude_agent_sdk      │  │  codex_app_server          │
+│  claude_agent_sdk      │  │  openai_codex_sdk          │
 │  .query / .Client      │  │  .Codex / .Thread          │
-│  → Claude Code binary  │  │  → codex app-server binary │
+│  → Claude Code binary  │  │  → codex CLI binary        │
 │  → CLAUDE_CODE_OAUTH   │  │  → ~/.codex/auth.json      │
 └────────────────────────┘  └────────────────────────────┘
 ```
@@ -89,18 +89,18 @@ Translates `AgentOptions` → `claude_agent_sdk.ClaudeAgentOptions`, calls `clau
 
 ### 5.3 `src/hsb/runtime/codex.py` — `CodexRuntime`
 
-Wraps `codex_app_server.Codex`. Translation table for the Backlog-required option subset:
+Wraps `openai_codex_sdk.Codex` (PyPI: `openai-codex-sdk` v0.1.11+, official OpenAI). Translation table for the Backlog-required option subset:
 
 | `AgentOptions` field | Codex-side handling |
 |---|---|
-| `system_prompt` | Prepended to the prompt as `<system>...</system>` block (Codex does not accept a system_prompt kwarg; this is the documented integration pattern). |
-| `model` | `Codex.thread_start(model=...)`. |
+| `system_prompt` | Prepended to the prompt as `<system>...</system>` block, wrapped in `TextInput(type="text", text=...)`. Codex has no `system_prompt` kwarg. |
+| `model` | `ThreadOptions(model=...)`, passed to `codex.start_thread(...)`. |
 | `mcp_servers` | **Verified** (not configured) at startup against `~/.codex/config.toml`; mismatch → fail-fast. Codex MCP config is operator-managed via TOML. |
-| `allowed_tools` | Translated to `apps._default.enabled` + per-MCP `approval_mode` overrides where expressible; `NotImplementedError` if not. |
-| `permission_mode` | `approval_policy`: `"never"` ↔ `"never"`, `"acceptAll"` ↔ `"untrusted"` + `--full-auto`. |
-| `cwd` | `thread.run(..., cwd=...)`. |
-| `max_turns` | Codex has no equivalent flag; tracked in adapter, aborts the thread once exceeded. |
-| `output_schema` | Native Codex `output_schema` parameter — first attempt is schema-validated by Codex itself. |
+| `allowed_tools` | Mapped to `ThreadOptions.sandboxMode` (`"read-only"` if all tools are read-only; `"workspace-write"` otherwise) and per-MCP approval rules in operator's TOML. `NotImplementedError` for unmappable cases. |
+| `permission_mode` | `ThreadOptions.approvalPolicy`: `"acceptEdits"`/`"bypassPermissions"` → `"never"`; `"default"`/`"plan"` → `"on-request"`. Codex's `"untrusted"` and `"on-failure"` values reachable via raw passthrough if needed later. |
+| `cwd` | `ThreadOptions.workingDirectory`. |
+| `max_turns` | Codex has no equivalent flag; tracked in adapter, aborts the iteration once exceeded. |
+| `output_schema` | `TurnOptions.outputSchema`, passed to `await thread.run_streamed(...)`. Codex validates the final response against the JSON Schema. |
 
 Pydantic 3-retry self-correction (today's logic in `backlog_agent.py`) stays in place. On the Codex path the first attempt is *also* validated by Codex's `output_schema` flag, so the retry layer triggers less often, but the surface stays identical.
 
@@ -142,19 +142,21 @@ async for msg in runtime.query(p, opts): ...
 ```
 backlog_agent.run_backlog(plan_md)
   ├─ render system prompt + user prompt
-  ├─ options = make_options(...)                    [G1, G2 guards]
+  ├─ options = make_agent_options(...)              [G1, G2 guards → AgentOptions]
   ├─ rt = resolve_runtime("backlog")                [returns CodexRuntime]
   └─ async for msg in rt.query(prompt, options):
         └─ CodexRuntime.query(prompt, options)
-              ├─ codex = Codex()                    [subprocess: codex app-server]
-              ├─ thread = codex.thread_start(model=options.model,
-              │                              config={"approval_policy": "never"})
-              ├─ for evt in thread.run_stream(
-              │      f"<system>{options.system_prompt}</system>\n\n{prompt}",
-              │      cwd=options.cwd,
-              │      output_schema=options.output_schema):
-              │     yield translate_event(evt)      [Codex event → Message]
-              └─ codex.__exit__()                   [cleanup subprocess]
+              ├─ codex = Codex(CodexOptions(...))   [resolves codex binary]
+              ├─ thread = codex.start_thread(ThreadOptions(
+              │     model=options.model,
+              │     approvalPolicy="never",
+              │     workingDirectory=options.cwd))
+              ├─ streamed = await thread.run_streamed(
+              │     TextInput(type="text",
+              │               text=f"<system>{options.system_prompt}</system>\n\n{prompt}"),
+              │     TurnOptions(outputSchema=options.output_schema))
+              └─ async for evt in streamed.events:
+                    yield translate_event(evt)      [ThreadEvent → Message]
   └─ pydantic validation on final text
         ├─ ok → return BacklogOutput
         └─ fail → re-prompt (same runtime), retry up to 3x
@@ -252,13 +254,13 @@ Add to `pyproject.toml`:
 [project]
 dependencies = [
     # ...existing...
-    "openai-codex-sdk",   # Python 3.10+; provides codex_app_server. Pin exact version in implementation plan.
+    "openai-codex-sdk",   # Python 3.10+; provides openai_codex_sdk. Pin exact version in implementation plan.
 ]
 ```
 
-The implementation plan is responsible for pinning the exact `openai-codex-sdk` version published at the time of writing it, and ensuring the corresponding `@openai/codex` CLI version is documented in GET-STARTED.md (the SDK ↔ CLI JSON-RPC protocol must match).
+The implementation plan is responsible for pinning the exact `openai-codex-sdk` version published at the time of writing it, and ensuring the corresponding `codex` CLI binary version is documented in GET-STARTED.md (the SDK uses a vendored binary discovered via `find_codex_path()` or via `CodexOptions.codex_path_override`; SDK ↔ binary JSON-RPC protocol must match).
 
-External binary requirement (operator-installed): `@openai/codex` CLI on PATH, version compatible with the pinned SDK.
+External binary requirement: the operator either runs `Codex.install(version="...")` once to populate the SDK's vendor dir, or installs `@openai/codex` globally and points the SDK at it via `CodexOptions(codex_path_override=...)` / `CODEX_PATH_OVERRIDE` env var. GET-STARTED Step 1.5 documents both paths.
 
 ## 11. Migration of additional agents (post-pilot)
 
@@ -269,7 +271,7 @@ To flip any one-shot `query()`-pattern agent to be runtime-aware:
 4. Add the agent's row to the `HSB_RUNTIME_<AGENT>` env-var table in this spec and in `runtime/AGENT-CONTRACTS.md`.
 5. Add a Codex-mocked unit test mirroring the Claude one.
 
-WIO requires additional work because it uses `ClaudeSDKClient` (stateful) — porting requires implementing `CodexRuntime.client()` against `codex_app_server.Thread` and re-deriving the `@tool` surface. Tracked separately.
+WIO requires additional work because it uses `ClaudeSDKClient` (stateful) — porting requires implementing `CodexRuntime.client()` against `openai_codex_sdk.Thread` (with `Thread.run_streamed(...)` for multi-turn) and re-deriving the `@tool` surface. Tracked separately.
 
 ## 12. Open questions resolved
 
