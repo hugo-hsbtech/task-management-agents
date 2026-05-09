@@ -10,8 +10,6 @@ RULE in BACKLOG_SYSTEM_PROMPT enforces the list_issues pre-flight before any
 create_issue call (Pitfall 1, BKPK-05).
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
