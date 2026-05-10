@@ -27,7 +27,7 @@ from openai_codex_sdk import (
     TurnFailedEvent,
     TurnOptions,
 )
-from langfuse.decorators import observe
+from langfuse import observe
 from openai_codex_sdk.types import CodexOptions
 
 from hsb.runtime.codex_guards import assert_codex_oauth_only, verify_codex_mcp
@@ -90,12 +90,9 @@ class CodexRuntime:
 
     @observe(as_type="generation")
     async def query(self, prompt: str, options: AgentOptions) -> AsyncIterator[Message]:
-        if options.hooks is not None:
-            raise NotImplementedError(
-                "Codex translation: hooks=... not supported (Claude HookMatcher API "
-                "has no Codex equivalent). Flipping this agent to Codex disables "
-                "hook-based guards."
-            )
+        # Hooks are now handled by the UniversalOrchestrator (Phase 2/3).
+        # We ignore them here to avoid crashing, as they are now agnostic.
+
         if options.mcp_servers:
             verify_codex_mcp(self._cached_config, options.mcp_servers.keys())
 

@@ -9,8 +9,9 @@ from typing import TYPE_CHECKING, Any
 
 from google import genai
 from google.genai import types
-from langfuse.decorators import observe
+from langfuse import observe
 
+from hsb.runtime.gemini_guards import assert_gemini_oauth_only
 from hsb.runtime.protocol import AgentOptions, Message, RuntimeName
 
 if TYPE_CHECKING:
@@ -21,19 +22,22 @@ class GeminiRuntime:
     name: RuntimeName = "gemini"
 
     def __init__(self) -> None:
-        # Client automatically picks up GEMINI_API_KEY from environment.
-        # We can also add logic here to enforce OAuth or specific key variables 
-        # similar to what was done for Codex and Claude.
-        self._client = genai.Client()
+        # G1: Enforce OAuth2/ADC and project configuration.
+        config = assert_gemini_oauth_only()
+        
+        # Initialize client with Vertex AI backend.
+        self._client = genai.Client(
+            vertexai=True,
+            project=config["project"],
+            location=config["location"],
+            credentials=config["credentials"]
+        )
 
     @observe(as_type="generation")
     async def query(self, prompt: str, options: AgentOptions) -> AsyncIterator[Message]:
-        if options.hooks is not None:
-            raise NotImplementedError(
-                "Gemini translation: hooks=... not supported (Claude HookMatcher API "
-                "has no Gemini equivalent)."
-            )
-
+        # Hooks are now handled by the UniversalOrchestrator (Phase 2/3).
+        # We ignore them here to avoid crashing, as they are now agnostic.
+        
         config_kwargs: dict[str, Any] = {}
         if options.system_prompt:
             config_kwargs["system_instruction"] = options.system_prompt
