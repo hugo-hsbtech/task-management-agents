@@ -254,22 +254,25 @@ def resolve_runtime(agent_name: str):
     """
     from hsb.runtime.claude import ClaudeRuntime
     from hsb.runtime.codex import CodexRuntime
+    from hsb.runtime.gemini import GeminiRuntime
 
     env_var = f"HSB_RUNTIME_{agent_name.upper()}"
     value = os.environ.get(env_var, "claude").strip().lower()
 
-    if agent_name.lower() == "wio" and value == "codex":
+    if agent_name.lower() == "wio" and value in ("codex", "gemini"):
         raise ValueError(
-            "WIO is not flippable yet — stateful ClaudeSDKClient session has "
-            "no Codex equivalent. Track separately when porting WIO."
+            f"WIO is not flippable yet — stateful ClaudeSDKClient session has "
+            f"no {value.capitalize()} equivalent. Track separately when porting WIO."
         )
 
     if value == "claude":
         return ClaudeRuntime()
     if value == "codex":
         return CodexRuntime()
+    if value == "gemini":
+        return GeminiRuntime()
     raise ValueError(
-        f"{env_var}={value!r} is invalid. Allowed: 'claude' or 'codex'."
+        f"{env_var}={value!r} is invalid. Allowed: 'claude', 'codex', or 'gemini'."
     )
 
 

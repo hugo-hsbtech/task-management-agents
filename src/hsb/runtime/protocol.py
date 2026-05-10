@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator, Literal, Protocol
 
 
 PermissionMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
-RuntimeName = Literal["claude", "codex"]
+RuntimeName = Literal["claude", "codex", "gemini"]
 
 
 @dataclass(frozen=True)
