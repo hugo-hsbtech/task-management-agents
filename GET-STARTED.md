@@ -222,6 +222,34 @@ env | grep -i OPENAI_API_KEY     # must be empty
   expects a compatible `@openai/codex` CLI version. If JSON-RPC errors
   appear at runtime, upgrade the CLI: `npm i -g @openai/codex@latest`.
 
+### Step 1.7 — Gemini OAuth2 (Vertex AI / ADC)
+
+Required only if you plan to use the Gemini runtime (e.g. `export HSB_RUNTIME_BACKLOG=gemini`).
+
+**1. Install Google Cloud SDK:**
+If not already installed, install the `gcloud` CLI: [cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install).
+
+**2. Authenticate (Application Default Credentials):**
+```bash
+make auth-gemini
+# This runs `gcloud auth application-default login --no-browser`.
+# Copy the printed URL, authorize in your browser, and paste the code back.
+```
+
+**3. Configure Project:**
+Add your Google Cloud project ID to `.env`:
+```bash
+echo "GOOGLE_CLOUD_PROJECT=your-project-id" >> .env
+# Optional: set location (default is us-central1)
+echo "GOOGLE_CLOUD_LOCATION=us-central1" >> .env
+```
+
+**4. Verify:**
+The G1 guard refuses to run if `GEMINI_API_KEY` is set. Use OAuth2 only.
+```bash
+env | grep -i GEMINI_API_KEY     # must be empty
+```
+
 ### Step 2 — Linear MCP OAuth (one-time, out-of-band)
 
 The Linear MCP server (`mcp.linear.app/mcp`) uses OAuth 2.1, brokered locally by `mcp-remote` (a Node helper that proxies STDIO ↔ remote MCP and handles the OAuth dance). The token is cached at `~/.mcp-auth/mcp-remote-<version>/` (e.g. `~/.mcp-auth/mcp-remote-0.1.37/`) and reused by every subsequent agent invocation.

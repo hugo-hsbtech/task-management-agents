@@ -50,6 +50,10 @@ shell: ## Open a bash shell inside a fresh container
 auth-linear: ## Linear OAuth (persists per HSB_PROJECT in named volume)
 	@./scripts/auth-linear.sh
 
+.PHONY: auth-gemini
+auth-gemini: ## Gemini OAuth (persists per HSB_PROJECT in named volume)
+	@./scripts/auth-gemini.sh
+
 .PHONY: auth-github
 auth-github: ## GitHub gh auth login (persists per HSB_PROJECT in named volume)
 	@./scripts/auth-github.sh
