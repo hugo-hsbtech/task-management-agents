@@ -14,6 +14,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
 )
+from langfuse.decorators import observe
 
 from hsb.runtime.protocol import AgentOptions, Message, RuntimeName
 
@@ -21,6 +22,7 @@ from hsb.runtime.protocol import AgentOptions, Message, RuntimeName
 class ClaudeRuntime:
     name: RuntimeName = "claude"
 
+    @observe(as_type="generation")
     async def query(self, prompt: str, options: AgentOptions) -> AsyncIterator[Message]:
         sdk_options = self._translate(options)
         async for sdk_msg in claude_agent_sdk.query(prompt=prompt, options=sdk_options):

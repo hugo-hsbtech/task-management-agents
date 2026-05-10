@@ -27,6 +27,7 @@ from openai_codex_sdk import (
     TurnFailedEvent,
     TurnOptions,
 )
+from langfuse.decorators import observe
 from openai_codex_sdk.types import CodexOptions
 
 from hsb.runtime.codex_guards import assert_codex_oauth_only, verify_codex_mcp
@@ -87,6 +88,7 @@ class CodexRuntime:
         self._codex_home = codex_home
         self._cached_config = assert_codex_oauth_only(codex_home=codex_home)
 
+    @observe(as_type="generation")
     async def query(self, prompt: str, options: AgentOptions) -> AsyncIterator[Message]:
         if options.hooks is not None:
             raise NotImplementedError(
