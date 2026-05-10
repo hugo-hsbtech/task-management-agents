@@ -20,8 +20,10 @@ def _patch_codex_home(monkeypatch, tmp_path):
 def test_default_returns_claude(monkeypatch):
     monkeypatch.delenv("HSB_RUNTIME_BACKLOG", raising=False)
     from hsb.agents._sdk_options import resolve_runtime
+    from hsb.runtime.orchestrator import UniversalOrchestrator
     rt = resolve_runtime("backlog")
-    assert isinstance(rt, ClaudeRuntime)
+    assert isinstance(rt, UniversalOrchestrator)
+    assert isinstance(rt.runtime, ClaudeRuntime)
 
 
 def test_codex_value_returns_codex_runtime(monkeypatch, tmp_path):
@@ -29,8 +31,25 @@ def test_codex_value_returns_codex_runtime(monkeypatch, tmp_path):
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "codex")
     from hsb.agents._sdk_options import resolve_runtime
     from hsb.runtime.codex import CodexRuntime
+    from hsb.runtime.orchestrator import UniversalOrchestrator
     rt = resolve_runtime("backlog")
-    assert isinstance(rt, CodexRuntime)
+    assert isinstance(rt, UniversalOrchestrator)
+    assert isinstance(rt.runtime, CodexRuntime)
+
+
+def test_gemini_value_returns_gemini_runtime(monkeypatch):
+    monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "gemini")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+    from hsb.agents._sdk_options import resolve_runtime
+    from hsb.runtime.gemini import GeminiRuntime
+    from hsb.runtime.orchestrator import UniversalOrchestrator
+    from unittest.mock import patch
+    
+    with patch("hsb.runtime.gemini.genai.Client"), \
+         patch("google.auth.default", return_value=("mock-creds", "test-project")):
+        rt = resolve_runtime("backlog")
+        assert isinstance(rt, UniversalOrchestrator)
+        assert isinstance(rt.runtime, GeminiRuntime)
 
 
 def test_unknown_value_raises(monkeypatch):

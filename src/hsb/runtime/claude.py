@@ -14,7 +14,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
 )
-from langfuse.decorators import observe
+from langfuse import observe
 
 from hsb.runtime.protocol import AgentOptions, Message, RuntimeName
 
@@ -49,7 +49,17 @@ class ClaudeRuntime:
         if options.cwd is not None:
             kwargs["cwd"] = options.cwd
         if options.hooks is not None:
-            kwargs["hooks"] = options.hooks
+            from claude_agent_sdk import HookMatcher as ClaudeHookMatcher
+            
+            # Map our agnostic HookMatcher to Claude's SDK HookMatcher
+            claude_hooks: dict[str, list[ClaudeHookMatcher]] = {}
+            for event_name, matchers in options.hooks.items():
+                claude_hooks[event_name] = [
+                    ClaudeHookMatcher(matcher=m.matcher, hooks=m.hooks)
+                    for m in matchers
+                ]
+            kwargs["hooks"] = claude_hooks
+            
         return ClaudeAgentOptions(**kwargs)
 
     @staticmethod

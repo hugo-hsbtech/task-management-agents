@@ -8,7 +8,10 @@ options at the seam.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Literal, Protocol
+from typing import Any, AsyncIterator, Literal, Protocol, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hsb.runtime.hooks import HookMatcher, HookEvent
 
 
 PermissionMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
@@ -36,7 +39,7 @@ class AgentOptions:
     mcp_servers: dict[str, dict] | None = None
     cwd: str | None = None
     output_schema: dict | None = None
-    hooks: Any = None  # Claude-only HookMatcher list; CodexRuntime rejects non-None.
+    hooks: dict[HookEvent, list[HookMatcher]] | None = None  # Agnostic Hook system
 
 
 class StatefulClient(Protocol):

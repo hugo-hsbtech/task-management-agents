@@ -59,9 +59,9 @@ async def test_query_translates_options_and_yields_messages(opts):
 
 @pytest.mark.asyncio
 async def test_query_forwards_hooks_unchanged(opts):
-    sentinel_hooks = ["hook1", "hook2"]
+    from hsb.runtime.hooks import HookMatcher
+    sentinel_hooks = {"PreToolUse": [HookMatcher(hooks=[lambda: None])]}
     opts_with_hooks = AgentOptions(**{**opts.__dict__, "hooks": sentinel_hooks})
-
     async def fake_iter(prompt, options):
         if False:
             yield  # never yields
@@ -71,8 +71,10 @@ async def test_query_forwards_hooks_unchanged(opts):
         async for _ in rt.query("p", opts_with_hooks):
             pass
         sdk_options = q.call_args.kwargs["options"]
-        assert sdk_options.hooks == sentinel_hooks
-
+        assert "PreToolUse" in sdk_options.hooks
+        translated_matcher = sdk_options.hooks["PreToolUse"][0]
+        assert translated_matcher.matcher is None
+        assert len(translated_matcher.hooks) == 1
 
 # ---------------------------------------------------------------------------
 # Coverage-gap tests: lines 31, 48, 60

@@ -15,7 +15,7 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
-from claude_agent_sdk import HookMatcher
+from hsb.runtime.hooks import HookMatcher
 
 # Module-level retry counter; keyed by tool_use_id (or tool_name as fallback)
 _retry_counts: dict[str, int] = {}
