@@ -1952,23 +1952,26 @@ else:
     assert_g1_safe()
     rt = selected_runtime("linear")
     print(f"(running on HSB_RUNTIME_LINEAR={rt!r})")
+    skip = False
     if rt == "codex":
         ok, reason = codex_available()
         if not ok:
             print(f"[skipped] codex selected but unavailable: {reason}")
+            skip = True
         else:
             print("(codex config OK; proceeding)")
-    import asyncio
+    if not skip:
+        import asyncio
 
-    from hsb.agents.linear_agent import run_validated_linear_agent
+        from hsb.agents.linear_agent import run_validated_linear_agent
 
-    out = asyncio.run(
-        run_validated_linear_agent(
-            operation="read",
-            payload={"kind": "teams"},
+        out = asyncio.run(
+            run_validated_linear_agent(
+                operation="read",
+                payload={"kind": "teams"},
+            )
         )
-    )
-    print("result =", out.result, "| entities =", len(out.linear_entities))"""
+        print("result =", out.result, "| entities =", len(out.linear_entities))"""
         ),
     ),
     (
@@ -2255,6 +2258,7 @@ print(
             """\
 src = (ROOT / "src/hsb/agents/qa_agent.py").read_text()
 m = re.search(r"allowed_tools\\s*=\\s*\\[(.*?)\\]", src, re.DOTALL)
+assert m, "QA allowed_tools literal not found"
 block = m.group(1)
 must_have = ['"Read"', "gh pr diff", "gh pr view"]
 must_not = ["gh pr create", "gh pr merge", '"Edit"', '"Write"', "mcp__linear__"]
@@ -3048,7 +3052,7 @@ else:
     print(f"summary: {output.cycle_summary}")
 
     _session["phase_8_ran"] = True
-    _session["dispatched_task_ids"] = [d.work_item_id for d in output.dispatched]"""
+    _session["dispatched_task_ids"].extend(d.work_item_id for d in output.dispatched)"""
         ),
     ),
     (
@@ -3269,7 +3273,10 @@ def main() -> None:
         # ensure_ascii=False keeps em-dashes, en-dashes etc. as raw UTF-8 so
         # the pre-commit notebook formatter doesn't rewrite — -> — on
         # every commit. indent=1 matches Jupyter Lab's save format.
-        path.write_text(json.dumps(render(spec), indent=1, ensure_ascii=False) + "\n")
+        path.write_text(
+            json.dumps(render(spec), indent=1, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
         print(f"wrote {path.relative_to(here.parent)}  ({len(spec)} cells)")
         written.append(path)
 
