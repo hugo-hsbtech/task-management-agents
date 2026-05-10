@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class UATScenario(BaseModel):
@@ -32,6 +32,12 @@ class UATScenario(BaseModel):
     )
     finding: str | None = Field(None, description="Required when status=fail")
     model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def validate_finding_required_for_fail(self) -> UATScenario:
+        if self.status == "fail" and not self.finding:
+            raise ValueError("finding is required when status=fail")
+        return self
 
 
 class UATResult(BaseModel):
