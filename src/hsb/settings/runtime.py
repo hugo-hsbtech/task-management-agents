@@ -11,10 +11,35 @@ HSB_RUNTIME_WIO=codex raises ValidationError at construction.
 
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+FORBIDDEN_API_KEY_VARS: tuple[str, ...] = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
+
+def assert_oauth2_only() -> None:
+    """G1 (AI-SPEC §6) — function-entry-time guard. Rejects metered API keys
+    for either runtime. Operators must use OAuth tokens:
+      - Claude:  CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
+      - Codex:   ~/.codex/auth.json       (from `codex login --device-auth`)
+
+    Called from :func:`make_options` before every ``ClaudeAgentOptions``
+    construction. Function-time (NOT module-import-time) so test environments
+    that legitimately have ``ANTHROPIC_API_KEY`` set for unrelated reasons do
+    not break pytest collection. The defensive pairing is the session-scoped
+    autouse fixture in ``tests/conftest.py`` that unsets the env var at
+    session start.
+    """
+    forbidden = [v for v in FORBIDDEN_API_KEY_VARS if v in os.environ]
+    if forbidden:
+        raise RuntimeError(
+            f"G1 violation: {', '.join(forbidden)} set — forbidden. "
+            "Use OAuth tokens only (CLAUDE_CODE_OAUTH_TOKEN for Claude, "
+            "`codex login --device-auth` for Codex)."
+        )
 
 
 class RuntimeSettings(BaseSettings):

@@ -94,3 +94,53 @@ def test_oauth_token_does_not_leak_in_repr(monkeypatch):
     from hsb.settings.runtime import RuntimeSettings
 
     assert "sk-claude-oauth-test" not in repr(RuntimeSettings())
+
+
+# --- G1 parity tests (relocated from _sdk_options.py) ---
+
+
+def test_forbidden_vars_constant():
+    from hsb.settings.runtime import FORBIDDEN_API_KEY_VARS
+
+    assert FORBIDDEN_API_KEY_VARS == ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
+
+def test_assert_oauth2_only_noop_when_clear(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from hsb.settings.runtime import assert_oauth2_only
+
+    # Should not raise.
+    assert_oauth2_only()
+
+
+def test_assert_oauth2_only_raises_on_anthropic(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "leaked")
+    from hsb.settings.runtime import assert_oauth2_only
+
+    with pytest.raises(RuntimeError) as exc:
+        assert_oauth2_only()
+    assert "G1 violation" in str(exc.value)
+    assert "ANTHROPIC_API_KEY" in str(exc.value)
+
+
+def test_assert_oauth2_only_raises_on_openai(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "leaked")
+    from hsb.settings.runtime import assert_oauth2_only
+
+    with pytest.raises(RuntimeError) as exc:
+        assert_oauth2_only()
+    assert "OPENAI_API_KEY" in str(exc.value)
+
+
+def test_assert_oauth2_only_reexported_from_sdk_options(monkeypatch):
+    """_sdk_options re-exports the relocated helper — same callable object."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    from hsb.agents._sdk_options import assert_oauth2_only as via_sdk_options
+    from hsb.settings.runtime import assert_oauth2_only as via_settings
+
+    assert via_sdk_options is via_settings
