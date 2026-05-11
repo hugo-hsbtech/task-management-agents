@@ -2,32 +2,61 @@
 
 > Operator onboarding for the HSBTech AI Engineering Workflow. From clone to first running cycle in ~30 minutes once your Linear and GitHub access are squared away.
 
-This guide is for developers who want to **use** HSBTech (drive a Linear backlog through the agent pipeline). For project architecture and design rules, see [README.md](./README.md). For full milestone-acceptance UAT, see [`.planning/MILESTONE-UAT.md`](./.planning/MILESTONE-UAT.md).
+This guide is for developers who want to **use** HSBTech (drive a Linear backlog through the agent pipeline). For the problem framing, business value, and architectural design rules, see [README.md](./README.md).
 
 ---
 
 ## Table of contents
 
-1. [Prerequisites](#prerequisites)
-2. [Install](#install)
-3. [Authenticate (one-time setup)](#authenticate-one-time-setup)
-4. [Verify your install](#verify-your-install)
-5. [Your first cycle](#your-first-cycle)
-6. [Common workflows](#common-workflows)
-7. [Operating modes](#operating-modes)
-8. [Knowledge Store](#knowledge-store)
-9. [Troubleshooting](#troubleshooting)
-10. [Where to go next](#where-to-go-next)
+1. [What you're about to do](#what-youre-about-to-do)
+2. [Prerequisites](#prerequisites)
+3. [Operator dependencies (what to pin)](#operator-dependencies-what-to-pin)
+4. [Install](#install)
+5. [Authenticate (one-time setup)](#authenticate-one-time-setup)
+6. [Verify your install](#verify-your-install)
+7. [Your first cycle](#your-first-cycle)
+8. [Common workflows](#common-workflows)
+9. [Operating modes](#operating-modes)
+10. [Knowledge Store](#knowledge-store)
+11. [Troubleshooting](#troubleshooting)
+12. [Where to go next](#where-to-go-next)
+
+---
+
+## What you're about to do
+
+You will wire up three external systems (Anthropic OAuth2, Linear MCP, GitHub CLI) and then run a single Linear task through the full agent pipeline. From the operator's seat, the day-to-day flow looks like this:
+
+```mermaid
+flowchart LR
+    You(["You<br/>(operator)"]) -->|writes| Plan["plan.md"]
+    Plan -->|hsb backlog plan| LinearW[(Linear)]
+    LinearW -->|hsb run / run-next-step| Pipeline["Agent pipeline<br/>Intelligence → Builder → Git → QA → UAT"]
+    Pipeline -->|stacked PR| PR[("GitHub PR<br/>awaiting human review")]
+    PR -->|review + merge| You
+    Pipeline -.->|knowledge entries| KS[(Knowledge Store)]
+    Pipeline -.->|status + comments| LinearW
+
+    classDef you fill:#0f766e,stroke:#14b8a6,color:#f0fdfa;
+    classDef store fill:#1f2937,stroke:#9ca3af,color:#f9fafb;
+    classDef work fill:#7c3aed,stroke:#a78bfa,color:#f5f3ff;
+    class You you;
+    class LinearW,PR,KS store;
+    class Pipeline,Plan work;
+```
+
+Your two recurring jobs once setup is done are: **(1) write good plans into `plan.md` and decompose them with `hsb backlog plan`, and (2) review and merge the PRs the pipeline produces.** Everything in between is bounded automation.
 
 ---
 
 ## Prerequisites
 
-| Requirement | Why | Notes |
-|-------------|-----|-------|
+| Requirement | Why | How to verify |
+|-------------|-----|---------------|
 | **Python ≥ 3.12** | Runtime — pinned in `pyproject.toml` | `python3.12 --version` |
 | **`git` ≥ 2.30** | Worktree support for parallel mode | `git --version` |
-| **`gh` CLI** | GitHub PR delivery surface | Install: [cli.github.com](https://cli.github.com/) ([install docs](https://github.com/cli/cli#installation)). Verify with `gh --version`, then `gh auth status` should be green. See [Step 4](#step-4--github-access) below. |
+| **`gh` CLI** | GitHub PR delivery surface | Install: [cli.github.com](https://cli.github.com/) ([install docs](https://github.com/cli/cli#installation)). Then `gh --version` and `gh auth status`. See [Step 4](#step-4--github-access) below. |
+| **Node ≥ 18** | `npx` runs `mcp-remote` for the Linear OAuth proxy | `node --version` |
 | **Linear workspace** (sandbox/test) | System of record — agents read and write here | NOT your production workspace; agents will mutate state |
 | **Browser** | One-time Linear MCP OAuth flow | Required only for setup; not for runtime |
 | **Anthropic Claude account** | Claude Agent SDK runtime | OAuth2 token via `claude setup-token` — NOT an API key |
@@ -35,8 +64,25 @@ This guide is for developers who want to **use** HSBTech (drive a Linear backlog
 **You will NOT need:**
 
 - An `ANTHROPIC_API_KEY` — HSBTech refuses to start with one set (G1 guardrail). Use OAuth2 only.
+- An `OPENAI_API_KEY` — if you opt into the Codex runtime, OAuth2 only (extended G1).
 - A vector DB / embedding store — the Knowledge Store is flat markdown.
 - Any cloud infrastructure beyond Linear + GitHub.
+
+---
+
+## Operator dependencies (what to pin)
+
+Operator-side, the things that bite if they drift are the **external** tools, not the Python deps (those are pinned in `pyproject.toml` — see the [Dependencies section in README.md](./README.md#dependencies-and-why-pinning-matters)). Treat each of these as a watched dependency:
+
+| Tool | Why it matters to you | Risk if it drifts |
+|------|------------------------|-------------------|
+| **`gh` CLI** | Git Agent's allow-list assumes `gh pr create/view/diff` semantics. | Major-version changes to `gh` can quietly break the Git Agent. Check the changelog before upgrading. |
+| **`mcp-remote`** (via `npx`) | Bridges your local shell to the Linear MCP OAuth flow. Auto-downloaded on first use. | Always binds `127.0.0.1:22227`; if you upgrade and that changes, the troubleshooting steps below need updating. |
+| **Node** | Hosts `npx mcp-remote`. | Anything ≥18 has worked in practice. Sub-18 may fail to fetch `mcp-remote`. |
+| **`@openai/codex` CLI** (optional) | Required only if you flip an agent to the Codex runtime via `HSB_RUNTIME_*=codex`. | Version must be compatible with the pinned `openai-codex-sdk`. JSON-RPC errors at runtime → upgrade the CLI. |
+| **Claude `setup-token`** | One-time OAuth2 token grant. Token lifetime is set by Anthropic. | If you start seeing auth failures, regenerate via `claude setup-token`. |
+
+If you're setting up on a fresh machine, install in this order: **Python → git → Node → gh → claude CLI → mcp-remote (auto on first npx)**. The OAuth handshakes come after.
 
 ---
 
@@ -58,24 +104,13 @@ pip install -e ".[dev,eval]"
 hsb --help
 ```
 
-You should see:
-
-```
-Usage: hsb [OPTIONS] COMMAND [ARGS]...
-
-Commands:
-  create-issue, update-issue, add-comment, link-pr      [Linear ops]
-  run, run-next-step, show-state, show-next-action      [Orchestration]
-  backlog, builder, git, qa                             [Per-agent groups]
-```
+You should see the top-level command groups: Linear ops (`create-issue`, `update-issue`, `add-comment`, `link-pr`), Orchestration (`run`, `run-next-step`, `show-state`, `show-next-action`), and Per-agent groups (`backlog`, `builder`, `git`, `qa`).
 
 If `hsb` is not found, check that `.venv/bin` is on your `PATH` (`which hsb` should resolve).
 
 ---
 
 ## Authenticate (one-time setup)
-
-> The original Phase 1 spec is at [`.planning/phases/01-foundation-and-linear-integration/HUMAN-SETUP.md`](./.planning/phases/01-foundation-and-linear-integration/HUMAN-SETUP.md). It predates the Linear-MCP corrections in Step 2 below; **this guide supersedes it** for operator setup. Treat HUMAN-SETUP.md as historical context only.
 
 ### Step 0 — Prepare your environment
 
@@ -217,14 +252,14 @@ env | grep -i OPENAI_API_KEY     # must be empty
   `claude_agent_sdk.HookMatcher`. Flipping disables those guards for that
   agent's runs.
 - The Work Item Orchestrator (WIO) is **not flippable** in this iteration.
-  Setting `HSB_RUNTIME_WIO=codex` raises at startup. Tracked separately.
+  Setting `HSB_RUNTIME_WIO=codex` raises at startup.
 - The exact `openai-codex-sdk` PyPI version pinned in `pyproject.toml`
   expects a compatible `@openai/codex` CLI version. If JSON-RPC errors
   appear at runtime, upgrade the CLI: `npm i -g @openai/codex@latest`.
 
 ### Step 2 — Linear MCP OAuth (one-time, out-of-band)
 
-The Linear MCP server (`mcp.linear.app/mcp`) uses OAuth 2.1, brokered locally by `mcp-remote` (a Node helper that proxies STDIO ↔ remote MCP and handles the OAuth dance). The token is cached at `~/.mcp-auth/mcp-remote-<version>/` (e.g. `~/.mcp-auth/mcp-remote-0.1.37/`) and reused by every subsequent agent invocation.
+The Linear MCP server (`mcp.linear.app/mcp`) uses OAuth 2.1, brokered locally by `mcp-remote` (a Node helper that proxies STDIO ↔ remote MCP and handles the OAuth dance). The token is cached at `~/.mcp-auth/mcp-remote-<version>/` and reused by every subsequent agent invocation.
 
 > **Important:** OAuth must complete *before* you run any HSBTech agent. The agents' MCP pre-flight check refuses to start unless every configured MCP server is already in `connected` state. So you cannot rely on "the first agent run will pop a browser" — by the time the SDK reports `linear: pending`, the pre-flight has already raised. Run the OAuth handshake out-of-band with `mcp-remote` directly, as below, *then* run an agent.
 
@@ -385,7 +420,7 @@ gh auth status
 
 **Headless / CI environments:** instead of `gh auth login`, export a personal access token (classic, with `repo` scope) as `GITHUB_TOKEN` — see [GitHub PAT docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens). The `gh` CLI auto-detects it.
 
-For Phase 2+ live integration tests against `hsb-test-fixture`:
+For live integration tests against `hsb-test-fixture`:
 
 ```bash
 # Clone or fork the test fixture repo
@@ -402,18 +437,15 @@ A 30-second smoke test that everything is wired correctly:
 ```bash
 # Unit tests (no live services needed)
 pytest tests/unit/ -x -q
-# Expected: 106 passed in ~30s
 
 # Code-based evals (no live services)
 pytest tests/evals/code_based/ -x -q
-# Expected: 18 passed
 
 # Integration tests collect-only (no live runs)
 pytest tests/integration/ --collect-only -q
-# Expected: 59 tests collected, 0 errors
 ```
 
-If any of these fail, stop and check your install before proceeding. Do not skip pre-commit hooks or use `--no-verify`.
+All three should pass / collect cleanly. If any fail, stop and check your install before proceeding. Do not skip pre-commit hooks or use `--no-verify`.
 
 ---
 
@@ -459,13 +491,13 @@ hsb run-next-step
 What happens:
 
 1. **Global Orchestrator** queries Linear, finds your task at the front of the risk-sorted ready queue
-2. **Work Item Orchestrator** opens a single Claude Agent SDK session and:
+2. **Work Item Orchestrator** opens a single SDK session and:
    - **Step 1 (Intelligence):** queries the Knowledge Store for relevant entries → populates `knowledge_context`
-   - Calls **Builder** (`mcp__agents__run_builder`) → implements the scoped change
-   - Calls **Git** (`mcp__agents__run_git`) → creates branch `feature/LIN-XXX-...`, commits, opens a PR targeting the EPIC branch
-   - Calls **QA** (`mcp__agents__run_qa`) → reviews the PR diff against acceptance criteria
+   - Calls **Builder** → implements the scoped change
+   - Calls **Git** → creates branch `feature/LIN-XXX-...`, commits, opens a PR targeting the EPIC branch
+   - Calls **QA** → reviews the PR diff against acceptance criteria
    - If QA approves: marks the task `done`, posts a lifecycle summary comment to Linear
-   - If QA finds issues: creates fix subtasks, loops Builder→Git→QA up to 3 times
+   - If QA finds issues: creates fix subtasks, loops Builder→Git→QA up to the cycle cap
    - **Step 5 (Knowledge):** evaluates the cycle, writes a Knowledge Store entry if ingestion criteria met
 
 3. Open the GitHub PR → review → merge manually (HSBTech never auto-merges)
@@ -502,7 +534,7 @@ The Backlog Agent is **idempotent** (BKPK-05): a second run produces zero new EP
 hsb run --parallel
 ```
 
-Main Orchestrator launches multiple Work Item Orchestrators concurrently with `asyncio.gather`, each in its own git worktree under `.worktrees/`. Optimistic-lock claiming via Linear `updatedAt` re-read prevents double-claims (T-4-01 mitigation).
+Main Orchestrator launches multiple Work Item Orchestrators concurrently with `asyncio.gather`, each in its own git worktree under `.worktrees/`. Optimistic-lock claiming via Linear `updatedAt` re-read prevents double-claims.
 
 Cleanup is automatic: `try/finally` removes each worktree, `git worktree prune` runs at startup of every parallel dispatch.
 
@@ -514,7 +546,7 @@ When all child tasks of a User Story reach `qa_status = approved`, the Global Or
 - `scenarios[]`: per-criterion pass/fail with observable evidence
 - `scope_violations[]`: any out-of-scope findings (rejected by G10)
 
-If `changes_required`, fix subtasks are created via the Linear Agent (UATA-03). After they reach QA-approved, UAT re-triggers — up to 3 cycles total (G6).
+If `changes_required`, fix subtasks are created via the Linear Agent (UATA-03). After they reach QA-approved, UAT re-triggers — up to the documented cycle cap (G6).
 
 ### Inspect risk priority
 
@@ -529,7 +561,7 @@ The Risk Agent (deterministic, pure Python) computes:
 hsb show-state
 ```
 
-The Risk Agent's `detect_improvement_triggers()` (skill 14) is the only LLM call in the agent — and it's structurally air-gapped (`allowed_tools=[]`, `mcp_servers=None`, model=haiku, max_turns=3). Triggers are returned as suggestions; they NEVER write to Linear without explicit operator delegation (RISK-04).
+The Risk Agent's `detect_improvement_triggers()` is the only LLM call in the agent — and it's structurally air-gapped (`allowed_tools=[]`, `mcp_servers=None`, model=haiku, max_turns=3). Triggers are returned as suggestions; they NEVER write to Linear without explicit operator delegation (RISK-04).
 
 ### Add knowledge manually
 
@@ -579,13 +611,13 @@ The same Work Item Orchestrator runs in all four modes — only the dispatch env
 
 Path: `knowledge/<category>/<entry>.md`
 
-Categories (created automatically): `architecture`, `qa`, `implementation`, `backlog`, `risk`, plus any new ones you create.
+Categories (created automatically): `architecture`, `qa`, `implementation`, `backlog`, `risk`, `patterns`, `anti-patterns`, plus any new ones you create.
 
-Retrieval: Glob + Grep over the directory tree (no vector DB at MVP). The WIO's Step 1 (skill 10) reads relevant entries before dispatching the Builder.
+Retrieval: Glob + Grep over the directory tree (no vector DB at MVP). The WIO's Step 1 reads relevant entries before dispatching the Builder.
 
-Ingestion: WIO's Step 5 (skill 11) evaluates QA findings + implementation patterns against ingestion criteria. Writes are validated by the `KnowledgeStorageInput` Pydantic model — entries with vague `applicability` fields are rejected (G9).
+Ingestion: WIO's Step 5 evaluates QA findings + implementation patterns against ingestion criteria. Writes are validated by the `KnowledgeStorageInput` Pydantic model — entries with vague `applicability` fields are rejected (G9).
 
-If retrieval precision degrades as the store grows past ~50 entries, the documented upgrade is `rank-bm25` (no vector DB, no new framework dependency). See AI-SPEC §2 alternatives.
+If retrieval precision degrades as the store grows, the documented upgrade path is `rank-bm25` (no vector DB, no new framework dependency).
 
 ---
 
@@ -645,7 +677,7 @@ Resolution: either re-authenticate the offending server inside Claude Code (`/mc
 
 ### OAuth browser flow doesn't open / wrong machine
 
-`mcp-remote` always binds the callback to `127.0.0.1:22227`. If your shell is on a remote host but your browser runs locally, the redirect cannot reach the listener. See [Step 2c](#2c--remote-shell-local-browser) for the SSH port-forward and manual `curl` callback options.
+`mcp-remote` always binds the callback to `127.0.0.1:22227`. If your shell is on a remote host but your browser runs locally, the redirect cannot reach the listener. See [Step 2c](#2c--remote-shell-local-browser-vps--ssh) for the SSH port-forward and manual `curl` callback options.
 
 If `mcp-remote` says `Browser opened automatically` but you don't see anything, it's running headless — open the printed URL manually and proceed as in Step 2c Option B.
 
@@ -661,16 +693,16 @@ This should be impossible (3-defense capability boundary), but if you see it:
 
 1. **Stop everything.** This is a regression of structural enforcement.
 2. Check `src/hsb/agents/builder_agent.py` — `BuilderOptions` should NOT include any `git` Bash patterns
-3. Check `tests/unit/test_builder_contract.py::test_builder_output_extra_field_rejected` — should be passing
+3. Check the corresponding contract test in `tests/unit/` — should be passing
 4. File a `BLOCKER` issue and revert the offending change
 
 This is exactly the scenario the 3-defense pattern is designed to prevent.
 
-### QA cycle cap reached at 3
+### QA cycle cap reached
 
-The task hit `qa_cycle_count = 3` and entered tech-debt-annotation mode (QAAG-04). The PR is `approved` with a `tech_debt_annotation` describing what's deferred. Read the annotation, file follow-up Linear tasks for the deferred work, merge the PR.
+The task hit the configured `qa_cycle_count` ceiling and entered tech-debt-annotation mode (QAAG-04). The PR is `approved` with a `tech_debt_annotation` describing what's deferred. Read the annotation, file follow-up Linear tasks for the deferred work, merge the PR.
 
-If the cycle cap is being hit too often (more than ~10% of tasks), the Risk Agent's `detect_improvement_triggers()` will surface a pattern after 2+ similar findings. The trigger is `linear_state == "suggested"` — review and explicitly delegate via `hsb risk approve-trigger <trigger-id>` before any Linear write happens.
+If the cycle cap is being hit too often (more than ~10% of tasks), the Risk Agent's `detect_improvement_triggers()` will surface a pattern after 2+ similar findings. The trigger is `linear_state == "suggested"` — review and explicitly delegate before any Linear write happens.
 
 ### Tests fail in `_require_*` helper
 
@@ -693,16 +725,12 @@ If you want them to SKIP (default), don't set the env vars. The unit suite alway
 
 | Goal | Where to look |
 |------|---------------|
-| Understand the architecture | [README.md](./README.md) — full project explanation |
-| Run the full milestone-acceptance UAT | [`.planning/MILESTONE-UAT.md`](./.planning/MILESTONE-UAT.md) — 24-step run-list (~60–90 min) |
-| Read the agent contracts | [`agents/AGENT-CONTRACTS.md`](./agents/AGENT-CONTRACTS.md) — JSON schemas |
-| Read agent responsibilities | [`agents/AGENTS.md`](./agents/AGENTS.md) — what each agent does and doesn't |
-| Read runtime golden rules | [`runtime/RUNTIME-EXECUTION.md`](./runtime/RUNTIME-EXECUTION.md) |
-| Read original behavioral specs | [`skills/`](./skills/) — 15 markdown files (skills 00–14); migrated to `.claude/skills/` |
-| See per-phase planning history | [`.planning/phases/`](./.planning/phases/) — CONTEXT, RESEARCH, AI-SPEC, VALIDATION, VERIFICATION, PLAN, SUMMARY per phase |
-| Review milestone audit | [`.planning/v1.0-MILESTONE-AUDIT.md`](./.planning/v1.0-MILESTONE-AUDIT.md) — 3 iterations: gaps_found → tech_debt → passed |
-| Configure Phoenix tracing for production | `.planning/phases/05-enhancement-agents/05-AI-SPEC.md` §7 |
-| Plan v2.0 features | After `/gsd-complete-milestone v1.0`, use `/gsd-new-milestone` to start v2.0 — semantic search, ML risk scoring, multi-project intelligence are the documented next-up items |
+| Understand the architecture and design rules | [README.md](./README.md) |
+| Understand the problem being solved + business value | [README.md § The problem we solve](./README.md#the-problem-we-solve) |
+| See the full guardrail table (G1–G10) | [README.md § Guardrails](./README.md#guardrails) |
+| Pin the right dependency versions | [README.md § Dependencies](./README.md#dependencies-and-why-pinning-matters) |
+| Run a specific agent in isolation | `hsb backlog --help` / `hsb builder --help` / `hsb git --help` / `hsb qa --help` |
+| Inspect the live Linear state | `hsb show-state` |
 
 ---
 
@@ -730,7 +758,7 @@ python run_loop.py                    # Continuous loop
 hsb backlog plan plan.md              # Plan → Linear hierarchy
 
 # Test
-pytest tests/unit/ -x -q              # 106 unit tests, no live deps
+pytest tests/unit/ -x -q              # Unit tests, no live deps
 pytest tests/integration/ -v -m integration   # Live runs (env vars required)
 ```
 
