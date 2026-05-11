@@ -68,7 +68,9 @@ _CODEX_CAPS = Capabilities(
     supports_mcp=True,
     supports_native_tools=True,
     supports_hooks=False,
-    supports_stateful_client=True,
+    # client() raises UnsupportedCapabilityError until WIO port (Phase C);
+    # honest flag prevents callers from gating on a feature that errors at use.
+    supports_stateful_client=False,
     supports_output_schema=True,
     supports_system_prompt_file=False,
     supports_streaming=True,
@@ -78,7 +80,9 @@ _RAW_CAPS = Capabilities(
     supports_mcp=False,
     supports_native_tools=True,
     supports_hooks=False,
-    supports_stateful_client=True,
+    # client() raises UnsupportedCapabilityError; raw OpenAI has no
+    # multi-turn session abstraction in Phase A.
+    supports_stateful_client=False,
     supports_output_schema=True,
     supports_system_prompt_file=False,
     supports_streaming=True,

@@ -129,6 +129,35 @@ def test_translate_mcp_returns_dict(provider):
     assert out["linear"]["transport"] == "stdio"
 
 
+def test_translate_mcp_rejects_stdio_without_command(provider):
+    """stdio transport requires a command; missing command raises."""
+    from llm_providers.errors import TranslationError
+
+    bad = McpServerSpec(name="broken", transport="stdio", command=None)
+    with pytest.raises(TranslationError, match="stdio.*command"):
+        provider._translate_mcp((bad,))
+
+
+def test_translate_mcp_rejects_http_without_url(provider):
+    """http transport requires a url; missing url raises."""
+    from llm_providers.errors import TranslationError
+
+    bad = McpServerSpec(name="broken", transport="http", url=None)
+    with pytest.raises(TranslationError, match="http.*url"):
+        provider._translate_mcp((bad,))
+
+
+def test_translate_preset_returns_systempromptpreset_typeddict(provider):
+    """PresetSystemPrompt must produce the SDK's SystemPromptPreset shape
+    (TypedDict with type='preset' and preset=<id>), not an internal marker
+    dict that ClaudeAgentOptions cannot consume."""
+    out = provider._translate_system_prompt(PresetSystemPrompt(preset_id="claude_code"))
+    assert isinstance(out, dict)
+    assert out["type"] == "preset"
+    assert out["preset"] == "claude_code"
+    assert "__preset_id__" not in out
+
+
 def test_query_yields_messages(provider):
     """Smoke test: the query coroutine runs and yields at least one Message."""
     # Configure stubbed SDK to yield one assistant + one result.

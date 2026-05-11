@@ -115,10 +115,11 @@ class ClaudeProvider(BaseProvider):
             # detect SystemPromptFile availability on the SDK and prefer it.)
             return sp.path.read_text(encoding="utf-8")
         if isinstance(sp, PresetSystemPrompt):
-            # Claude supports presets via SystemPromptPreset; return the id and
-            # let the build step wrap it. For our purposes we expose the id
-            # as a dict with a marker so _build_native_options can recognize it.
-            return {"__preset_id__": sp.preset_id}
+            # Claude's SystemPromptPreset is a TypedDict {type: "preset",
+            # preset: <id>}. We return it directly so _build_native_options
+            # can hand it to ClaudeAgentOptions(system_prompt=...) unchanged.
+            # The SDK validates preset_id against its own Literal set.
+            return {"type": "preset", "preset": sp.preset_id}
         raise TranslationError(f"Unknown SystemPrompt subtype: {type(sp).__name__}")
 
     def _translate_tools(self, policy: ToolPolicy) -> dict[str, Any]:
@@ -133,6 +134,15 @@ class ClaudeProvider(BaseProvider):
     def _translate_mcp(self, servers: tuple[McpServerSpec, ...]) -> dict[str, Any]:
         out: dict[str, dict[str, Any]] = {}
         for s in servers:
+            if s.transport == "stdio" and s.command is None:
+                raise TranslationError(
+                    f"McpServerSpec {s.name!r}: transport='stdio' requires "
+                    "command=(...)."
+                )
+            if s.transport == "http" and s.url is None:
+                raise TranslationError(
+                    f"McpServerSpec {s.name!r}: transport='http' requires url=..."
+                )
             entry: dict[str, Any] = {"transport": s.transport}
             if s.command is not None:
                 entry["command"] = list(s.command)
@@ -193,5 +203,13 @@ class _ClaudeStatefulClient:
         await self._inner.__aexit__(*exc)
 
     async def query(self, prompt: str) -> AsyncIterator[Message]:
-        async for sdk_msg in self._inner.query(prompt):
-            yield self._to_message(sdk_msg)
+        # Mirror ClaudeProvider.query's error contract — wrap SDK exceptions
+        # in ProviderRuntimeError so callers handle both one-shot and stateful
+        # paths uniformly.
+        try:
+            async for sdk_msg in self._inner.query(prompt):
+                yield self._to_message(sdk_msg)
+        except ProviderRuntimeError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise ProviderRuntimeError(provider="claude", phase="client_query") from e
