@@ -45,6 +45,25 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 
+class _CodexOAuth2CliToken(OAuth2CliToken):
+    """OAuth2 token pre-wired to ~/.codex/auth.json (honoring CODEX_HOME) for
+    auto-detection."""
+
+    @classmethod
+    def default(cls) -> _CodexOAuth2CliToken:
+        codex_home = os.environ.get("CODEX_HOME")
+        base = Path(codex_home) if codex_home else Path.home() / ".codex"
+        return cls(token_path=base / "auth.json")
+
+
+class _OpenAIApiKey(ApiKey):
+    """ApiKey pre-wired to OPENAI_API_KEY for auto-detection."""
+
+    @classmethod
+    def default(cls) -> _OpenAIApiKey:
+        return cls(env_var="OPENAI_API_KEY")
+
+
 _CODEX_CAPS = Capabilities(
     supports_mcp=True,
     supports_native_tools=True,
@@ -84,7 +103,17 @@ class OpenAIProvider(BaseProvider):
     name: ClassVar[str] = "openai"
     # Class-level placeholder; overridden by instance property below.
     capabilities: ClassVar[Capabilities] = _RAW_CAPS
-    supported_auth: ClassVar[tuple[type[AuthStrategy], ...]] = (OAuth2CliToken, ApiKey)
+    # _CodexOAuth2CliToken / _OpenAIApiKey appear first so auto_resolve_auth
+    # walks their pre-wired default() (which knows where to look for tokens).
+    # OAuth2CliToken / ApiKey remain in the tuple so callers constructing
+    # them directly (e.g. tests, explicit wiring) still satisfy
+    # _validate_auth's isinstance check.
+    supported_auth: ClassVar[tuple[type[AuthStrategy], ...]] = (
+        _CodexOAuth2CliToken,
+        _OpenAIApiKey,
+        OAuth2CliToken,
+        ApiKey,
+    )
 
     def __init__(self, auth: AuthStrategy) -> None:
         super().__init__(auth)
