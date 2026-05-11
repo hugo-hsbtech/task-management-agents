@@ -1,7 +1,7 @@
 """OpenAIProvider — dual-backend routing (Codex CLI vs raw OpenAI)."""
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -39,7 +39,7 @@ def _stub_codex_sdk():
 
 
 def _stub_openai_sdk():
-    return SimpleNamespace(OpenAI=MagicMock())
+    return SimpleNamespace(OpenAI=MagicMock(), AsyncOpenAI=MagicMock())
 
 
 def test_codex_backend_selected_for_oauth_token(monkeypatch, tmp_path):
@@ -125,3 +125,73 @@ def test_codex_backend_init_calls_oauth_guard(monkeypatch, tmp_path):
 
         with pytest.raises(RuntimeError, match="config.toml not found"):
             OpenAIProvider(auth=OAuth2CliToken(token_path=tmp_path / "auth.json"))
+
+
+@pytest.mark.asyncio
+async def test_raw_openai_query_streams_messages(monkeypatch):
+    """Smoke-test the raw OpenAI backend's async streaming path.
+
+    Verifies the backend uses AsyncOpenAI (await chat.completions.create is
+    valid) and yields a final Message after streaming.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-abc")
+
+    # Fake async iterator yielding two chunks then ending.
+    chunk1 = SimpleNamespace(
+        choices=[SimpleNamespace(delta=SimpleNamespace(content="hello "))]
+    )
+    chunk2 = SimpleNamespace(
+        choices=[SimpleNamespace(delta=SimpleNamespace(content="world"))]
+    )
+
+    class _FakeStream:
+        def __init__(self, chunks):
+            self._chunks = iter(chunks)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration:
+                raise StopAsyncIteration from None
+
+    fake_create = AsyncMock(return_value=_FakeStream([chunk1, chunk2]))
+    fake_completions = SimpleNamespace(create=fake_create)
+    fake_chat = SimpleNamespace(completions=fake_completions)
+    fake_async_client = SimpleNamespace(chat=fake_chat)
+
+    fake_openai = SimpleNamespace(
+        AsyncOpenAI=MagicMock(return_value=fake_async_client),
+        OpenAI=MagicMock(),  # legacy attribute, should NOT be used
+    )
+
+    with patch.dict("sys.modules", {"openai": fake_openai}):
+        from llm_providers.auth.api_key import ApiKey
+        from llm_providers.prompt import TextSystemPrompt
+        from llm_providers.protocol import ProviderOptions
+        from llm_providers.providers.openai import OpenAIProvider
+        from llm_providers.tools import ToolPolicy
+
+        provider = OpenAIProvider(auth=ApiKey(env_var="OPENAI_API_KEY"))
+        opts = ProviderOptions(
+            system_prompt=TextSystemPrompt(text="be helpful"),
+            model="gpt-4o-mini",
+            max_turns=5,
+            tool_policy=ToolPolicy(),
+        )
+
+        msgs = []
+        async for m in provider.query("hi", opts):
+            msgs.append(m)
+
+        # AsyncOpenAI was used, not sync OpenAI
+        fake_openai.AsyncOpenAI.assert_called_once_with(api_key="sk-abc")
+        fake_openai.OpenAI.assert_not_called()
+
+        # At least one chunk message + one final message
+        assert any(m.text == "hello " for m in msgs)
+        assert any(m.text == "world" for m in msgs)
+        assert msgs[-1].is_final is True
+        assert msgs[-1].text == "hello world"

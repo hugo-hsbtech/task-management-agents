@@ -181,6 +181,12 @@ class _CodexBackend(_Backend):
     async def query(
         self, prompt: str, options: ProviderOptions, provider: OpenAIProvider
     ) -> AsyncIterator[Message]:
+        # NOTE: options.tool_policy.allowed/denied/custom is currently a no-op
+        # on the OpenAI provider. Codex tool surface (Phase B) and OpenAI
+        # function-calling translation (Phase B) will wire this in. For Phase A,
+        # the policy is accepted in ProviderOptions but not enforced — callers
+        # that depend on tool restriction should not yet flip an agent to
+        # HSB_RUNTIME_<AGENT>=openai.
         if options.mcp_servers:
             verify_codex_mcp(self._cached_config, [s.name for s in options.mcp_servers])
 
@@ -276,11 +282,17 @@ class _RawOpenAIBackend(_Backend):
         import openai
 
         self._sdk = openai
-        self._client = openai.OpenAI(api_key=cred.payload["api_key"])
+        self._client = openai.AsyncOpenAI(api_key=cred.payload["api_key"])
 
     async def query(
         self, prompt: str, options: ProviderOptions, provider: OpenAIProvider
     ) -> AsyncIterator[Message]:
+        # NOTE: options.tool_policy.allowed/denied/custom is currently a no-op
+        # on the OpenAI provider. Codex tool surface (Phase B) and OpenAI
+        # function-calling translation (Phase B) will wire this in. For Phase A,
+        # the policy is accepted in ProviderOptions but not enforced — callers
+        # that depend on tool restriction should not yet flip an agent to
+        # HSB_RUNTIME_<AGENT>=openai.
         sp_text = provider._translate_system_prompt(options.system_prompt)
         messages = [
             {"role": "system", "content": sp_text},
