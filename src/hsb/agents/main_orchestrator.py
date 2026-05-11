@@ -30,13 +30,14 @@ from hsb.agents.linear_agent import run_validated_linear_agent
 from hsb.contracts.main_orchestrator import (
     DispatchedItem,
 )
+from hsb.settings.orchestrator import OrchestratorSettings
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 WORKTREES_DIR = ".worktrees"
-CLAIM_DELAY_MS = int(os.environ.get("HSB_CLAIM_DELAY_MS", "200"))
+CLAIM_DELAY_MS = OrchestratorSettings().claim_delay_ms
 
 
 def _entity_get(entity, key: str, default=None):
