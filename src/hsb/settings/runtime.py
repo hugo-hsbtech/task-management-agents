@@ -1,23 +1,33 @@
 """Per-agent runtime selection + Claude OAuth token.
 
-Env vars: HSB_RUNTIME_<AGENT> (one per known agent) and
-CLAUDE_CODE_OAUTH_TOKEN (sourced via validation_alias because it does
-not share the HSB_RUNTIME_ prefix).
+Env vars: ``HSB_RUNTIME_<AGENT>`` (one per known agent — see fields below)
+and ``CLAUDE_CODE_OAUTH_TOKEN`` (sourced via validation_alias because it
+does not share the ``HSB_RUNTIME_`` prefix).
 
-WIO is hard-frozen to "claude" because the stateful ClaudeSDKClient
-session has no Codex equivalent (tracked separately). Passing
-HSB_RUNTIME_WIO=codex raises ValidationError at construction.
+The Work Item Orchestrator is hard-frozen to ``claude`` because the
+stateful ``ClaudeSDKClient`` session has no Codex equivalent (tracked
+separately). Setting ``HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR=codex`` raises
+``ValidationError`` at construction with a project-specific explanation.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Literal
+from enum import Enum
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 FORBIDDEN_API_KEY_VARS: tuple[str, ...] = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
+
+class AgentRuntime(str, Enum):
+    """LLM backend an agent dispatches against. Inherits ``str`` so values
+    compare equal to plain strings (``"claude"``, ``"codex"``) — convenient
+    for env vars, config files, and JSON serialization."""
+
+    CLAUDE = "claude"
+    CODEX = "codex"
 
 
 def assert_oauth2_only() -> None:
@@ -43,7 +53,12 @@ def assert_oauth2_only() -> None:
 
 
 class RuntimeSettings(BaseSettings):
-    """Per-agent runtime selection + Claude OAuth token."""
+    """Per-agent runtime selection + Claude OAuth token.
+
+    Field names are full-word slugs (no acronyms) so env vars stay
+    self-explanatory: ``HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR``,
+    ``HSB_RUNTIME_QUALITY_ASSURANCE``, ``HSB_RUNTIME_USER_ACCEPTANCE_TESTING``.
+    """
 
     model_config = SettingsConfigDict(env_prefix="HSB_RUNTIME_")
 
@@ -56,26 +71,32 @@ class RuntimeSettings(BaseSettings):
     )
 
     # Per-agent runtime selection. Explicit fields, one per known agent.
-    backlog: Literal["claude", "codex"] = "claude"
-    wio: Literal["claude"] = "claude"  # hard-blocked from "codex"
-    qa: Literal["claude", "codex"] = "claude"
-    uat: Literal["claude", "codex"] = "claude"
-    risk: Literal["claude", "codex"] = "claude"
-    git: Literal["claude", "codex"] = "claude"
-    builder: Literal["claude", "codex"] = "claude"
-    intelligence: Literal["claude", "codex"] = "claude"
-    linear: Literal["claude", "codex"] = "claude"
+    # `work_item_orchestrator` accepts AgentRuntime.CODEX at the field-validation
+    # layer so the _work_item_orchestrator_is_claude_only model_validator can
+    # intercept it and raise the project-specific explanation. Narrowing the
+    # type to only AgentRuntime.CLAUDE would make pydantic reject CODEX with a
+    # generic enum_error, never reaching the explanatory message about the
+    # missing stateful-client Codex equivalent.
+    backlog: AgentRuntime = AgentRuntime.CLAUDE
+    work_item_orchestrator: AgentRuntime = AgentRuntime.CLAUDE
+    quality_assurance: AgentRuntime = AgentRuntime.CLAUDE
+    user_acceptance_testing: AgentRuntime = AgentRuntime.CLAUDE
+    risk: AgentRuntime = AgentRuntime.CLAUDE
+    git: AgentRuntime = AgentRuntime.CLAUDE
+    builder: AgentRuntime = AgentRuntime.CLAUDE
+    intelligence: AgentRuntime = AgentRuntime.CLAUDE
+    linear: AgentRuntime = AgentRuntime.CLAUDE
 
     @field_validator(
         "backlog",
-        "qa",
-        "uat",
+        "work_item_orchestrator",
+        "quality_assurance",
+        "user_acceptance_testing",
         "risk",
         "git",
         "builder",
         "intelligence",
         "linear",
-        "wio",
         mode="before",
     )
     @classmethod
@@ -85,10 +106,11 @@ class RuntimeSettings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def _wio_is_claude_only(self) -> RuntimeSettings:
-        if self.wio != "claude":
+    def _work_item_orchestrator_is_claude_only(self) -> RuntimeSettings:
+        if self.work_item_orchestrator != AgentRuntime.CLAUDE:
             raise ValueError(
-                "WIO is not flippable yet — stateful ClaudeSDKClient session "
-                "has no Codex equivalent. Track separately when porting WIO."
+                "Work Item Orchestrator is not flippable yet — the stateful "
+                "ClaudeSDKClient session has no Codex equivalent. Track "
+                "separately when porting the orchestrator."
             )
         return self

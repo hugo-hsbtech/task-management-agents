@@ -1,13 +1,13 @@
-"""Tests for hsb.settings.runtime.RuntimeSettings (fields + WIO hard-block)."""
+"""Tests for hsb.settings.runtime.RuntimeSettings."""
 
 import pytest
 from pydantic import SecretStr, ValidationError
 
 _AGENT_RUNTIME_VARS = (
     "HSB_RUNTIME_BACKLOG",
-    "HSB_RUNTIME_WIO",
-    "HSB_RUNTIME_QA",
-    "HSB_RUNTIME_UAT",
+    "HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR",
+    "HSB_RUNTIME_QUALITY_ASSURANCE",
+    "HSB_RUNTIME_USER_ACCEPTANCE_TESTING",
     "HSB_RUNTIME_RISK",
     "HSB_RUNTIME_GIT",
     "HSB_RUNTIME_BUILDER",
@@ -27,9 +27,9 @@ def test_all_agents_default_to_claude(monkeypatch):
 
     s = RuntimeSettings()
     assert s.backlog == "claude"
-    assert s.wio == "claude"
-    assert s.qa == "claude"
-    assert s.uat == "claude"
+    assert s.work_item_orchestrator == "claude"
+    assert s.quality_assurance == "claude"
+    assert s.user_acceptance_testing == "claude"
     assert s.risk == "claude"
     assert s.git == "claude"
     assert s.builder == "claude"
@@ -37,12 +37,24 @@ def test_all_agents_default_to_claude(monkeypatch):
     assert s.linear == "claude"
 
 
+def test_agent_runtime_enum_values():
+    from hsb.settings.runtime import AgentRuntime
+
+    assert AgentRuntime.CLAUDE.value == "claude"
+    assert AgentRuntime.CODEX.value == "codex"
+    # str-inheritance: enum members compare equal to their str values.
+    assert AgentRuntime.CLAUDE == "claude"
+    assert AgentRuntime.CODEX == "codex"
+
+
 def test_backlog_can_be_codex(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "codex")
-    from hsb.settings.runtime import RuntimeSettings
+    from hsb.settings.runtime import AgentRuntime, RuntimeSettings
 
-    assert RuntimeSettings().backlog == "codex"
+    s = RuntimeSettings()
+    assert s.backlog == AgentRuntime.CODEX
+    assert s.backlog == "codex"
 
 
 def test_runtime_value_is_normalized_lower_stripped(monkeypatch):
@@ -53,13 +65,22 @@ def test_runtime_value_is_normalized_lower_stripped(monkeypatch):
     assert RuntimeSettings().backlog == "codex"
 
 
-def test_wio_cannot_be_codex(monkeypatch):
+def test_work_item_orchestrator_cannot_be_codex(monkeypatch):
+    """HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR=codex must surface the
+    project-specific explanation about the missing stateful-client Codex
+    equivalent — not pydantic's generic enum_error. The model_validator
+    owns this message; narrowing the field type to a single-value enum
+    would let pydantic intercept at field validation, hiding the
+    explanation."""
     _clear_runtime_env(monkeypatch)
-    monkeypatch.setenv("HSB_RUNTIME_WIO", "codex")
+    monkeypatch.setenv("HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR", "codex")
     from hsb.settings.runtime import RuntimeSettings
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as exc:
         RuntimeSettings()
+    assert "Work Item Orchestrator is not flippable yet" in str(exc.value)
+    assert "stateful" in str(exc.value)
+    assert "ClaudeSDKClient" in str(exc.value)
 
 
 def test_invalid_runtime_value_raises(monkeypatch):
