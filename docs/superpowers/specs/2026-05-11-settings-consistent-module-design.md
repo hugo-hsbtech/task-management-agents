@@ -60,7 +60,6 @@ CLAIM_DELAY_MS = OrchestratorSettings().claim_delay_ms
 ```
 src/hsb/settings/
 ├── __init__.py        ← re-exports each Settings class (convenience only; no aggregator)
-├── base.py            ← _HsbBaseSettings: shared env_file, extra="ignore", frozen=True, env_file resolved from repo root
 ├── runtime.py         ← RuntimeSettings + FORBIDDEN_API_KEY_VARS + assert_oauth2_only()
 ├── codex.py           ← CodexSettings  (CODEX_HOME, CODEX_PATH_OVERRIDE)
 ├── linear.py          ← LinearSettings (LINEAR_API_KEY)
@@ -73,53 +72,27 @@ src/hsb/settings/
 **Invariants:**
 
 1. **Per-domain isolation.** Each settings class owns exactly one concern. No class mixes runtime auth with test-fixture URLs. Consumers import only what they consume.
-2. **One shared base.** `_HsbBaseSettings` centralizes the `.env` file location, the `extra="ignore"` policy, the `frozen=True` mutability rule, and the `case_sensitive=False` env-var match. Subclasses declare only their `env_prefix` and their fields.
-3. **No top-level aggregator.** There is no `Settings(_HsbBaseSettings)` that wraps every domain class. The compositional cost of importing two classes when an agent needs both is acceptable; the cost of having one mega-class that imports every dep at startup is not.
-4. **Frozen.** Every settings instance is immutable post-construction (`model_config = SettingsConfigDict(frozen=True)`). Operators reconfigure by changing env / `.env` and restarting.
-5. **No SDK imports at module top.** Settings classes are pure pydantic; they have no transitive dependency on `claude_agent_sdk`, `openai_codex_sdk`, `mcp_remote`, or any Linear/GitHub library.
+2. **No shared base.** Every class extends `BaseSettings` directly and declares its own `env_prefix` in its own `model_config`. Idiomatic FastAPI/pydantic-settings — nothing layered on top.
+3. **No top-level aggregator.** There is no `Settings` class that wraps every domain class. The compositional cost of importing two classes when an agent needs both is acceptable; the cost of one mega-class that imports every dep at startup is not.
+4. **No SDK imports at module top.** Settings classes are pure pydantic; they have no transitive dependency on `claude_agent_sdk`, `openai_codex_sdk`, `mcp_remote`, or any Linear/GitHub library.
 
 ## 5. Core abstractions
 
-### 5.1 `_HsbBaseSettings`
+Each settings class is a direct subclass of `pydantic_settings.BaseSettings` with its own `env_prefix`. Settings classes read from `os.environ`. The project's existing `load_dotenv()` calls (at module import in every agent file and `run_loop.py`) populate `.env` values into `os.environ` before any settings class is constructed — no `env_file` declaration is needed, no duplication of dotenv loading.
 
-```python
-# src/hsb/settings/base.py
-from __future__ import annotations
+### 5.1 Per-domain settings classes — field schemas
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class _HsbBaseSettings(BaseSettings):
-    """Shared base for every per-domain settings class.
-
-    Subclasses declare `env_prefix=` in their own `model_config`; pydantic-settings
-    merges class-level config with parent config so subclasses inherit `extra`,
-    `frozen`, and `case_sensitive` automatically."""
-
-    model_config = SettingsConfigDict(
-        case_sensitive=False,
-        extra="ignore",
-        frozen=True,
-    )
-```
-
-Settings classes read from `os.environ`. The project's existing `load_dotenv()` calls (at module import in every agent file and `run_loop.py`) populate `.env` values into `os.environ` before any settings class is constructed — no `env_file` declaration is needed on the base, no duplication of dotenv loading.
-
-### 5.2 Per-domain settings classes — field schemas
-
-#### 5.2.1 `RuntimeSettings`
+#### 5.1.1 `RuntimeSettings`
 
 ```python
 # src/hsb/settings/runtime.py
 from __future__ import annotations
 
 import os
-from typing import ClassVar, Literal
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import SettingsConfigDict
-
-from hsb.settings.base import _HsbBaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 FORBIDDEN_API_KEY_VARS: tuple[str, ...] = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
 
@@ -142,7 +115,7 @@ def assert_oauth2_only() -> None:
         )
 
 
-class RuntimeSettings(_HsbBaseSettings):
+class RuntimeSettings(BaseSettings):
     """Per-agent runtime selection + Claude OAuth token.
 
     Each agent gets an explicit field. Adding an agent means adding a field
@@ -197,16 +170,15 @@ The `_normalize_runtime` `mode="before"` validator replicates the existing `.str
 
 **Why explicit fields per agent (not a `dict[str, str]`):** the current set of agents is closed and small; the WIO hard-block is structurally easier to express with a per-field validator; future agent additions force a discoverable edit to this file rather than a silent env-var convention.
 
-#### 5.2.2 `CodexSettings`
+#### 5.1.2 `CodexSettings`
 
 ```python
 # src/hsb/settings/codex.py
 from pathlib import Path
-from pydantic_settings import SettingsConfigDict
-from hsb.settings.base import _HsbBaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class CodexSettings(_HsbBaseSettings):
+class CodexSettings(BaseSettings):
     """Codex CLI configuration. Read by `runtime/codex.py` and
     `runtime/codex_guards.py`."""
 
@@ -216,16 +188,15 @@ class CodexSettings(_HsbBaseSettings):
     path_override: Path | None = None     # CODEX_PATH_OVERRIDE
 ```
 
-#### 5.2.3 `LinearSettings`
+#### 5.1.3 `LinearSettings`
 
 ```python
 # src/hsb/settings/linear.py
 from pydantic import SecretStr
-from pydantic_settings import SettingsConfigDict
-from hsb.settings.base import _HsbBaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class LinearSettings(_HsbBaseSettings):
+class LinearSettings(BaseSettings):
     """Linear MCP fallback authentication. Phase 1 prefers OAuth via
     mcp-remote (D-01); the API-key path is the headless/CI fallback."""
 
@@ -234,16 +205,15 @@ class LinearSettings(_HsbBaseSettings):
     api_key: SecretStr | None = None       # LINEAR_API_KEY
 ```
 
-#### 5.2.4 `GitHubSettings`
+#### 5.1.4 `GitHubSettings`
 
 ```python
 # src/hsb/settings/github.py
 from pydantic import SecretStr
-from pydantic_settings import SettingsConfigDict
-from hsb.settings.base import _HsbBaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class GitHubSettings(_HsbBaseSettings):
+class GitHubSettings(BaseSettings):
     """Optional PAT for non-interactive `gh auth login --with-token`.
     If absent, operator uses the interactive device flow."""
 
@@ -252,16 +222,15 @@ class GitHubSettings(_HsbBaseSettings):
     token: SecretStr | None = None         # GITHUB_TOKEN
 ```
 
-#### 5.2.5 `OrchestratorSettings`
+#### 5.1.5 `OrchestratorSettings`
 
 ```python
 # src/hsb/settings/orchestrator.py
 from pydantic import Field
-from pydantic_settings import SettingsConfigDict
-from hsb.settings.base import _HsbBaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class OrchestratorSettings(_HsbBaseSettings):
+class OrchestratorSettings(BaseSettings):
     """Operational tuning knobs read by Main Orchestrator and Docker
     Compose scaffolding."""
 
@@ -273,16 +242,15 @@ class OrchestratorSettings(_HsbBaseSettings):
 
 The `ge=0` constraint catches negative-debounce typos; matches the implicit assumption in `main_orchestrator.py`.
 
-#### 5.2.6 `WIOIPCSettings`
+#### 5.1.6 `WIOIPCSettings`
 
 ```python
 # src/hsb/settings/wio_ipc.py
 from pathlib import Path
-from pydantic_settings import SettingsConfigDict
-from hsb.settings.base import _HsbBaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class WIOIPCSettings(_HsbBaseSettings):
+class WIOIPCSettings(BaseSettings):
     """File paths for the WIO subprocess IPC handshake. Set by Main
     Orchestrator before invoking the WIO subprocess; read by WIO at startup."""
 
@@ -292,17 +260,16 @@ class WIOIPCSettings(_HsbBaseSettings):
     output_file: Path | None = None       # HSB_WIO_OUTPUT_FILE
 ```
 
-#### 5.2.7 `TestFixtureSettings`
+#### 5.1.7 `TestFixtureSettings`
 
 ```python
 # src/hsb/settings/test_fixture.py
 from pathlib import Path
 from pydantic import Field
-from pydantic_settings import SettingsConfigDict
-from hsb.settings.base import _HsbBaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class TestFixtureSettings(_HsbBaseSettings):
+class TestFixtureSettings(BaseSettings):
     """Integration-test fixture URLs, IDs, and opt-in flags.
 
     Each field uses `validation_alias` because the env vars don't share a
@@ -320,7 +287,7 @@ class TestFixtureSettings(_HsbBaseSettings):
 
 `bool` coercion for `HSB_LIVE_CODEX` follows pydantic's standard env-bool semantics (`"1"`, `"true"`, `"yes"` → True; others → False). The current code's `if "HSB_LIVE_CODEX" not in os.environ: skip` becomes `if not TestFixtureSettings().live_codex: skip`.
 
-### 5.3 `__init__.py` re-export surface
+### 5.2 `__init__.py` re-export surface
 
 ```python
 # src/hsb/settings/__init__.py
@@ -432,11 +399,10 @@ dependencies = [
 
 ## 9. Testing strategy
 
-`tests/unit/settings/` — one file per domain class plus a shared base test:
+`tests/unit/settings/` — one test file per domain class:
 
 ```
 tests/unit/settings/
-├── test_base.py                    ← _find_env_file() walks up; settings frozen; extra="ignore"
 ├── test_runtime.py                 ← per-agent fields; wio="codex" raises; assert_oauth2_only() parity
 ├── test_codex.py                   ← CODEX_HOME / CODEX_PATH_OVERRIDE as Path; None defaults
 ├── test_linear.py                  ← LINEAR_API_KEY as SecretStr; repr does not leak value
