@@ -17,27 +17,37 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class _ForbiddenKeysProbe(BaseSettings):
-    """Probe-only Settings class. ``assert_oauth2_only`` instantiates this
-    to read the forbidden API-key env vars via pydantic instead of
-    ``os.environ``. Never used as actual project configuration — the whole
-    point is that these vars are NOT supposed to be set."""
+class _G1Guard(BaseSettings):
+    """Pydantic-backed G1 enforcer. Constructing this class raises
+    ``RuntimeError`` if any forbidden API-key env var is set. Pydantic
+    propagates non-ValueError exceptions from validators unwrapped, so
+    the historical ``RuntimeError`` contract is preserved."""
 
     anthropic_api_key: str | None = Field(
-        default=None,
-        validation_alias="ANTHROPIC_API_KEY",
+        default=None, validation_alias="ANTHROPIC_API_KEY"
     )
-    openai_api_key: str | None = Field(
-        default=None,
-        validation_alias="OPENAI_API_KEY",
-    )
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+
+    @model_validator(mode="after")
+    def _refuse_forbidden(self) -> Self:
+        forbidden = [
+            str(self.__class__.model_fields[name].validation_alias)
+            for name in self.__class__.model_fields
+            if getattr(self, name) is not None
+        ]
+        if forbidden:
+            raise RuntimeError(
+                f"G1 violation: {', '.join(forbidden)} set — forbidden. "
+                "Use OAuth tokens only (CLAUDE_CODE_OAUTH_TOKEN for Claude, "
+                "`codex login --device-auth` for Codex)."
+            )
+        return self
 
 
-# Public list of env vars the G1 guard rejects. Derived from
-# ``_ForbiddenKeysProbe`` so the two stay in sync.
+# Public introspection list — derived from `_G1Guard` so the two stay in sync.
 FORBIDDEN_API_KEY_VARS: tuple[str, ...] = tuple(
     str(field.validation_alias)
-    for field in _ForbiddenKeysProbe.model_fields.values()
+    for field in _G1Guard.model_fields.values()
     if field.validation_alias is not None
 )
 
@@ -64,18 +74,7 @@ def assert_oauth2_only() -> None:
     autouse fixture in ``tests/conftest.py`` that unsets the env var at
     session start.
     """
-    probe = _ForbiddenKeysProbe()
-    forbidden = [
-        str(_ForbiddenKeysProbe.model_fields[name].validation_alias)
-        for name, value in probe.model_dump().items()
-        if value is not None
-    ]
-    if forbidden:
-        raise RuntimeError(
-            f"G1 violation: {', '.join(forbidden)} set — forbidden. "
-            "Use OAuth tokens only (CLAUDE_CODE_OAUTH_TOKEN for Claude, "
-            "`codex login --device-auth` for Codex)."
-        )
+    _G1Guard()
 
 
 class RuntimeSettings(BaseSettings):
