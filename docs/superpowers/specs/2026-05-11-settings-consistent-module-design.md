@@ -403,12 +403,14 @@ from hsb.settings.runtime import assert_oauth2_only  # re-export
 # (module-level FORBIDDEN_API_KEY_VARS deleted; assert_oauth2_only is now imported)
 ```
 
-This is a pure move — same function body, same string formatting, same RuntimeError. Two existing tests inspect `_sdk_options.py` source code:
+This is a pure move — same function body, same string formatting, same RuntimeError. **No existing tests break.** Two tests grep for the literal `"ANTHROPIC_API_KEY"`, but neither reads `_sdk_options.py`:
 
-- `tests/unit/test_main_orchestrator.py:197` — asserts `"**os.environ" not in source` (subprocess env safety). Unaffected.
-- `tests/unit/test_wio_allowed_tools.py:47` — asserts `"ANTHROPIC_API_KEY" in src and "not in" in src and "os.environ" in src`. **Will break** if the literal `"ANTHROPIC_API_KEY"` no longer appears in `_sdk_options.py`. The test's intent is to verify the G1 guard exists; the implementation plan must either (a) update the test to assert against the new location in `settings/runtime.py`, or (b) keep a compat literal in `_sdk_options.py` so the grep still finds it. **Plan choice: option (a)** — the test name is `test_wio_allowed_tools` but its actual purpose is to verify G1 wiring; updating it to read `settings/runtime.py` is more honest about what's being tested.
+- `tests/unit/test_main_orchestrator.py:197` reads `main_orchestrator.py` source and asserts `"**os.environ" not in source` (subprocess env safety, T-4-04). Unaffected.
+- `tests/unit/test_wio_allowed_tools.py:47` reads `work_item_orchestrator.py` source and asserts the WIO module's docstring still documents the G1 contract (the literal is in WIO's docstring at line 25, not in any imported module). Unaffected.
 
 The session-scoped `_gsd_clear_api_key` autouse fixture in `tests/conftest.py` is unchanged (still does `os.environ.pop(...)` for both keys at session start).
+
+A new G1-parity unit test in `tests/unit/settings/test_runtime.py` (see §9) covers the relocated function directly.
 
 ## 7. Smoke-test consumer
 
@@ -483,8 +485,7 @@ Each test uses `monkeypatch.setenv` / `monkeypatch.delenv` (pytest fixture) — 
 - The error message is the same string (asserted by exact substring match) so any grep-based logs / alerts that filter on it continue to work.
 - The re-export `from hsb.settings.runtime import assert_oauth2_only` is accessible from `hsb.agents._sdk_options.assert_oauth2_only` (i.e. the existing fully-qualified name resolves to the same function object).
 
-**Structural test** (lives in `tests/unit/settings/test_runtime.py`):
-- `tests/unit/test_wio_allowed_tools.py:47` is updated to point at `src/hsb/settings/runtime.py` rather than `src/hsb/agents/_sdk_options.py`. The semantic of the test ("G1 is wired up") is preserved; the source path is corrected.
+**No existing structural tests need updating** (see §6 — both grep-based tests read files unrelated to the G1 relocation). The new G1-parity tests in `tests/unit/settings/test_runtime.py` cover the relocated function.
 
 **No integration tests** are added by this branch — the smoke-test consumer is enough to prove the import path works end-to-end. The existing 111 unit tests continue to pass without modification (verified locally).
 
@@ -506,7 +507,7 @@ Each test uses `monkeypatch.setenv` / `monkeypatch.delenv` (pytest fixture) — 
 |---|---|
 | `tests/conftest.py` | **Untouched** — `_gsd_clear_api_key` fixture still pops the forbidden vars. |
 | `tests/unit/test_main_orchestrator.py:197` | **Untouched** — still asserts `"**os.environ" not in source`. |
-| `tests/unit/test_wio_allowed_tools.py:47` | **Updated** — re-points to `src/hsb/settings/runtime.py`. Same semantic. |
+| `tests/unit/test_wio_allowed_tools.py:47` | **Untouched** — reads `work_item_orchestrator.py` docstring (G1 contract documentation), not `_sdk_options.py`. |
 | `tests/integration/*` | **Untouched** — `_require_*` skip helpers continue to read `os.environ` directly. Migration to `TestFixtureSettings` is follow-up work. |
 
 ### 10.3 Operator surface
