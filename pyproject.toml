@@ -54,6 +54,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "src/hsb/cli/*.py" = ["B008"]             # typer.Option() in function defaults is idiomatic
 "src/hsb/cli/main.py" = ["E402"]          # sub-app imports must follow app = typer.Typer()
+"src/hsb/settings/*.py" = ["TC003"]       # pydantic-settings needs runtime imports (same reason as TC001 above)
 "tests/conftest.py" = ["E402"]            # Phase-5 fixtures import after event-loop setup
 "tests/**/*.py" = ["SIM115"]             # structural tests use open().read() by convention
 "tests/*.py" = ["SIM115"]
@@ -72,6 +73,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
 markers = [
     "integration: requires live Linear MCP connection and ANTHROPIC_API_KEY",
     "live_codex: real Codex subscription smoke test (manual, opt-in via -m live_codex)",

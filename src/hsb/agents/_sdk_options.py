@@ -36,45 +36,16 @@ from claude_agent_sdk.types import (
     ToolsPreset,
 )
 
+from hsb.settings.runtime import (
+    FORBIDDEN_API_KEY_VARS as _FORBIDDEN_API_KEY_VARS,  # noqa: F401  re-export
+)
+from hsb.settings.runtime import (
+    assert_oauth2_only,  # noqa: F401  re-export
+)
+
 logger = logging.getLogger(__name__)
 
 _FORBIDDEN_TOOLS = {"Agent"}  # G2: WORC-02
-
-_FORBIDDEN_API_KEY_VARS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
-
-
-def assert_oauth2_only(agent_name: str | None = None) -> None:
-    """G1 (AI-SPEC §6) — function-entry-time guard. Rejects metered API keys
-    for either runtime. Operators must use OAuth tokens:
-      - Claude:  CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
-      - Codex:   ~/.codex/auth.json       (from `codex login --device-auth`)
-
-    Called from :func:`make_options` before every ``ClaudeAgentOptions``
-    construction. Function-time (NOT module-import-time) so test environments
-    that legitimately have ``ANTHROPIC_API_KEY`` set for unrelated reasons do
-    not break pytest collection. The defensive pairing is the session-scoped
-    autouse fixture in ``tests/conftest.py`` that unsets the env var at
-    session start.
-
-    When ``agent_name`` is provided, delegates to
-    :func:`hsb.runtime.policy.allowed_auth_kinds` for the per-agent escape
-    hatch (``HSB_AUTH_ALLOW_API_KEY_<AGENT>=1``). When ``agent_name`` is
-    ``None`` (legacy default), applies the strict check unconditionally.
-    """
-    if agent_name is not None:
-        from hsb.runtime.policy import allowed_auth_kinds
-
-        kinds = allowed_auth_kinds(agent_name)
-        if "api_key" in kinds:
-            return
-    forbidden = [v for v in _FORBIDDEN_API_KEY_VARS if v in os.environ]
-    if forbidden:
-        raise RuntimeError(
-            f"G1 violation: {', '.join(forbidden)} set — forbidden. "
-            "Use OAuth tokens only (CLAUDE_CODE_OAUTH_TOKEN for Claude, "
-            "`codex login --device-auth` for Codex), or set "
-            "HSB_AUTH_ALLOW_API_KEY_<AGENT>=1 to allow this agent."
-        )
 
 
 def make_options(
