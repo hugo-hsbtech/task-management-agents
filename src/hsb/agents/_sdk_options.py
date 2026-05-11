@@ -36,33 +36,16 @@ from claude_agent_sdk.types import (
     ToolsPreset,
 )
 
+from hsb.settings.runtime import (
+    FORBIDDEN_API_KEY_VARS as _FORBIDDEN_API_KEY_VARS,  # noqa: F401  re-export
+)
+from hsb.settings.runtime import (
+    assert_oauth2_only,  # noqa: F401  re-export
+)
+
 logger = logging.getLogger(__name__)
 
 _FORBIDDEN_TOOLS = {"Agent"}  # G2: WORC-02
-
-_FORBIDDEN_API_KEY_VARS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
-
-
-def assert_oauth2_only() -> None:
-    """G1 (AI-SPEC §6) — function-entry-time guard. Rejects metered API keys
-    for either runtime. Operators must use OAuth tokens:
-      - Claude:  CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
-      - Codex:   ~/.codex/auth.json       (from `codex login --device-auth`)
-
-    Called from :func:`make_options` before every ``ClaudeAgentOptions``
-    construction. Function-time (NOT module-import-time) so test environments
-    that legitimately have ``ANTHROPIC_API_KEY`` set for unrelated reasons do
-    not break pytest collection. The defensive pairing is the session-scoped
-    autouse fixture in ``tests/conftest.py`` that unsets the env var at
-    session start.
-    """
-    forbidden = [v for v in _FORBIDDEN_API_KEY_VARS if v in os.environ]
-    if forbidden:
-        raise RuntimeError(
-            f"G1 violation: {', '.join(forbidden)} set — forbidden. "
-            "Use OAuth tokens only (CLAUDE_CODE_OAUTH_TOKEN for Claude, "
-            "`codex login --device-auth` for Codex)."
-        )
 
 
 def make_options(
@@ -246,6 +229,7 @@ def linear_write_guard(fn):
 # docs/superpowers/specs/2026-05-09-codex-oauth-alt-runtime-design.md §5.4
 # ---------------------------------------------------------------------------
 
+
 def resolve_runtime(agent_name: str):
     """Return the Runtime implementation for the given agent.
 
@@ -268,9 +252,7 @@ def resolve_runtime(agent_name: str):
         return ClaudeRuntime()
     if value == "codex":
         return CodexRuntime()
-    raise ValueError(
-        f"{env_var}={value!r} is invalid. Allowed: 'claude' or 'codex'."
-    )
+    raise ValueError(f"{env_var}={value!r} is invalid. Allowed: 'claude' or 'codex'.")
 
 
 def make_agent_options(
