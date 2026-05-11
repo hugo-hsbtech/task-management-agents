@@ -13,7 +13,7 @@ separately). Setting ``HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR=codex`` raises
 from __future__ import annotations
 
 import os
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,8 +21,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 FORBIDDEN_API_KEY_VARS: tuple[str, ...] = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
 
 
-class AgentRuntime(str, Enum):
-    """LLM backend an agent dispatches against. Inherits ``str`` so values
+class AgentRuntime(StrEnum):
+    """LLM backend an agent dispatches against. ``StrEnum`` makes values
     compare equal to plain strings (``"claude"``, ``"codex"``) — convenient
     for env vars, config files, and JSON serialization."""
 

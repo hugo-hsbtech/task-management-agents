@@ -1,6 +1,11 @@
 """Codex CLI configuration.
 
-Read by `runtime/codex.py` (CODEX_PATH_OVERRIDE) and `runtime/codex_guards.py` (CODEX_HOME).
+Read by `runtime/codex.py` (CODEX_PATH_OVERRIDE) and
+`runtime/codex_guards.py` (CODEX_HOME).
+
+Defaults target the project's primary deployment surface: a Docker
+container running as root. Local developers running on the host
+override via environment variables.
 """
 
 from __future__ import annotations
@@ -15,5 +20,11 @@ class CodexSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="CODEX_")
 
-    home: Path | None = None
+    # Default matches the container's root-user home — what `codex login`
+    # writes to inside the project's Docker image. Override on host
+    # development with CODEX_HOME=$HOME/.codex.
+    home: Path = Path("/root/.codex")
+
+    # No default — when unset, `runtime/codex.py` uses the PATH lookup
+    # for the `codex` binary. Override only if Codex lives outside PATH.
     path_override: Path | None = None
