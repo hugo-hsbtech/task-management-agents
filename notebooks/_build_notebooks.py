@@ -3255,6 +3255,1160 @@ Where to go next:
 ]
 
 
+# ===========================================================================
+# Per-agent notebooks (notebooks/agents/*) — one notebook per agent showing
+# how a USER would invoke it. Companion to the cross-cutting nbs 00-07; these
+# are deliberately scoped to "instantiate input -> call entry point -> read
+# output." Each notebook is self-contained so an operator can open one without
+# reading the others.
+# ===========================================================================
+
+_AGENT_SETUP = code(
+    """\
+import sys
+from pathlib import Path
+
+# Robust _helpers.py discovery — works whether jupyter lab was launched from
+# the repo root, notebooks/, or notebooks/agents/. The loop walks up from cwd
+# until it finds the parent that holds _helpers.py and inserts it on sys.path.
+nb_dir = Path.cwd()
+for _parent in (nb_dir, *nb_dir.parents):
+    if (_parent / "_helpers.py").exists():
+        sys.path.insert(0, str(_parent))
+        break
+
+from _helpers import ensure_src_on_path, runtime_summary
+
+ROOT = ensure_src_on_path()
+print("HSB_RUNTIME_<AGENT> selection:\\n" + runtime_summary())"""
+)
+
+
+# ---------------------------------------------------------------------------
+# 01 — Backlog Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_BACKLOG: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Backlog Agent — user perspective
+
+**What it does.** Reads a free-form `plan.md` and creates the matching Linear `EPIC -> User Story -> Task` tree. Idempotent: re-running with the same plan reuses existing EPICs (BKPK-05).
+
+**Entry point.** `run_backlog_agent(input: BacklogInput) -> BacklogOutput` (sync wrapper around an async loop).
+
+**Cost.** Live runs hit Linear MCP and consume tokens. Default state of this notebook = construct the input + show what would be sent. Set `HSB_NOTEBOOK_RUN_LIVE=1` plus `HSB_NOTEBOOK_PLAN_MD=/path/to/plan.md` to actually invoke.
+
+**Runtime.** Backlog is the canary that goes through `make_agent_options()` + `resolve_runtime("backlog")`, so `HSB_RUNTIME_BACKLOG=codex` works end-to-end."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "input-md",
+        md(
+            """\
+## Construct the input
+
+`BacklogInput` requires `plan_source` (absolute path to plan.md) and a `ProjectContext`. Both models forbid extra fields — typos surface as `ValidationError` at construction time."""
+        ),
+    ),
+    (
+        "code",
+        "input-build",
+        code(
+            """\
+from hsb.contracts.backlog import BacklogInput, ProjectContext
+
+example_input = BacklogInput(
+    plan_source="docs/plan.md",
+    project_context=ProjectContext(
+        name="hsb-demo",
+        repository="task-management-agents",
+        technical_stack=["python", "claude-agent-sdk"],
+    ),
+)
+print(example_input.model_dump_json(indent=2))"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation
+
+Gates: `HSB_NOTEBOOK_RUN_LIVE=1` AND `HSB_NOTEBOOK_PLAN_MD=/abs/path/to/plan.md`. The second call demonstrates idempotency — re-invoking with the same plan should not change the EPIC count."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+import os
+
+from _helpers import assert_g1_safe, gated, live_mode, selected_runtime
+
+plan_md = os.environ.get("HSB_NOTEBOOK_PLAN_MD")
+if not live_mode() or not plan_md:
+    print(gated("Backlog live run (set HSB_NOTEBOOK_PLAN_MD)"))
+else:
+    assert_g1_safe()
+    print(f"(running on HSB_RUNTIME_BACKLOG={selected_runtime('backlog')!r})")
+    from hsb.agents.backlog_agent import run_backlog_agent
+
+    inp = BacklogInput(
+        plan_source=plan_md,
+        project_context=ProjectContext(
+            name="hsb-demo",
+            repository="task-management-agents",
+            technical_stack=["python"],
+        ),
+    )
+    out = run_backlog_agent(inp)
+    print(f"EPICs created: {len(out.epics)}")
+    for e in out.epics[:3]:
+        print(f"  - {e.title}  ({len(e.user_stories)} stories)")
+
+    # BKPK-05 idempotency: rerun should reuse existing EPICs.
+    out2 = run_backlog_agent(inp)
+    print(
+        "rerun EPIC count:",
+        len(out2.epics),
+        "(same)" if len(out2.epics) == len(out.epics) else "(DIFFERENT — investigate)",
+    )"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 02 — Intelligence Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_INTELLIGENCE: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Intelligence Agent — user perspective
+
+**What it does.** Provides two prompt builders that the Work Item Orchestrator runs inline within its single SDK session:
+
+- `build_enrichment_prompt(work_item_id, work_item_json)` — WIO Step 1 (skill 10): retrieve relevant Knowledge Store entries before Builder runs.
+- `build_storage_prompt(qa_result, implementation_notes)` — WIO Step 5 (skill 11): evaluate QA findings against the ingestion criteria and write new Knowledge Store entries.
+
+**Not a standalone agent.** There is no `run_intelligence_agent()` — Intelligence is a function library. The LLM that executes the prompt is the same WIO `ClaudeSDKClient` session (D-04).
+
+**Cost.** This notebook only assembles prompt strings — no LLM call, no Linear, no flags."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "enrichment-md",
+        md(
+            """\
+## Enrichment prompt (WIO Step 1, skill 10)
+
+Returned string is what the WIO sends as a `client.query(...)` turn before Builder runs. It instructs the LLM to use `Glob`/`Grep` over `knowledge/` and produce a `knowledge_context` payload."""
+        ),
+    ),
+    (
+        "code",
+        "enrichment-build",
+        code(
+            """\
+import json
+
+from hsb.agents.intelligence_agent import build_enrichment_prompt
+
+work_item = {
+    "id": "LIN-123",
+    "title": "Add Postgres optimistic-lock retry",
+    "description": "Linear writes are silently overwritten under concurrent claims",
+    "labels": ["postgres", "concurrency"],
+}
+prompt = build_enrichment_prompt("LIN-123", json.dumps(work_item, indent=2))
+print(prompt[:600], "..." if len(prompt) > 600 else "")"""
+        ),
+    ),
+    (
+        "markdown",
+        "storage-md",
+        md(
+            """\
+## Storage prompt (WIO Step 5, skill 11)
+
+Built after QA returns. Instructs the LLM to apply the skill 11 ingestion criteria and write entries to `knowledge/<category>/` only when the signal threshold is met."""
+        ),
+    ),
+    (
+        "code",
+        "storage-build",
+        code(
+            """\
+from hsb.agents.intelligence_agent import build_storage_prompt
+
+qa_result = {
+    "qa_status": "approved",
+    "qa_cycle_count": 2,
+    "findings": [{"category": "architecture", "summary": "retry policy uncentralised"}],
+}
+notes = {"decisions": ["used updatedAt re-read"], "risks": ["no idempotency token yet"]}
+prompt = build_storage_prompt(qa_result, notes)
+print(prompt[:600], "..." if len(prompt) > 600 else "")"""
+        ),
+    ),
+    (
+        "markdown",
+        "no-import-md",
+        md(
+            """\
+## Air-gap (INTL-04)
+
+The Intelligence module must never import the Linear Agent — Linear writes happen via the WIO's MCP tool wrapper, never via this module. Quick sanity check:"""
+        ),
+    ),
+    (
+        "code",
+        "no-import-check",
+        code(
+            """\
+import re
+
+src = (ROOT / "src/hsb/agents/intelligence_agent.py").read_text()
+# Substring `linear_agent` legitimately appears in the docstring's prose
+# ("this module never imports from hsb.agents.linear_agent"), so check for
+# real `from`/`import` lines specifically.
+import_lines = [
+    line
+    for line in src.splitlines()
+    if re.match(r"^\\s*(from|import)\\s+", line) and "linear_agent" in line
+]
+assert not import_lines, f"INTL-04 violation: {import_lines}"
+print("INTL-04 OK — no linear_agent import in intelligence_agent.py")"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 03 — Builder Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_BUILDER: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Builder Agent — user perspective
+
+**What it does.** Implements the scoped change for one Linear work item. Read/Edit/Write source files; run `pytest`/`ruff`/`mypy`/`python` for validation. **No** git, **no** Linear, **no** PR creation (BLDR-04).
+
+**Entry point.** `run_builder_agent(input: BuilderInput) -> BuilderOutput`.
+
+**Schema guard.** `BuilderOutput` rejects extra fields like `git_branch`/`pr_url` — even if the LLM emits them, the validator strips the output and forces a retry.
+
+**Cost.** Live runs touch the local filesystem (your scratch repo) and consume tokens."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "input-md",
+        md(
+            """\
+## Construct the input
+
+The caller MUST fetch fresh Linear state immediately before constructing `BuilderInput` (Pitfall 6). Pass the issue body, ACs, and the absolute repo root the Builder should treat as its `cwd`."""
+        ),
+    ),
+    (
+        "code",
+        "input-build",
+        code(
+            """\
+from hsb.contracts.builder import BuilderInput, RepositoryContext
+
+example_input = BuilderInput(
+    work_item_id="LIN-456",
+    issue_description="Add a docstring to scratch.py:greet().",
+    acceptance_criteria=[
+        "scratch.py:greet has a one-line docstring",
+        "ruff check passes on scratch.py",
+    ],
+    plan_source="docs/plan.md",
+    repository_context=RepositoryContext(
+        root_path="/tmp/hsb-builder-scratch",
+        technical_stack=["python"],
+    ),
+)
+print(example_input.model_dump_json(indent=2))"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation
+
+Gates: `HSB_NOTEBOOK_RUN_LIVE=1` AND `HSB_NOTEBOOK_SCRATCH_DIR` pointing at a real local repo. The Builder will Read/Edit files there — pick a throwaway directory."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+import os
+
+from _helpers import assert_g1_safe, gated, live_mode
+
+scratch = os.environ.get("HSB_NOTEBOOK_SCRATCH_DIR")
+if not live_mode() or not scratch:
+    print(gated("Builder live run (set HSB_NOTEBOOK_SCRATCH_DIR=/tmp/throwaway-repo)"))
+else:
+    assert_g1_safe()
+    from hsb.agents.builder_agent import run_builder_agent
+
+    inp = BuilderInput(
+        work_item_id="LIN-NB-1",
+        issue_description="Add a one-line docstring to scratch.py:greet().",
+        acceptance_criteria=["greet() has a docstring"],
+        plan_source="plan.md",
+        repository_context=RepositoryContext(
+            root_path=scratch, technical_stack=["python"]
+        ),
+    )
+    out = run_builder_agent(inp)
+    print("status:", out.implementation_status)
+    print("files changed:", [f.path for f in out.files_changed])
+    print("validation:", out.validation.model_dump())"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 04 — Git Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_GIT: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Git Agent — user perspective
+
+**What it does.** Takes Builder output for a finished work item and creates the feature branch + GitHub PR targeting the EPIC branch. Also handles `REBASE_STACK` after a sibling task PR merges.
+
+**Entry point.** `run_git_agent(input: GitInput) -> GitOutput`.
+
+**Hard rules.**
+- Branch: `feature/LIN-{id}-{slug}` (GITA-01).
+- PR title: `[LIN-{id}] {desc}` (GITA-03).
+- PR base: the EPIC branch — never `main` directly (D-07).
+- `git push --force-with-lease` only — no bare `--force` (Pitfall 3).
+- `gh pr list --limit 100` to dodge pagination truncation (Pitfall 4).
+- No merge tools, no Edit/Write, no Linear MCP (GITA-05).
+
+**Cost.** Live runs create real branches and PRs in your repo on the current GitHub remote. Heavily gated."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "input-md",
+        md(
+            """\
+## Construct the input
+
+`GitInput.implementation_output` is the serialized `BuilderOutput.model_dump()` — pass the dict directly. `epic_id` determines the PR base: `epic/LIN-{epic_id}`."""
+        ),
+    ),
+    (
+        "code",
+        "input-build",
+        code(
+            """\
+from hsb.contracts.git import GitInput
+
+# Stub of a BuilderOutput.model_dump() — in real use this is whatever Builder returned.
+fake_builder_output = {
+    "work_item_id": "LIN-456",
+    "implementation_status": "completed",
+    "summary": "Added docstring to scratch.py:greet().",
+    "files_changed": [{"path": "scratch.py", "change_summary": "added docstring"}],
+    "validation": {
+        "build": "not_run",
+        "tests": "passed",
+        "lint": "passed",
+        "typecheck": "not_run",
+    },
+    "implementation_notes": {
+        "decisions": [],
+        "assumptions": [],
+        "risks": [],
+        "qa_notes": [],
+    },
+}
+
+example_input = GitInput(
+    work_item_id="LIN-456",
+    implementation_output=fake_builder_output,
+    epic_id="123",
+    dependencies=[],
+)
+print(example_input.model_dump_json(indent=2))"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation (heavily gated)
+
+A live run will create a real branch and open a real PR. Gate with `HSB_NOTEBOOK_RUN_LIVE=1` only when you have a scratch repo + scratch EPIC branch ready. The cell remains a guarded scaffold by default."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+from _helpers import assert_g1_safe, gated, live_mode
+
+if not live_mode():
+    print(gated("Git Agent live run — opens a real PR"))
+else:
+    assert_g1_safe()
+    from hsb.agents.git_agent import run_git_agent
+
+    out = run_git_agent(example_input)
+    print("branch:", out.branch)
+    print("PR:   ", out.pull_request.url)
+    print("title:", out.pull_request.title)"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 05 — QA Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_QA: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# QA Agent — user perspective
+
+**What it does.** Reviews a PR diff against the linked Linear work item across 7 dimensions (functional / AC / quality / architecture / regression / edges / tests). Returns at most 5 findings (QAAG-03).
+
+**Hard cycle cap.** `qa_cycle_count` is bounded at 3. The Pydantic `model_validator` on `QAOutput` rejects `qa_cycle_count >= 3` AND `qa_status="changes_required"` — last line of defence against QA runaway (QAAG-04, Pitfall 2).
+
+**Entry point.** `run_qa_agent(input: QAInput) -> QAOutput`. After validation succeeds, `_write_qa_results_to_linear` increments the cycle counter and creates fix subtasks (post-loop, never inside the agent).
+
+**Cost.** Live runs read the PR via `gh pr diff/view` and call Linear after. Gated."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "input-md",
+        md(
+            """\
+## Construct the input
+
+`qa_cycle_count` is **0-indexed in the input** (`0`=first review, `1`=second, `2`=third). The output is **1-indexed** (the agent increments). Pass the full PR diff text — the agent has no `gh` write privileges, only read."""
+        ),
+    ),
+    (
+        "code",
+        "input-build",
+        code(
+            """\
+from hsb.contracts.qa import PullRequestInput, QAInput
+
+example_input = QAInput(
+    work_item_id="LIN-456",
+    linear_issue={
+        "id": "LIN-456",
+        "title": "Add docstring to greet()",
+        "description": "Improve readability.",
+        "acceptance_criteria": ["greet() has a docstring"],
+    },
+    pull_request=PullRequestInput(
+        url="https://github.com/example/repo/pull/42",
+        diff=(
+            "diff --git a/scratch.py b/scratch.py\\n"
+            "+def greet(name):\\n"
+            "+    # Return a greeting for ``name``.\\n"
+            "+    return f'hello {name}'\\n"
+        ),
+    ),
+    qa_cycle_count=0,  # first review
+)
+print(example_input.model_dump_json(indent=2))"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation
+
+Gated on `HSB_NOTEBOOK_RUN_LIVE=1`. The default `gh pr diff` URL above is a placeholder — replace with a real PR URL before running live."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+from _helpers import assert_g1_safe, gated, live_mode
+
+if not live_mode():
+    print(gated("QA Agent live run"))
+else:
+    assert_g1_safe()
+    from hsb.agents.qa_agent import run_qa_agent
+
+    out = run_qa_agent(example_input)
+    print("status:", out.qa_status)
+    print("cycle:", out.qa_cycle_count, "/ 3")
+    print("findings:", len(out.findings))
+    for f in out.findings:
+        print(f"  [{f.severity}] {f.title}")"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 06 — UAT Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_UAT: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# UAT Agent — user perspective
+
+**What it does.** Validates a User Story end-to-end against its acceptance criteria. Produces a `UATResult` with one `Scenario` per `[AC-N]`.
+
+**Entry point.** `await run_uat_and_validate(user_story_id, acceptance_criteria, uat_cycle)` — async coroutine.
+
+**Capability boundary (UATA-04).** `allowed_tools=["Read","Glob","Grep","Bash"]`, `mcp_servers=None`. UAT cannot write to Linear — the Global Orchestrator persists results post-validation.
+
+**Scope discipline.** Every prompt prepends a `SCOPE BOUNDARY:` block listing `[AC-1]`, `[AC-2]`, ... — findings that don't reference one of those literals are out of scope and rejected by the G10 banned-token regex on the orchestrator side.
+
+**Cost.** Live runs consume tokens. Gated on `HSB_NOTEBOOK_RUN_LIVE=1`."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "input-md",
+        md(
+            """\
+## Construct the inputs
+
+UAT takes plain function arguments (no Pydantic input model). The acceptance criteria list becomes the `[AC-N]` scope block in the prompt — order matters."""
+        ),
+    ),
+    (
+        "code",
+        "input-build",
+        code(
+            """\
+example_user_story_id = "LIN-US-7"
+example_acceptance_criteria = [
+    "README.md exists at the repo root",
+    "README.md mentions the project name in the first 5 lines",
+]
+example_uat_cycle = 1  # 1-indexed; 1=first run, 2=second, 3=cap
+print("user_story_id:", example_user_story_id)
+print("ACs:")
+for i, ac in enumerate(example_acceptance_criteria, 1):
+    print(f"  [AC-{i}] {ac}")"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation"""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+from _helpers import assert_g1_safe, gated, live_mode
+
+if not live_mode():
+    print(gated("UAT live run"))
+else:
+    assert_g1_safe()
+    import asyncio
+
+    from hsb.agents.uat_agent import run_uat_and_validate
+
+    out = asyncio.run(
+        run_uat_and_validate(
+            user_story_id=example_user_story_id,
+            acceptance_criteria=example_acceptance_criteria,
+            uat_cycle=example_uat_cycle,
+        )
+    )
+    print("status:", out.overall_status)
+    print("scenarios:", len(out.scenarios))
+    for s in out.scenarios:
+        print(f"  {s.criterion_id}: {s.status}")"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 07 — Linear Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_LINEAR: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Linear Agent — user perspective
+
+**What it does.** Wraps every `mcp__linear__*` call behind a Pydantic-validated contract (`LinearOutput`). All other agents go through this one — there is no other Linear write path.
+
+**Entry points.**
+- `await run_linear_agent(prompt)` — raw async call, returns text or `None`.
+- `await run_validated_linear_agent(operation, payload)` — wraps the above with retry + Pydantic validation. **Use this one** in every operational caller.
+
+**G5 write guard.** Write operations dispatch through a stack-inspecting decorator (`linear_write_guard`) that denies any frame originating from `risk_agent.py` outside the operator-delegated `approve_improvement_trigger` path (RISK-04 layer 4).
+
+**Cost.** Live runs use Linear MCP. The example below is a `read` (cheap)."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "input-md",
+        md(
+            """\
+## Construct the inputs
+
+`run_validated_linear_agent` takes two positional args: the operation string (one of the recognised verbs the system prompt knows about — `read`, `create`, `update`, `comment`, `create_subtasks`, `link_pr`) and a payload dict. The agent's system prompt instructs the LLM how to map them onto `mcp__linear__*` tool calls."""
+        ),
+    ),
+    (
+        "code",
+        "input-build",
+        code(
+            """\
+example_operation = "read"
+example_payload = {"kind": "teams"}  # ask Linear for the available teams
+print(f"operation = {example_operation!r}")
+print(f"payload   = {example_payload!r}")"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation
+
+Gates: `HSB_NOTEBOOK_RUN_LIVE=1`. First-run warning: `mcp-remote` to `mcp.linear.app/mcp` triggers an interactive OAuth flow if you've never authenticated this machine. Run the smoke test in `linear_agent.py` once from the CLI before the notebook, or run it from a terminal where you can complete the browser flow."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+from _helpers import assert_g1_safe, gated, live_mode, selected_runtime
+
+if not live_mode():
+    print(gated("Linear Agent live run"))
+else:
+    assert_g1_safe()
+    print(f"(running on HSB_RUNTIME_LINEAR={selected_runtime('linear')!r})")
+    import asyncio
+
+    from hsb.agents.linear_agent import run_validated_linear_agent
+
+    out = asyncio.run(
+        run_validated_linear_agent(
+            operation=example_operation,
+            payload=example_payload,
+        )
+    )
+    print("operation:", out.operation)
+    print("result:   ", out.result)
+    print("entities: ", len(out.linear_entities))"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 08 — Risk Agent
+# ---------------------------------------------------------------------------
+
+NB_AG_RISK: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Risk Agent — user perspective
+
+**What it does.** Three skills, two execution modes:
+
+- **Skills 12 + 13** (quality scoring + adaptive prioritization) — pure Python math. No LLM, no MCP. Always safe to run.
+- **Skill 14** (auto-improvement trigger detection) — one isolated `query()` call with `allowed_tools=[]` and `mcp_servers=None` (Pattern C). The LLM physically cannot write to Linear.
+
+**RISK-04 defence in depth.** No Linear writes by the agent itself. Layer 1 = empty allow-list; Layer 2 = `Literal["suggested"]` on `AutoImprovementTrigger.linear_state`; Layer 3 = no `linear_agent` import; Layer 4 = `linear_write_guard` on every write path.
+
+**Entry points.**
+- `RiskAgent().calculate_quality_score(work_item, qa_history, uat_results) -> QualityScore`
+- `RiskAgent().get_priority_queue(ready_tasks, linear_state) -> PriorityQueue`
+- `await RiskAgent().detect_improvement_triggers(qa_history, scores)`"""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "score-md",
+        md(
+            """\
+## Quality score (skill 12)
+
+Deterministic formula: `score = max(0, 100 - 10*qa_failures - 5*fix_subtasks - (15 if uat_failed else 0) - 5*rework_cycles)`. Risk levels: `>=75` low, `>=50` medium, else high. Always runs — no flags."""
+        ),
+    ),
+    (
+        "code",
+        "score-run",
+        code(
+            """\
+from hsb.agents.risk_agent import RiskAgent
+
+agent = RiskAgent()
+work_item = {"id": "LIN-1", "fix_subtask_count": 1, "qa_cycle_count": 1}
+qa_history = [{"status": "changes_required"}, {"status": "approved"}]
+uat_results = [{"overall_status": "approved"}]
+
+q = agent.calculate_quality_score(work_item, qa_history, uat_results)
+print("score:    ", q.score)
+print("risk:     ", RiskAgent.risk_level(q.score))
+print("breakdown:", q.score_breakdown)"""
+        ),
+    ),
+    (
+        "markdown",
+        "queue-md",
+        md(
+            """\
+## Priority queue (skill 13)
+
+Sorts ready tasks by score descending, with `updatedAt` ascending as the tiebreak. Pure Python — runs offline."""
+        ),
+    ),
+    (
+        "code",
+        "queue-run",
+        code(
+            """\
+ready = ["LIN-1", "LIN-2", "LIN-3"]
+state = {
+    "LIN-1": {"id": "LIN-1", "qa_cycle_count": 2, "updatedAt": "2026-05-01"},
+    "LIN-2": {"id": "LIN-2", "qa_cycle_count": 0, "updatedAt": "2026-05-02"},
+    "LIN-3": {"id": "LIN-3", "qa_cycle_count": 1, "updatedAt": "2026-05-03"},
+}
+pq = agent.get_priority_queue(ready, state)
+for tid in pq.items:
+    print(f"  {tid}: score={pq.scores[tid]}")"""
+        ),
+    ),
+    (
+        "markdown",
+        "trigger-md",
+        md(
+            """\
+## Auto-improvement triggers (skill 14, gated)
+
+The only LLM call in this agent. `allowed_tools=[]` is asserted before the call — see `risk_agent.py` for the structural guard. Gated."""
+        ),
+    ),
+    (
+        "code",
+        "trigger-run",
+        code(
+            """\
+from _helpers import assert_g1_safe, gated, live_mode
+
+if not live_mode():
+    print(gated("Risk skill 14 live run"))
+else:
+    assert_g1_safe()
+    import asyncio
+
+    triggers = asyncio.run(
+        agent.detect_improvement_triggers(
+            qa_history=[
+                {"work_item_id": "LIN-1", "category": "architecture", "summary": "drift"}
+            ],
+            scores=[q],
+        )
+    )
+    print("triggers:", len(triggers))
+    for t in triggers:
+        print(f"  [{t.suggested_type}] {t.title}")"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 09 — Global Orchestrator
+# ---------------------------------------------------------------------------
+
+NB_AG_GLOBAL: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Global Orchestrator — user perspective
+
+**What it does.** Pure-Python class. Reads Linear state, applies the todo + dependency filter, sorts via the Risk Agent priority queue, and dispatches UAT for User Stories whose child tasks are all QA-approved.
+
+**No LLM, no SDK session.** Just deterministic Python over Linear data fetched via `run_validated_linear_agent`.
+
+**Entry point.** `await GlobalOrchestrator().get_ready_tasks() -> GlobalOrchestratorOutput`.
+
+**Phase 5 surface.** Risk-sorted priority queue (D-10), UAT inline-await dispatch (UATA-01 / D-01), G6 cycle-cap escalation, G10 pre-persist validation, RISK-04 / D-09 (improvement_triggers always `[]` in the per-cycle path)."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "filter-md",
+        md(
+            """\
+## Pure-logic probe — `_filter_ready_items`
+
+The dependency filter is independent of Linear and exercises GORD-01/02. Stub a Linear-shaped state and watch which tasks survive."""
+        ),
+    ),
+    (
+        "code",
+        "filter-run",
+        code(
+            """\
+from hsb.agents.global_orchestrator import GlobalOrchestrator
+
+go = GlobalOrchestrator()
+items = [
+    {"id": "LIN-A", "status": "done", "dependencies": []},
+    {"id": "LIN-B", "status": "todo", "dependencies": []},
+    {"id": "LIN-C", "status": "todo", "dependencies": ["LIN-A"]},  # ready (dep done)
+    {"id": "LIN-D", "status": "todo", "dependencies": ["LIN-B"]},  # blocked (dep todo)
+]
+ready = go._filter_ready_items(items)
+print("ready ids:", [r["id"] for r in ready])
+assert {r["id"] for r in ready} == {"LIN-B", "LIN-C"}, "filter regression"
+print("GORD-01/02 holding")"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation
+
+Gated on `HSB_NOTEBOOK_RUN_LIVE=1`. Reads Linear state for the current project. The result includes the priority-sorted ready tasks, EPIC readiness signal, and UAT dispatched IDs."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+from _helpers import assert_g1_safe, gated, live_mode
+
+if not live_mode():
+    print(gated("GlobalOrchestrator.get_ready_tasks live run"))
+else:
+    assert_g1_safe()
+    import asyncio
+
+    out = asyncio.run(go.get_ready_tasks())
+    print("ready:    ", [t.id for t in out.ready_tasks])
+    print("backlog empty:", out.is_backlog_empty)
+    print("epic ready:   ", out.is_epic_ready)
+    print("UAT dispatched:", out.uat_dispatched)"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 10 — Main Orchestrator
+# ---------------------------------------------------------------------------
+
+NB_AG_MAIN: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Main Orchestrator — user perspective
+
+**What it does.** Top-level dispatcher. Calls the Global Orchestrator, then routes between two modes:
+
+- **cascade** — runs the first ready task synchronously in the main working tree (Phase 3 behaviour, no claiming).
+- **parallel** — sequential optimistic-lock claiming (MORD-03), per-task `git worktree add` (MORD-04), `asyncio.gather` over WIO subprocesses, finally posts a structured cycle summary to the EPIC (MORD-05).
+
+**Pure Python.** No LLM, no SDK. Just dispatch + worktree management.
+
+**Entry point.** `await run_main_orchestrator(mode="cascade" | "parallel")`.
+
+**Cost.** Live runs spawn real WIO subprocesses, create real branches and worktrees, and post a real Linear comment. Heavily gated."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "summary-md",
+        md(
+            """\
+## Pure-logic probe — `_build_cycle_summary`
+
+The cycle-summary builder formats the Linear comment posted at the end of a parallel run. Runs offline."""
+        ),
+    ),
+    (
+        "code",
+        "summary-run",
+        code(
+            """\
+from hsb.agents.main_orchestrator import _build_cycle_summary
+from hsb.contracts.main_orchestrator import DispatchedItem
+
+dispatched = [
+    DispatchedItem(
+        work_item_id="LIN-1",
+        orchestrator_instance="parallel-0",
+        claim_status="claimed",
+        final_status="completed",
+    ),
+    DispatchedItem(
+        work_item_id="LIN-2",
+        orchestrator_instance="parallel-1",
+        claim_status="claimed",
+        final_status="failed",
+    ),
+    DispatchedItem(
+        work_item_id="LIN-3",
+        orchestrator_instance="skipped",
+        claim_status="skipped",
+        final_status="blocked",
+    ),
+]
+print(_build_cycle_summary(mode="parallel", dispatched=dispatched))"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation (heavily gated)
+
+Spawns WIO subprocesses, creates `.worktrees/LIN-*` directories, posts a Linear summary. Run only with a sandbox project. Notebook 03 has more granular probes for the dispatch internals."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+from _helpers import assert_g1_safe, gated, live_mode
+
+if not live_mode():
+    print(gated("Main Orchestrator live run — spawns WIO subprocesses"))
+else:
+    assert_g1_safe()
+    import asyncio
+
+    from hsb.agents.main_orchestrator import run_main_orchestrator
+
+    asyncio.run(run_main_orchestrator(mode="cascade"))
+    print("cycle complete — see Linear EPIC for summary comment")"""
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# 11 — Work Item Orchestrator
+# ---------------------------------------------------------------------------
+
+NB_AG_WIO: Spec = [
+    (
+        "markdown",
+        "intro",
+        md(
+            """\
+# Work Item Orchestrator — user perspective
+
+**What it does.** Drives one Linear task through its full lifecycle in **one** `ClaudeSDKClient` session:
+
+1. **Step 1 — Intelligence enrichment** (skill 10, INTL-01) — Glob/Grep over `knowledge/`, populates `knowledge_context`.
+2. **Steps 2-4 — Builder → Git → QA cycle** (Phase 3, max 3 QA cycles).
+3. **Step 5 — Knowledge storage evaluation** (skill 11, INTL-02) — writes new `knowledge/<cat>/*.md` entries when ingestion criteria are met.
+
+**Architecture rule.** ONE SDK session. Phase 2 agents are exposed as in-process MCP tools via `create_sdk_mcp_server` + `@tool`. **No** sub-agent dispatch — `Task` is forbidden in the allow-list (G3).
+
+**Codex hard-block.** WIO is Claude-only. `ClaudeSDKClient` has no Codex equivalent. `resolve_runtime("wio")` raises if `HSB_RUNTIME_WIO=codex`.
+
+**Entry point.** `await run_orchestration_cycle(work_item_id)` — pass `None` to let it pick the lowest-id ready task.
+
+**Cost.** Live runs are the heaviest single notebook in the suite. Gated."""
+        ),
+    ),
+    ("code", "setup", _AGENT_SETUP),
+    (
+        "markdown",
+        "skill-md",
+        md(
+            """\
+## Pure-logic probe — `assemble_system_prompt`
+
+Concatenates the 7 SKILL.md files in injection order with `# SKILL: <stem>` separators. Always runs — no LLM, no Linear."""
+        ),
+    ),
+    (
+        "code",
+        "skill-run",
+        code(
+            """\
+import os
+
+from hsb.agents.work_item_orchestrator import SKILL_FILES, assemble_system_prompt
+
+# assemble_system_prompt() reads SKILL.md files relative to the current
+# working directory. When this notebook is run from notebooks/agents/, cwd
+# would not resolve `skills/...` — temporarily chdir to ROOT for the probe.
+_prev_cwd = Path.cwd()
+os.chdir(ROOT)
+try:
+    prompt = assemble_system_prompt()
+finally:
+    os.chdir(_prev_cwd)
+
+print(f"system prompt length: {len(prompt):,} chars")
+print(f"skill files: {len(SKILL_FILES)}")
+for path in SKILL_FILES:
+    marker = f"# SKILL: {Path(path).stem}"
+    assert marker in prompt, f"missing separator: {marker}"
+print("all skill separators present")"""
+        ),
+    ),
+    (
+        "markdown",
+        "tools-md",
+        md(
+            """\
+## Pure-logic probe — registered MCP tools
+
+The WIO exposes Phase 2 agents as 4 in-process MCP tools (`run_linear_op`, `run_builder`, `run_git`, `run_qa`). Verify their decorator metadata is registered without instantiating the SDK session."""
+        ),
+    ),
+    (
+        "code",
+        "tools-run",
+        code(
+            """\
+from hsb.agents import work_item_orchestrator as wio_mod
+
+names = []
+for attr in ("run_linear_tool", "run_builder_tool", "run_git_tool", "run_qa_tool"):
+    fn = getattr(wio_mod, attr)
+    names.append(attr)
+print("registered @tool wrappers:", names)
+assert len(names) == 4, "WIO must expose exactly 4 @tool wrappers (Linear/Builder/Git/QA)"
+print("WIO tool registry OK")"""
+        ),
+    ),
+    (
+        "markdown",
+        "live-md",
+        md(
+            """\
+## Live invocation (gated, expensive, Claude-only)
+
+Runs the full lifecycle for one task. Set:
+
+- `HSB_NOTEBOOK_RUN_LIVE=1`
+- `HSB_NOTEBOOK_WIO_TASK_ID=LIN-...` (a sandbox Linear task)
+- `CLAUDE_CODE_OAUTH_TOKEN` (G1: never `ANTHROPIC_API_KEY`)
+
+The runtime is hard-blocked from Codex — `HSB_RUNTIME_WIO=codex` will raise."""
+        ),
+    ),
+    (
+        "code",
+        "live-run",
+        code(
+            """\
+import os
+
+from _helpers import assert_g1_safe, gated, live_mode, selected_runtime
+
+task_id = os.environ.get("HSB_NOTEBOOK_WIO_TASK_ID")
+if not live_mode() or not task_id:
+    print(gated("WIO live run (set HSB_NOTEBOOK_WIO_TASK_ID=LIN-...)"))
+elif selected_runtime("wio") == "codex":
+    print("[skipped] HSB_RUNTIME_WIO=codex is hard-blocked — WIO is Claude-only")
+else:
+    assert_g1_safe()
+    import asyncio
+
+    from hsb.agents.work_item_orchestrator import run_orchestration_cycle
+
+    asyncio.run(run_orchestration_cycle(task_id))
+    print("WIO cycle complete for", task_id)"""
+        ),
+    ),
+]
+
+
 def main() -> None:
     here = Path(__file__).parent
     targets = {
@@ -3266,10 +4420,23 @@ def main() -> None:
         "05_per_agent_smoke.ipynb": NB_05,
         "06_wio_full_loop.ipynb": NB_06,
         "07_full_pipeline_story.ipynb": NB_07,
+        # Per-agent user-perspective notebooks (notebooks/agents/*).
+        "agents/01_backlog_agent.ipynb": NB_AG_BACKLOG,
+        "agents/02_intelligence_agent.ipynb": NB_AG_INTELLIGENCE,
+        "agents/03_builder_agent.ipynb": NB_AG_BUILDER,
+        "agents/04_git_agent.ipynb": NB_AG_GIT,
+        "agents/05_qa_agent.ipynb": NB_AG_QA,
+        "agents/06_uat_agent.ipynb": NB_AG_UAT,
+        "agents/07_linear_agent.ipynb": NB_AG_LINEAR,
+        "agents/08_risk_agent.ipynb": NB_AG_RISK,
+        "agents/09_global_orchestrator.ipynb": NB_AG_GLOBAL,
+        "agents/10_main_orchestrator.ipynb": NB_AG_MAIN,
+        "agents/11_work_item_orchestrator.ipynb": NB_AG_WIO,
     }
     written: list[Path] = []
     for name, spec in targets.items():
         path = here / name
+        path.parent.mkdir(parents=True, exist_ok=True)
         # ensure_ascii=False keeps em-dashes, en-dashes etc. as raw UTF-8 so
         # the pre-commit notebook formatter doesn't rewrite — -> — on
         # every commit. indent=1 matches Jupyter Lab's save format.

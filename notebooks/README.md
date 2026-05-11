@@ -24,6 +24,32 @@ Notebooks 04–07 read environment flags before doing anything that costs tokens
 or touches Linear/git. Default state = explore-only. Set the flag explicitly
 when you want to run live.
 
+## Per-agent user-perspective notebooks
+
+`notebooks/agents/` contains one notebook per agent showing **how a user
+invokes it**: construct the Pydantic input, call the entry point, read the
+output. Cross-cutting checks (capability boundaries, runtime seam audits)
+stay in the top-level `00`–`07` tier above; the per-agent notebooks are a
+flat reference you can open without reading the others.
+
+| Notebook | Agent | Entry point | Live cost |
+|----------|-------|-------------|-----------|
+| `agents/01_backlog_agent.ipynb` | Backlog | `run_backlog_agent(BacklogInput)` | Variable, gated |
+| `agents/02_intelligence_agent.ipynb` | Intelligence | `build_enrichment_prompt` / `build_storage_prompt` (no SDK call here) | None |
+| `agents/03_builder_agent.ipynb` | Builder | `run_builder_agent(BuilderInput)` | Variable, gated |
+| `agents/04_git_agent.ipynb` | Git | `run_git_agent(GitInput)` | High, gated (real PR) |
+| `agents/05_qa_agent.ipynb` | QA | `run_qa_agent(QAInput)` | Variable, gated |
+| `agents/06_uat_agent.ipynb` | UAT | `await run_uat_and_validate(...)` | Variable, gated |
+| `agents/07_linear_agent.ipynb` | Linear | `await run_validated_linear_agent(op, payload)` | Low (read example) |
+| `agents/08_risk_agent.ipynb` | Risk | `RiskAgent().calculate_quality_score(...)` + skill 14 (gated) | None for skills 12+13; low for skill 14 |
+| `agents/09_global_orchestrator.ipynb` | Global Orchestrator | `await GlobalOrchestrator().get_ready_tasks()` | Low (read-only Linear) |
+| `agents/10_main_orchestrator.ipynb` | Main Orchestrator | `await run_main_orchestrator(mode=...)` | High, gated |
+| `agents/11_work_item_orchestrator.ipynb` | Work Item Orchestrator | `await run_orchestration_cycle(work_item_id)` | High, gated, Claude-only |
+
+Same gating model: default state = construct input + show what would be sent.
+Set `HSB_NOTEBOOK_RUN_LIVE=1` (plus the agent-specific env vars listed in
+each notebook) to actually invoke.
+
 ## Runtime selection (Claude vs Codex)
 
 These notebooks are **runtime-agnostic**: each notebook supports both Claude
