@@ -72,6 +72,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
 markers = [
     "integration: requires live Linear MCP connection and ANTHROPIC_API_KEY",
     "live_codex: real Codex subscription smoke test (manual, opt-in via -m live_codex)",
