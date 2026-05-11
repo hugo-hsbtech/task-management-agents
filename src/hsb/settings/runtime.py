@@ -10,14 +10,36 @@ separately). Setting ``HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR=codex`` raises
 ``ValidationError`` at construction with a project-specific explanation.
 """
 
-import os
 from enum import StrEnum
 from typing import Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-FORBIDDEN_API_KEY_VARS: tuple[str, ...] = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
+class _ForbiddenKeysProbe(BaseSettings):
+    """Probe-only Settings class. ``assert_oauth2_only`` instantiates this
+    to read the forbidden API-key env vars via pydantic instead of
+    ``os.environ``. Never used as actual project configuration — the whole
+    point is that these vars are NOT supposed to be set."""
+
+    anthropic_api_key: str | None = Field(
+        default=None,
+        validation_alias="ANTHROPIC_API_KEY",
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        validation_alias="OPENAI_API_KEY",
+    )
+
+
+# Public list of env vars the G1 guard rejects. Derived from
+# ``_ForbiddenKeysProbe`` so the two stay in sync.
+FORBIDDEN_API_KEY_VARS: tuple[str, ...] = tuple(
+    str(field.validation_alias)
+    for field in _ForbiddenKeysProbe.model_fields.values()
+    if field.validation_alias is not None
+)
 
 
 class AgentRuntime(StrEnum):
@@ -42,7 +64,12 @@ def assert_oauth2_only() -> None:
     autouse fixture in ``tests/conftest.py`` that unsets the env var at
     session start.
     """
-    forbidden = [v for v in FORBIDDEN_API_KEY_VARS if v in os.environ]
+    probe = _ForbiddenKeysProbe()
+    forbidden = [
+        str(_ForbiddenKeysProbe.model_fields[name].validation_alias)
+        for name, value in probe.model_dump().items()
+        if value is not None
+    ]
     if forbidden:
         raise RuntimeError(
             f"G1 violation: {', '.join(forbidden)} set — forbidden. "
