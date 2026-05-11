@@ -86,22 +86,9 @@ src/hsb/settings/
 # src/hsb/settings/base.py
 from __future__ import annotations
 
-from pathlib import Path
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-def _find_env_file() -> Path | None:
-    """Locate `.env` by walking up from this file until a `pyproject.toml`
-    is seen. Returns the resolved path to `<repo_root>/.env`, or None if
-    `pyproject.toml` is not found (e.g. installed wheel). Falls back to
-    no-file silently — same effective behavior as the existing
-    `load_dotenv()` calls when `.env` is absent."""
-    here = Path(__file__).resolve()
-    for parent in (here, *here.parents):
-        if (parent / "pyproject.toml").is_file():
-            candidate = parent / ".env"
-            return candidate if candidate.is_file() else None
-    return None
 
 
 class _HsbBaseSettings(BaseSettings):
@@ -112,7 +99,7 @@ class _HsbBaseSettings(BaseSettings):
     `extra`, `frozen`, and `case_sensitive` automatically."""
 
     model_config = SettingsConfigDict(
-        env_file=_find_env_file(),
+        env_file=os.environ.get("HSB_ENV_FILE", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -120,7 +107,28 @@ class _HsbBaseSettings(BaseSettings):
     )
 ```
 
-The `.env` location is resolved **once at module import** (it's a default argument to `SettingsConfigDict`, not re-evaluated per call). This matches what `load_dotenv()` does today — a process-level discovery — without depending on `os.getcwd()`, which can drift mid-process (e.g. when a WIO changes cwd into a worktree).
+`.env` discovery uses pydantic-settings' built-in mechanism: `env_file` resolves to whatever path the model_config holds at class definition time. No custom walker — the framework's convention is the contract.
+
+**Two override mechanisms** are supported, both native to pydantic-settings:
+
+1. **Process-wide override via env var.** Operators can point every settings class at a different file by exporting `HSB_ENV_FILE=/path/to/custom.env` before launching `hsb` / `python run_loop.py` / `pytest`. The base class reads this once at module import; subclasses inherit it.
+
+2. **Per-instance override via constructor kwarg.** Pydantic-settings exposes `_env_file` as a private constructor argument that takes precedence over `model_config.env_file`:
+
+```python
+# Default — reads .env (or whatever HSB_ENV_FILE points at)
+OrchestratorSettings()
+
+# Explicit override for one call (tests, alternate configs, ops tooling)
+OrchestratorSettings(_env_file="/path/to/staging.env")
+
+# Disable .env loading entirely for this instance
+OrchestratorSettings(_env_file=None)
+```
+
+The constructor kwarg pathway is what tests use (`monkeypatch.setenv("HSB_ENV_FILE", str(tmp_path / ".env"))` is also fine for full-process testing).
+
+**Caveat (transitional):** Pydantic-settings resolves a relative `env_file` against the current working directory. The existing 9 `load_dotenv()` calls (which `python-dotenv`'s `find_dotenv` resolves by walking up from each calling module's file location) cover any cwd-mismatch cases for as long as those calls remain. Since this branch is module-only-no-migration, all 9 stay and `os.environ` is already populated before any settings class is constructed in practice. Once migration removes the `load_dotenv()` calls, callers will need to be invoked from the repo root (already the case for every entry point: `hsb` CLI, `python run_loop.py`, `pytest`) — or operators set `HSB_ENV_FILE=/absolute/path/.env`.
 
 ### 5.2 Per-domain settings classes — field schemas
 
@@ -503,7 +511,15 @@ Each test uses `monkeypatch.setenv` / `monkeypatch.delenv` (pytest fixture) — 
 
 ### 10.3 Operator surface
 
-No new env vars. No renamed env vars. No removed env vars. `.env` and `.env.example` are unchanged. **Zero operator-visible change.**
+**One opt-in env var added:** `HSB_ENV_FILE` — when set, overrides the default `.env` path that every settings class loads from. Unset by default; behavior is identical to today.
+
+No renamed env vars. No removed env vars. `.env` and `.env.example` are unchanged. The only operator-visible change is the new optional override, documented in `.env.example` as a commented-out hint:
+
+```
+# Optional: override the .env file location for all hsb.settings.* classes.
+# When unset, every settings class reads `.env` from the working directory.
+# HSB_ENV_FILE=/absolute/path/to/staging.env
+```
 
 ## 11. Worktree and branch
 
@@ -516,5 +532,4 @@ This work happens in `feat/settings-consistent-module`, created via `EnterWorktr
 - Replacement of `resolve_runtime(agent_name)` in `_sdk_options.py` with `RuntimeSettings` field reads — that's part of the multi-provider module work.
 - A new env-var-as-feature-flag pattern.
 - Settings hot-reload / file watching.
-- Any change to `.env.example` content.
-- Any new env var (the module catalogs what exists; it doesn't add).
+- Any net-new env var beyond `HSB_ENV_FILE` (the module catalogs what exists; the only addition is the override hook itself).
