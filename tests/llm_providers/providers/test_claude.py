@@ -102,9 +102,8 @@ def test_translate_skill_reference_to_systempromptfile(provider, tmp_path):
     f = tmp_path / "skill.md"
     f.write_text("skill content")
     out = provider._translate_system_prompt(SkillReference(path=f))
-    # The translated value should be the SystemPromptFile-equivalent;
-    # for our stubbed SDK we check the wrapping path.
-    assert hasattr(out, "path") or out == "skill content" or "skill content" in str(out)
+    # The translated value is the file contents as a string (see provider impl).
+    assert out == "skill content"
 
 
 def test_translate_preset_when_supported(provider):
@@ -162,6 +161,49 @@ def test_query_yields_messages(provider):
     msgs = asyncio.run(_run())
     assert any(isinstance(m, Message) for m in msgs)
     assert any(m.is_final for m in msgs)
+
+
+def test_stateful_client_query_converts_messages(provider):
+    """_ClaudeStatefulClient.query must delegate Message conversion to _to_message,
+    so AssistantMessage text is extracted and ResultMessage is marked is_final."""
+    import asyncio
+
+    sdk = pytest.importorskip("claude_agent_sdk")
+    msg_assistant = MagicMock(spec=sdk.AssistantMessage)
+    msg_assistant.content = [
+        SimpleNamespace(text="hello"),
+        SimpleNamespace(text=" world"),
+    ]
+    msg_result = MagicMock(spec=sdk.ResultMessage)
+
+    async def _aiter(_prompt):
+        yield msg_assistant
+        yield msg_result
+
+    fake_sdk_client = MagicMock()
+    fake_sdk_client.query = _aiter
+    sdk.ClaudeSDKClient.return_value = fake_sdk_client
+
+    pol = ToolPolicy(allowed=())
+    opts = ProviderOptions(
+        system_prompt=TextSystemPrompt(text="be helpful"),
+        model="claude-sonnet-4-6",
+        max_turns=5,
+        tool_policy=pol,
+    )
+
+    async def _run():
+        stateful = provider.client(opts)
+        msgs = []
+        async for m in stateful.query("hi"):
+            msgs.append(m)
+        return msgs
+
+    msgs = asyncio.run(_run())
+    assert len(msgs) == 2
+    assert msgs[0].text == "hello world"
+    assert msgs[0].is_final is False
+    assert msgs[1].is_final is True
 
 
 def test_rejects_non_supported_auth(monkeypatch):

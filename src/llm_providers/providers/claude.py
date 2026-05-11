@@ -20,7 +20,7 @@ from llm_providers.registry import ProviderRegistry
 from llm_providers.tools import McpServerSpec, ToolPolicy
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
 
 @ProviderRegistry.register("claude")
@@ -76,7 +76,7 @@ class ClaudeProvider(BaseProvider):
             sdk_client = self._sdk.ClaudeSDKClient(options=sdk_options)
         except Exception as e:  # noqa: BLE001
             raise ProviderRuntimeError(provider=self.name, phase="client_init") from e
-        return _ClaudeStatefulClient(sdk_client)  # type: ignore[return-value]
+        return _ClaudeStatefulClient(sdk_client, self._to_message)  # type: ignore[return-value]
 
     # ---- Translation hooks ---------------------------------------------------
 
@@ -151,8 +151,13 @@ class ClaudeProvider(BaseProvider):
 class _ClaudeStatefulClient:
     """Adapter from claude_agent_sdk.ClaudeSDKClient to StatefulClient Protocol."""
 
-    def __init__(self, sdk_client: Any) -> None:
+    def __init__(
+        self,
+        sdk_client: Any,
+        to_message: Callable[[Any], Message],
+    ) -> None:
         self._inner = sdk_client
+        self._to_message = to_message
 
     async def __aenter__(self) -> _ClaudeStatefulClient:
         await self._inner.__aenter__()
@@ -163,4 +168,4 @@ class _ClaudeStatefulClient:
 
     async def query(self, prompt: str) -> AsyncIterator[Message]:
         async for sdk_msg in self._inner.query(prompt):
-            yield Message(text="", is_final=False, raw=sdk_msg)
+            yield self._to_message(sdk_msg)
