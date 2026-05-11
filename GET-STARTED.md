@@ -12,7 +12,7 @@ This guide is for developers who want to **use** HSBTech (drive a Linear backlog
 2. [Prerequisites](#prerequisites)
 3. [Operator dependencies (what to pin)](#operator-dependencies-what-to-pin)
 4. [Install](#install)
-5. [Authenticate (one-time setup)](#authenticate-one-time-setup)
+5. [Setup (one-time)](#setup-one-time)
 6. [Verify your install](#verify-your-install)
 7. [Your first cycle](#your-first-cycle)
 8. [Common workflows](#common-workflows)
@@ -55,16 +55,17 @@ Your two recurring jobs once setup is done are: **(1) write good plans into `pla
 |-------------|-----|---------------|
 | **Python ≥ 3.12** | Runtime — pinned in `pyproject.toml` | `python3.12 --version` |
 | **`git` ≥ 2.30** | Worktree support for parallel mode | `git --version` |
-| **`gh` CLI** | GitHub PR delivery surface | Install: [cli.github.com](https://cli.github.com/) ([install docs](https://github.com/cli/cli#installation)). Then `gh --version` and `gh auth status`. See [Step 4](#step-4--github-access) below. |
+| **`gh` CLI** | GitHub PR delivery surface | Install: [cli.github.com](https://cli.github.com/) ([install docs](https://github.com/cli/cli#installation)). Then `gh --version` and `gh auth status`. See [Step 6](#step-6--github-access-required). |
 | **Node ≥ 18** | `npx` runs `mcp-remote` for the Linear OAuth proxy | `node --version` |
 | **Linear workspace** (sandbox/test) | System of record — agents read and write here | NOT your production workspace; agents will mutate state |
 | **Browser** | One-time Linear MCP OAuth flow | Required only for setup; not for runtime |
-| **Anthropic Claude account** | Claude Agent SDK runtime | OAuth2 token via `claude setup-token` — NOT an API key |
+| **Anthropic Claude account** | Claude Agent SDK runtime — default backend for every agent | OAuth2 token via `claude setup-token` — NOT an API key. See [Step 2](#step-2--anthropic-oauth2-token-required--not-api-key). |
+| **ChatGPT subscription seat** *(optional)* | Required **only** if you flip any agent to the Codex runtime via `HSB_RUNTIME_*=codex`. Plus / Pro / Business / Edu / Enterprise tiers are accepted; quota is consumed against the operator's seat. | OAuth2 via `codex login --device-auth` — NOT an API key. The WIO is **not flippable** (raises at startup). See [Step 3](#step-3--openai-codex-oauth2-optional). |
 
 **You will NOT need:**
 
 - An `ANTHROPIC_API_KEY` — HSBTech refuses to start with one set (G1 guardrail). Use OAuth2 only.
-- An `OPENAI_API_KEY` — if you opt into the Codex runtime, OAuth2 only (extended G1).
+- An `OPENAI_API_KEY` — if you opt into the Codex runtime, OAuth2 only (extended G1 refuses the key at startup).
 - A vector DB / embedding store — the Knowledge Store is flat markdown.
 - Any cloud infrastructure beyond Linear + GitHub.
 
@@ -97,8 +98,8 @@ cd hsb
 python3.12 -m venv .venv
 source .venv/bin/activate
 
-# Install with dev + eval extras (pulls pytest, pytest-asyncio, hypothesis, arize-phoenix)
-pip install -e ".[dev,eval]"
+# Install with dev extras (pulls pytest, pytest-asyncio, hypothesis, ruff, mypy)
+pip install -e ".[dev]"
 
 # Confirm Typer CLI registered
 hsb --help
@@ -110,13 +111,39 @@ If `hsb` is not found, check that `.venv/bin` is on your `PATH` (`which hsb` sho
 
 ---
 
-## Authenticate (one-time setup)
+## Setup (one-time)
 
-### Step 0 — Prepare your environment
+Six steps, ~30 minutes once external accounts are ready. **Steps 1, 2, 4, 5, 6 are required**; **Step 3 (Codex) is optional** — skip it unless you plan to flip an agent to the Codex runtime via `HSB_RUNTIME_*=codex`.
 
-Before authenticating, do a quick preflight to make sure nothing in your environment will break the OAuth handshake or the agent pre-flight check. Skipping this step is the most common cause of the failure modes listed in [Troubleshooting](#troubleshooting).
+```mermaid
+flowchart LR
+    S1["1. Preflight<br/>environment checks"] --> S2["2. Anthropic OAuth2<br/>REQUIRED"]
+    S2 --> Q{"Using Codex<br/>runtime?"}
+    Q -->|no| S4["4. Linear MCP OAuth<br/>REQUIRED"]
+    Q -->|yes| S3["3. Codex OAuth2<br/>OPTIONAL"]
+    S3 --> S4
+    S4 --> S5["5. Test workspace IDs<br/>REQUIRED"]
+    S5 --> S6["6. GitHub CLI<br/>REQUIRED"]
 
-#### 0a — Confirm port 22227 is free
+    classDef req fill:#0f766e,stroke:#14b8a6,color:#f0fdfa;
+    classDef opt fill:#7c3aed,stroke:#a78bfa,color:#f5f3ff;
+    classDef pre fill:#1f2937,stroke:#9ca3af,color:#f9fafb;
+    classDef dec fill:#7c2d12,stroke:#fb923c,color:#fff7ed;
+    class S2,S4,S5,S6 req;
+    class S3 opt;
+    class S1 pre;
+    class Q dec;
+```
+
+> Substep labels follow `Na`, `Nb`, `Nc` (e.g. `1a`, `4c`) so cross-references in [Troubleshooting](#troubleshooting) point unambiguously.
+
+---
+
+### Step 1 — Preflight checks (REQUIRED)
+
+Verify environment state *before* you attempt any OAuth handshake. Skipping this is the most common cause of the failures in [Troubleshooting](#troubleshooting).
+
+#### 1a — Confirm port 22227 is free
 
 `mcp-remote` always binds the OAuth callback listener to **`127.0.0.1:22227`** (a fixed port; not configurable). If anything else holds it — most often a stale `mcp-remote` from a previous attempt that crashed without cleanup — the next invocation exits with `EADDRINUSE`, the agent reports `linear: failed`, and OAuth never completes.
 
@@ -132,7 +159,7 @@ kill <pid>
 ss -tlnp 2>/dev/null | grep 22227 || echo "port 22227 free"
 ```
 
-#### 0b — Audit your user-level Claude Code MCP servers
+#### 1b — Audit your user-level Claude Code MCP servers
 
 The Claude Agent SDK that powers HSBTech inherits MCP server definitions from your user-level Claude Code config (`~/.claude.json` and any project-level `.mcp.json`). The HSBTech agents enforce a strict pre-flight: **every** MCP server reported at session init must be in `connected` state. If any user-level server (e.g. `claude.ai Google Drive`, `notion`, `github`) is in `needs-auth` or `failed`, every HSBTech agent invocation will raise — even though the failing server is unrelated to Linear.
 
@@ -151,16 +178,16 @@ For every server listed, either:
 
 The HSBTech agents only need `linear` (and the in-process `agents` SDK server). Any other server that leaks in from your user config must still report `connected` or it will block agents.
 
-#### 0c — Confirm `~/.mcp-auth/` is in expected state
+#### 1c — Confirm `~/.mcp-auth/` is in expected state
 
 ```bash
 ls ~/.mcp-auth/ 2>/dev/null
 ```
 
-- **Empty or missing:** clean slate, proceed to Step 1 / 2.
-- **Has `mcp-remote-<version>/<hash>_tokens.json`:** OAuth was completed previously. You can skip Step 2 and jump to Step 2d to validate. If 2d fails, wipe the cache (`rm -rf ~/.mcp-auth/mcp-remote-*/`) and redo Step 2.
+- **Empty or missing:** clean slate, proceed to Step 2.
+- **Has `mcp-remote-<version>/<hash>_tokens.json`:** OAuth was completed previously. You can skip Step 4 and jump to [Step 4d](#4d--validate-end-to-end) to validate. If 4d fails, wipe the cache (`rm -rf ~/.mcp-auth/mcp-remote-*/`) and redo Step 4.
 
-#### 0d — Confirm Node toolchain
+#### 1d — Confirm Node toolchain
 
 ```bash
 node --version    # ≥ 18 recommended
@@ -169,7 +196,9 @@ npx --version     # bundled with node
 
 `npx` will download `mcp-remote` on first use; nothing to install up-front.
 
-### Step 1 — Anthropic OAuth2 token (NOT API key)
+---
+
+### Step 2 — Anthropic OAuth2 token (REQUIRED — NOT API key)
 
 The G1 guardrail in `_sdk_options.py:assert_oauth2_only()` refuses to run if `ANTHROPIC_API_KEY` is set in the environment. Use OAuth2 only.
 
@@ -187,37 +216,43 @@ env | grep -i ANTHROPIC_API_KEY
 
 If you previously had `ANTHROPIC_API_KEY` set anywhere (`.env`, shell config, CI), unset it everywhere before running HSBTech.
 
-### Step 1.5 — OpenAI Codex OAuth2 (only if any HSB_RUNTIME_*=codex)
+---
 
-Required only if you plan to flip any agent to the Codex runtime
-(e.g. `export HSB_RUNTIME_BACKLOG=codex`). Skip this step if you stay on Claude.
+### Step 3 — OpenAI Codex OAuth2 (OPTIONAL)
 
-**Why:** quota is consumed against the operator's ChatGPT subscription seat
-(Plus / Pro / Business / Edu / Enterprise). API-key auth is forbidden by the
-extended G1 guard (`assert_oauth2_only` rejects `OPENAI_API_KEY`).
+> **Skip this entire step** if you'll only use the default Claude runtime. Required only when you plan to flip any agent to Codex (e.g. `export HSB_RUNTIME_BACKLOG=codex`).
 
-**1. Install the Codex CLI binary** (the `openai-codex-sdk` Python package needs to find a `codex` binary):
+**Why OAuth2:** quota is consumed against the operator's ChatGPT subscription seat (Plus / Pro / Business / Edu / Enterprise). API-key auth is forbidden by the extended G1 guard (`assert_oauth2_only` rejects `OPENAI_API_KEY`).
 
-Option A — let the SDK manage the binary (simplest, vendored):
+#### 3a — Install the Codex CLI binary
+
+The `openai-codex-sdk` Python package needs to find a `codex` binary. Choose **one**:
+
+**Option A — let the SDK manage the binary (simplest, vendored):**
+
 ```bash
 uv run python -c "from openai_codex_sdk import Codex; print(Codex.install(version='LATEST_COMPATIBLE'))"
 # Replace LATEST_COMPATIBLE with the version compatible with the pinned openai-codex-sdk.
 # This downloads the binary into the package's vendor/ dir (per find_codex_path).
 ```
 
-Option B — reuse a globally-installed binary (good if you already have one):
+**Option B — reuse a globally-installed binary** (good if you already have one):
+
 ```bash
 npm i -g @openai/codex      # or: brew install codex
 codex --version             # confirm install
 export CODEX_PATH_OVERRIDE="$(which codex)"   # CodexRuntime reads this env var
 ```
 
-Then verify either path:
+Verify either path resolved to a runnable binary:
+
 ```bash
 uv run python -c "from openai_codex_sdk import Codex; Codex(); print('binary OK')"
 ```
 
-**2. Pin OAuth-only:** create or edit `~/.codex/config.toml`:
+#### 3b — Pin OAuth-only in `~/.codex/config.toml`
+
+Create or edit the file with **exactly** this content (the `forced_login_method` line is what locks Codex to ChatGPT OAuth and rejects API-key auth):
 
 ```toml
 forced_login_method = "chatgpt"
@@ -229,7 +264,7 @@ command = "npx"
 args    = ["-y", "mcp-remote", "https://mcp.linear.app/mcp"]
 ```
 
-**3. Login (VPS-friendly device flow):**
+#### 3c — Login (VPS-friendly device flow)
 
 ```bash
 codex login --device-auth
@@ -237,33 +272,33 @@ codex login --device-auth
 # browser-capable machine — does not need to be the same machine.
 ```
 
-**4. Verify:**
+The device-auth flow works whether your shell is local or on a VPS; no port-forwarding required (unlike the Linear MCP flow in Step 4).
+
+#### 3d — Verify
 
 ```bash
-test -f ~/.codex/auth.json && echo "auth OK"
-grep '^forced_login_method' ~/.codex/config.toml
-env | grep -i OPENAI_API_KEY     # must be empty
+test -f ~/.codex/auth.json && echo "auth OK"          # token cached
+grep '^forced_login_method' ~/.codex/config.toml      # should print: forced_login_method = "chatgpt"
+env | grep -i OPENAI_API_KEY                          # MUST be empty (G1 refuses it)
 ```
+
+All three must succeed before flipping any `HSB_RUNTIME_*=codex` env var.
 
 **Caveats when flipping an agent to Codex:**
 
-- The `LINEAR_HOOKS` (Linear MCP write-guard hooks) used by Backlog/QA on the
-  Claude path **do not run on the Codex path**. Codex has no equivalent of
-  `claude_agent_sdk.HookMatcher`. Flipping disables those guards for that
-  agent's runs.
-- The Work Item Orchestrator (WIO) is **not flippable** in this iteration.
-  Setting `HSB_RUNTIME_WIO=codex` raises at startup.
-- The exact `openai-codex-sdk` PyPI version pinned in `pyproject.toml`
-  expects a compatible `@openai/codex` CLI version. If JSON-RPC errors
-  appear at runtime, upgrade the CLI: `npm i -g @openai/codex@latest`.
+- The `LINEAR_HOOKS` (Linear MCP write-guard hooks) used by Backlog/QA on the Claude path **do not run on the Codex path**. Codex has no equivalent of `claude_agent_sdk.HookMatcher`. Flipping disables those guards for that agent's runs.
+- The Work Item Orchestrator (WIO) is **not flippable** in this iteration. Setting `HSB_RUNTIME_WIO=codex` raises at startup.
+- The exact `openai-codex-sdk` PyPI version pinned in `pyproject.toml` expects a compatible `@openai/codex` CLI version. If JSON-RPC errors appear at runtime, upgrade the CLI: `npm i -g @openai/codex@latest`.
 
-### Step 2 — Linear MCP OAuth (one-time, out-of-band)
+---
+
+### Step 4 — Linear MCP OAuth (REQUIRED — one-time, out-of-band)
 
 The Linear MCP server (`mcp.linear.app/mcp`) uses OAuth 2.1, brokered locally by `mcp-remote` (a Node helper that proxies STDIO ↔ remote MCP and handles the OAuth dance). The token is cached at `~/.mcp-auth/mcp-remote-<version>/` and reused by every subsequent agent invocation.
 
 > **Important:** OAuth must complete *before* you run any HSBTech agent. The agents' MCP pre-flight check refuses to start unless every configured MCP server is already in `connected` state. So you cannot rely on "the first agent run will pop a browser" — by the time the SDK reports `linear: pending`, the pre-flight has already raised. Run the OAuth handshake out-of-band with `mcp-remote` directly, as below, *then* run an agent.
 
-#### 2a — Run the OAuth handshake
+#### 4a — Run the OAuth handshake
 
 ```bash
 # Foreground process — prints the auth URL and waits for the callback
@@ -288,18 +323,20 @@ https://mcp.linear.app/authorize?…&redirect_uri=http%3A%2F%2Flocalhost%3A22227
 4. The `mcp-remote` terminal prints `Auth code received → Completing authorization → Connected to remote server → Proxy established successfully`
 5. Press **Ctrl+C** to stop `mcp-remote` — the token is now cached and HSBTech agents will reuse it on every invocation
 
-#### 2b — Verify the token landed
+> **Remote shell?** If your shell is on a VPS but your browser is local, the redirect won't reach `mcp-remote`. Jump to [Step 4c](#4c--remote-shell-local-browser-vps--ssh) for the three workarounds before clicking Authorize.
+
+#### 4b — Verify the token landed
 
 ```bash
 ls ~/.mcp-auth/mcp-remote-*/
 # Should list 3 files: <hash>_client_info.json, <hash>_code_verifier.txt, <hash>_tokens.json
 ```
 
-If those files exist, OAuth is done. The path is *not* `~/.mcp-remote/` — older docs/READMEs may say so; that location is unused.
+If those files exist, OAuth is done. The path is *not* `~/.mcp-remote/` — older docs may say so; that location is unused.
 
-#### 2c — Remote shell, local browser (VPS / SSH)
+#### 4c — Remote shell, local browser (VPS / SSH)
 
-If your shell is on a VPS or other remote machine and your browser runs locally, the redirect to `http://localhost:22227/...` hits your *local* browser's localhost — which has no `mcp-remote` listening. The browser shows "site can't be reached" and `mcp-remote` keeps waiting on the VPS. You need to forward the callback to the VPS-side `mcp-remote`. Three options, in order of preference for a Claude-Code-on-VPS setup:
+If your shell is on a VPS or other remote machine and your browser runs locally, the redirect to `http://localhost:22227/...` hits your *local* browser's localhost — which has no `mcp-remote` listening. The browser shows "site can't be reached" and `mcp-remote` keeps waiting on the VPS. You need to forward the callback to the VPS-side `mcp-remote`. Three options:
 
 **Option A — Paste the callback URL into Claude Code (most common for this project):**
 
@@ -340,7 +377,7 @@ curl "http://localhost:22227/oauth/callback?code=...&state=..."
 
 In all three options the visible result on the VPS is the same: `mcp-remote` prints `Auth code received → Completing authorization → Connected to remote server → Proxy established successfully`, then you Ctrl+C and the token is cached.
 
-#### 2d — Validate end-to-end
+#### 4d — Validate end-to-end
 
 After the token is cached, sanity-check with a no-op Linear read through the agent:
 
@@ -351,7 +388,9 @@ python -c "import asyncio; from hsb.agents.linear_agent import run_linear_agent;
 
 The agent should connect, list your teams, and return success. If it raises `RuntimeError: Linear MCP server failed to connect`, see the relevant Troubleshooting entry below before continuing.
 
-### Step 3 — Test workspace identifiers
+---
+
+### Step 5 — Test workspace identifiers (REQUIRED for first cycle)
 
 Pick a sandbox Linear team (NOT production), then:
 
@@ -371,9 +410,15 @@ echo "LINEAR_TEST_TEAM_ID=<team-id>" >> .env
 echo "LINEAR_TEST_ISSUE_ID=LIN-XXX" >> .env
 ```
 
-### Step 4 — GitHub access
+---
 
-HSBTech delivers code via GitHub PRs through the `gh` CLI. If you don't already have it, install it first — official instructions and downloads:
+### Step 6 — GitHub access (REQUIRED)
+
+HSBTech delivers code via GitHub PRs through the `gh` CLI.
+
+#### 6a — Install `gh`
+
+If you don't already have it, install it first — official instructions and downloads:
 
 - **Official site:** [cli.github.com](https://cli.github.com/)
 - **Install guide (all platforms):** [github.com/cli/cli#installation](https://github.com/cli/cli#installation)
@@ -407,7 +452,9 @@ winget install --id GitHub.cli
 gh --version
 ```
 
-Then authenticate (the `repo` scope is required for PR create/read/write):
+#### 6b — Authenticate
+
+The `repo` scope is required for PR create/read/write:
 
 ```bash
 # Interactive login — pick GitHub.com → HTTPS → "Login with a web browser"
@@ -420,10 +467,9 @@ gh auth status
 
 **Headless / CI environments:** instead of `gh auth login`, export a personal access token (classic, with `repo` scope) as `GITHUB_TOKEN` — see [GitHub PAT docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens). The `gh` CLI auto-detects it.
 
-For live integration tests against `hsb-test-fixture`:
+#### 6c — Clone the test fixture (for live integration tests)
 
 ```bash
-# Clone or fork the test fixture repo
 gh repo clone hugo-hsbtech/hsb-test-fixture
 export HSB_TEST_FIXTURE_PATH=$PWD/hsb-test-fixture
 ```
@@ -654,13 +700,13 @@ kill <pid>
 ss -tlnp 2>/dev/null | grep 22227 || echo "port 22227 free"
 ```
 
-Then redo Step 2. (Step 0a is the prevention.)
+Then redo Step 4. ([Step 1a](#1a--confirm-port-22227-is-free) is the prevention.)
 
 A secondary cause is a corrupt or partial token cache. If killing the stale process doesn't help, also wipe the cache:
 
 ```bash
 rm -rf ~/.mcp-auth/mcp-remote-*/
-# Re-run Step 2
+# Re-run Step 4
 ```
 
 ### `RuntimeError: ...failed to connect: [{'name': '<other server>', 'status': 'needs-auth'}]`
@@ -673,13 +719,13 @@ jq '.mcpServers | keys' ~/.claude.json 2>/dev/null
 cat ~/.claude/mcp-needs-auth-cache.json 2>/dev/null
 ```
 
-Resolution: either re-authenticate the offending server inside Claude Code (`/mcp` → reauth), or remove its entry from `~/.claude.json`'s `mcpServers` block. Step 0b is the prevention.
+Resolution: either re-authenticate the offending server inside Claude Code (`/mcp` → reauth), or remove its entry from `~/.claude.json`'s `mcpServers` block. [Step 1b](#1b--audit-your-user-level-claude-code-mcp-servers) is the prevention.
 
 ### OAuth browser flow doesn't open / wrong machine
 
-`mcp-remote` always binds the callback to `127.0.0.1:22227`. If your shell is on a remote host but your browser runs locally, the redirect cannot reach the listener. See [Step 2c](#2c--remote-shell-local-browser-vps--ssh) for the SSH port-forward and manual `curl` callback options.
+`mcp-remote` always binds the callback to `127.0.0.1:22227`. If your shell is on a remote host but your browser runs locally, the redirect cannot reach the listener. See [Step 4c](#4c--remote-shell-local-browser-vps--ssh) for the SSH port-forward and manual `curl` callback options.
 
-If `mcp-remote` says `Browser opened automatically` but you don't see anything, it's running headless — open the printed URL manually and proceed as in Step 2c Option B.
+If `mcp-remote` says `Browser opened automatically` but you don't see anything, it's running headless — open the printed URL manually and proceed as in [Step 4c Option B](#4c--remote-shell-local-browser-vps--ssh).
 
 ### `RuntimeError: error_max_turns` raised mid-cycle
 
@@ -738,13 +784,15 @@ If you want them to SKIP (default), don't set the env vars. The unit suite alway
 
 ```
 # One-time setup
-ss -tlnp | grep 22227                 # Step 0a — port 22227 must be free
-jq '.mcpServers|keys' ~/.claude.json  # Step 0b — audit user-level MCPs
-claude setup-token                    # Step 1 — OAuth2 token
+ss -tlnp | grep 22227                 # Step 1a — port 22227 must be free
+jq '.mcpServers|keys' ~/.claude.json  # Step 1b — audit user-level MCPs
+claude setup-token                    # Step 2  — Anthropic OAuth2 token
 echo "CLAUDE_CODE_OAUTH_TOKEN=..." >> .env
-npx -y mcp-remote https://mcp.linear.app/mcp   # Step 2a — Linear OAuth (Ctrl+C after success)
-ls ~/.mcp-auth/mcp-remote-*/          # Step 2b — verify token cached
-export LINEAR_TEST_TEAM_ID=... LINEAR_TEST_ISSUE_ID=LIN-XXX
+# (Step 3 — Codex OAuth2 — only if HSB_RUNTIME_*=codex; see Step 3 in the body)
+npx -y mcp-remote https://mcp.linear.app/mcp   # Step 4a — Linear OAuth (Ctrl+C after success)
+ls ~/.mcp-auth/mcp-remote-*/          # Step 4b — verify token cached
+export LINEAR_TEST_TEAM_ID=... LINEAR_TEST_ISSUE_ID=LIN-XXX   # Step 5
+gh auth login -s repo                 # Step 6b — GitHub auth (after gh is installed)
 
 # Daily use
 hsb show-state                        # Inspect Linear state

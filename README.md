@@ -38,7 +38,7 @@
 ```bash
 git clone <repo-url> hsb && cd hsb
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,eval]"
+pip install -e ".[dev]"
 hsb --help                       # confirms Typer CLI is registered
 ```
 
@@ -341,6 +341,7 @@ HSBTech runs against external systems whose contracts change underneath us — t
 | **Linear MCP** (`mcp.linear.app/mcp`) | Durable system of record — the *only* persistent operational state besides the Knowledge Store | OAuth2 setup via the browser flow; see [GET-STARTED.md](./GET-STARTED.md). Optimistic locking via `updatedAt`. |
 | **GitHub CLI (`gh`)** | PR delivery surface | `gh auth status` must be green. No `gh pr merge` exists in any allow-list — merges are human-approved. |
 | **Anthropic OAuth2** | Claude Agent SDK runtime auth | `claude setup-token` + `CLAUDE_CODE_OAUTH_TOKEN`. `ANTHROPIC_API_KEY` is **refused** at startup (G1). |
+| **OpenAI ChatGPT OAuth2** + **`@openai/codex` CLI** *(optional)* | Required only when flipping an agent to the Codex runtime via `HSB_RUNTIME_*=codex`. Quota consumed against the operator's ChatGPT seat (Plus / Pro / Business / Edu / Enterprise). | `codex login --device-auth` populates `~/.codex/auth.json`. `OPENAI_API_KEY` is **refused** at startup (extended G1). The WIO is **not flippable** — `HSB_RUNTIME_WIO=codex` raises. `LINEAR_HOOKS` do not run on the Codex path. |
 
 ### Dev extras (`pip install -e ".[dev]"`)
 
@@ -353,14 +354,6 @@ HSBTech runs against external systems whose contracts change underneath us — t
 | `mypy` | `>=1.14` | Strict type-check (`strict = true` in `pyproject.toml`) |
 | `pre-commit` | `>=4.0` | Hook orchestration |
 | `jupyterlab` | `>=4.0` | Manual-inspection notebooks under `notebooks/` |
-
-### Eval extras (`pip install -e ".[eval]"`)
-
-| Dependency | Pin | Role |
-|------------|-----|------|
-| `arize-phoenix` | `>=4.0` | Recommended production tracing path per the AI-SPEC |
-| `opentelemetry-sdk` | `>=1.20` | Tracing transport |
-| `opentelemetry-exporter-otlp` | `>=1.20` | OTLP exporter for the eval pipeline |
 
 ### Upgrade discipline
 
@@ -435,8 +428,6 @@ pytest -m integration                       # integration tests (skip without li
 
 **Property-based testing.** The Risk Agent quality score (RISK-01) uses `hypothesis @given` to verify determinism across the input space.
 
-**Eval framework.** Phoenix (Arize) is the recommended production-tracing path per the Phase 5 AI-SPEC.
-
 ---
 
 ## Design rules and constraints
@@ -462,7 +453,7 @@ pytest -m integration                       # integration tests (skip without li
 ### Out of scope (deferred)
 
 - Event-driven triggers (Linear/GitHub webhooks) — current iteration uses CLI loop.
-- Real-time observability dashboards — Phoenix tracing is the recommended path.
+- Observability / tracing — no production tracing is currently wired in. Trace exports and dashboards are unimplemented; structured logging via stdlib is the only signal today.
 - Multi-project / cross-project intelligence.
 - Simulation / dry-run mode beyond `hsb show-next-action`.
 - ML-based risk prediction (the current formula is deterministic by design).
