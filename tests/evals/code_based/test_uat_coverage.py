@@ -108,3 +108,45 @@ def test_uat_status_literal_enforced():
             status="invalid",
             evidence="The system behaves as expected",
         )
+
+
+def test_finding_required_when_status_fail():
+    with pytest.raises(ValidationError, match="finding is required when status=fail"):
+        UATScenario(
+            criterion_id="AC-1",
+            criterion_text="x",
+            status="fail",
+            evidence="The system behaves as expected",
+        )
+
+
+def test_finding_required_rejects_empty_string_when_status_fail():
+    with pytest.raises(ValidationError, match="finding is required when status=fail"):
+        UATScenario(
+            criterion_id="AC-1",
+            criterion_text="x",
+            status="fail",
+            evidence="The system behaves as expected",
+            finding="",
+        )
+
+
+def test_finding_accepted_when_status_fail():
+    s = UATScenario(
+        criterion_id="AC-1",
+        criterion_text="x",
+        status="fail",
+        evidence="The system behaves as expected",
+        finding="Login button does not respond to click",
+    )
+    assert s.finding == "Login button does not respond to click"
+
+
+def test_finding_optional_when_status_pass():
+    s = UATScenario(
+        criterion_id="AC-1",
+        criterion_text="x",
+        status="pass",
+        evidence="The system behaves as expected",
+    )
+    assert s.finding is None
