@@ -8,8 +8,6 @@ container running as root. Local developers running on the host
 override via environment variables.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

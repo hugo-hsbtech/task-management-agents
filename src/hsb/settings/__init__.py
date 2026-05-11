@@ -22,8 +22,6 @@ Two access patterns, both first-class:
        assert OrchestratorSettings().claim_delay_ms == 200
 """
 
-from __future__ import annotations
-
 from hsb.settings.codex import CodexSettings
 from hsb.settings.github import GitHubSettings
 from hsb.settings.linear import LinearSettings

@@ -10,10 +10,9 @@ separately). Setting ``HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR=codex`` raises
 ``ValidationError`` at construction with a project-specific explanation.
 """
 
-from __future__ import annotations
-
 import os
 from enum import StrEnum
+from typing import Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -106,7 +105,7 @@ class RuntimeSettings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def _work_item_orchestrator_is_claude_only(self) -> RuntimeSettings:
+    def _work_item_orchestrator_is_claude_only(self) -> Self:
         if self.work_item_orchestrator != AgentRuntime.CLAUDE:
             raise ValueError(
                 "Work Item Orchestrator is not flippable yet — the stateful "

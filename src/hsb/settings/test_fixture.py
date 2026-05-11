@@ -8,8 +8,6 @@ Env vars: HSB_TEST_FIXTURE_URL, HSB_TEST_FIXTURE_PATH, HSB_LIVE_CODEX,
 TEST_WORK_ITEM_ID, LINEAR_TEST_ISSUE_ID.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pydantic import Field

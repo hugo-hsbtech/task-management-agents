@@ -4,8 +4,6 @@ scaffolding.
 Env vars: HSB_CLAIM_DELAY_MS, HSB_PROJECT.
 """
 
-from __future__ import annotations
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
