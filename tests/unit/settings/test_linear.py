@@ -7,7 +7,7 @@ def test_api_key_default_is_none(monkeypatch):
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
     from settings import LinearSettings
 
-    assert LinearSettings().api_key is None
+    assert LinearSettings(_env_file=None).api_key is None
 
 
 def test_api_key_reads_env_as_secretstr(monkeypatch):

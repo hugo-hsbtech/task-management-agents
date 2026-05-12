@@ -165,3 +165,32 @@ def test_assert_oauth2_only_reexported_from_sdk_options(monkeypatch):
     from settings import assert_oauth2_only as via_settings
 
     assert via_sdk_options is via_settings
+
+
+def test_assert_oauth2_only_with_agent_name_api_key_allowed(monkeypatch):
+    """When HSB_AUTH_ALLOW_API_KEY_<AGENT>=1, assert_oauth2_only skips _G1Guard."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "leaked")
+    monkeypatch.setenv("HSB_AUTH_ALLOW_API_KEY_MYAGENT", "1")
+    from settings import assert_oauth2_only
+
+    assert_oauth2_only(agent_name="myagent")
+
+
+def test_assert_oauth2_only_with_agent_name_not_allowed_raises(monkeypatch):
+    """When api_key is NOT in allowed_auth_kinds, _G1Guard still fires."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("HSB_AUTH_ALLOW_API_KEY_OTHERAGENT", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "leaked")
+    from settings import assert_oauth2_only
+
+    with pytest.raises(RuntimeError, match="G1 violation"):
+        assert_oauth2_only(agent_name="otheragent")
+
+
+def test_normalize_runtime_passes_through_non_str(monkeypatch):
+    """_normalize_runtime returns non-str values unchanged for non-str input."""
+    _clear_runtime_env(monkeypatch)
+    from settings.runtime import RuntimeSettings
+
+    result = RuntimeSettings._normalize_runtime(42)
+    assert result == 42
