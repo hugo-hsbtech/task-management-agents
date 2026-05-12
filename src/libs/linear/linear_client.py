@@ -44,7 +44,10 @@ class LinearClient:
 
     def list_teams(self) -> list[Team]:
         """List all teams accessible to the API key."""
-        linear_teams = self._client.teams.get_all()
+        try:
+            linear_teams = self._client.teams.get_all()
+        except Exception as e:
+            raise RuntimeError(f"Failed to list teams: {e}") from e
         return [Team.from_linear(team) for team in linear_teams.values()]
 
     def get_team(self, team_id: str) -> Team | None:
@@ -79,7 +82,12 @@ class LinearClient:
         if not team_id:
             return []
 
-        linear_projects = self._client.projects.get_all(team_id=team_id)
+        try:
+            linear_projects = self._client.projects.get_all(team_id=team_id)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to list projects for team {team_id!r}: {e}"
+            ) from e
         return [Project.from_linear(proj) for proj in linear_projects.values()]
 
     def get_project(self, project_id: str) -> Project | None:
@@ -177,7 +185,12 @@ class LinearClient:
 
     def list_issues(self, project_id: str) -> list[Issue]:
         """List all issues within a specific project."""
-        linear_issues = self._client.projects.get_issues(project_id=project_id)
+        try:
+            linear_issues = self._client.projects.get_issues(project_id=project_id)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to list issues for project {project_id!r}: {e}"
+            ) from e
         return [Issue.from_linear(issue) for issue in linear_issues]
 
     def get_issue(self, issue_id: str) -> Issue | None:

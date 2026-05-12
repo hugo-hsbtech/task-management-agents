@@ -98,6 +98,17 @@ def test_list_teams_empty(client: LinearClient) -> None:
     assert teams == []
 
 
+def test_list_teams_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """list_teams must wrap underlying failures so handlers can return
+    a structured error dict."""
+    client._client.teams.get_all.side_effect = Exception("API boom")
+
+    with pytest.raises(RuntimeError, match="Failed to list teams"):
+        client.list_teams()
+
+
 def test_get_team_success(client: LinearClient) -> None:
     """get_team should return Team when found."""
     mock_team = MagicMock()
@@ -186,6 +197,17 @@ def test_list_projects_empty_team_id(client: LinearClient) -> None:
 
     assert projects == []
     client._client.projects.get_all.assert_not_called()
+
+
+def test_list_projects_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """list_projects must wrap underlying failures so handlers can return
+    a structured error dict."""
+    client._client.projects.get_all.side_effect = Exception("API boom")
+
+    with pytest.raises(RuntimeError, match="Failed to list projects for team 'team-1'"):
+        client.list_projects("team-1")
 
 
 def test_get_project_success(client: LinearClient) -> None:
@@ -359,6 +381,19 @@ def test_list_issues(client: LinearClient) -> None:
     assert issues[1].id == "issue-2"
     assert issues[1].state is None
     client._client.projects.get_issues.assert_called_once_with(project_id="proj-456")
+
+
+def test_list_issues_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """list_issues must wrap underlying failures so handlers can return
+    a structured error dict."""
+    client._client.projects.get_issues.side_effect = Exception("API boom")
+
+    with pytest.raises(
+        RuntimeError, match="Failed to list issues for project 'proj-1'"
+    ):
+        client.list_issues("proj-1")
 
 
 def test_get_issue_success(client: LinearClient) -> None:

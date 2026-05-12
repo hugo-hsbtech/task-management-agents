@@ -406,6 +406,22 @@ async def test_handle_list_teams_empty(
 
 
 @pytest.mark.asyncio
+async def test_handle_list_teams_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_teams should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.list_teams.side_effect = RuntimeError(
+        "Failed to list teams: API boom"
+    )
+
+    result = await linear_tools._handle_list_teams({})
+
+    assert "error" in result
+    assert "Failed to list teams" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_handle_get_team_success(
     linear_tools: LinearTools, mock_linear_client: MagicMock
 ) -> None:
@@ -472,6 +488,22 @@ async def test_handle_list_projects(
     assert "projects" in result
     assert len(result["projects"]) == 1
     assert result["projects"][0]["id"] == "proj-1"
+
+
+@pytest.mark.asyncio
+async def test_handle_list_projects_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_projects should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.list_projects.side_effect = RuntimeError(
+        "Failed to list projects for team 'team-1': API boom"
+    )
+
+    result = await linear_tools._handle_list_projects({"team_id": "team-1"})
+
+    assert "error" in result
+    assert "team-1" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -621,6 +653,22 @@ async def test_handle_list_issues(
     assert "issues" in result
     assert len(result["issues"]) == 1
     assert result["issues"][0]["id"] == "issue-1"
+
+
+@pytest.mark.asyncio
+async def test_handle_list_issues_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_issues should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.list_issues.side_effect = RuntimeError(
+        "Failed to list issues for project 'proj-1': API boom"
+    )
+
+    result = await linear_tools._handle_list_issues({"project_id": "proj-1"})
+
+    assert "error" in result
+    assert "proj-1" in result["error"]
 
 
 @pytest.mark.asyncio

@@ -282,7 +282,10 @@ class LinearTools:
 
     async def _handle_list_teams(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_teams tool."""
-        teams = self._client.list_teams()
+        try:
+            teams = self._client.list_teams()
+        except RuntimeError as e:
+            return {"error": str(e)}
         return {"teams": [t.model_dump(mode="json") for t in teams]}
 
     async def _handle_get_team(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -295,7 +298,10 @@ class LinearTools:
 
     async def _handle_list_projects(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_projects tool."""
-        projects = self._client.list_projects(input_data["team_id"])
+        try:
+            projects = self._client.list_projects(input_data["team_id"])
+        except RuntimeError as e:
+            return {"error": str(e)}
         return {"projects": [p.model_dump(mode="json") for p in projects]}
 
     async def _handle_get_project(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -322,7 +328,10 @@ class LinearTools:
 
     async def _handle_list_issues(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_issues tool."""
-        issues = self._client.list_issues(input_data["project_id"])
+        try:
+            issues = self._client.list_issues(input_data["project_id"])
+        except RuntimeError as e:
+            return {"error": str(e)}
         return {"issues": [i.model_dump(mode="json") for i in issues]}
 
     async def _handle_get_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
