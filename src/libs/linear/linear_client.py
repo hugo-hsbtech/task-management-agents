@@ -98,7 +98,6 @@ class LinearClient:
     ) -> Project:
         """Update a project (name, description, state) and optionally post an update."""
         try:
-            # First update project fields if provided
             if input_data.name or input_data.description or input_data.state:
                 linear_project = self._client.projects.update(
                     project_id=project_id,
@@ -108,17 +107,16 @@ class LinearClient:
                 )
             else:
                 linear_project = self._client.projects.get(project_id)
-
-            if linear_project is None:
-                raise RuntimeError(f"Project {project_id!r} not found.")
-
-            # Post project update if message provided
-            if input_data.update_message:
-                self._post_project_update(project_id, input_data.update_message)
-
-            return Project.from_linear(linear_project)
         except Exception as e:
-            raise RuntimeError(f"Failed to update project: {e}") from e
+            raise RuntimeError(f"Failed to update project {project_id!r}: {e}") from e
+
+        if linear_project is None:
+            raise RuntimeError(f"Project {project_id!r} not found.")
+
+        if input_data.update_message:
+            self._post_project_update(project_id, input_data.update_message)
+
+        return Project.from_linear(linear_project)
 
     def _post_project_update(self, project_id: str, message: str) -> None:
         """Post an update/message to a project (progress report)."""

@@ -265,12 +265,25 @@ def test_update_project_with_message(client: LinearClient) -> None:
 
 
 def test_update_project_error(client: LinearClient) -> None:
-    """update_project should raise RuntimeError on failure."""
+    """update_project should raise RuntimeError on API failure."""
     client._client.projects.update.side_effect = Exception("API Error")
 
     update_input = ProjectUpdateInput(name="New Name")
 
     with pytest.raises(RuntimeError, match="Failed to update project"):
+        client.update_project("proj-123", update_input)
+
+
+def test_update_project_not_found_raises_clean_message(
+    client: LinearClient,
+) -> None:
+    """A None return from the underlying client must surface as a 'not found'
+    RuntimeError, not get masked as a generic 'Failed to update project'."""
+    client._client.projects.update.return_value = None
+
+    update_input = ProjectUpdateInput(name="New Name")
+
+    with pytest.raises(RuntimeError, match=r"Project 'proj-123' not found\.$"):
         client.update_project("proj-123", update_input)
 
 
