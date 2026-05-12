@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 from libs.linear import LinearClient
 from libs.linear.schemas import (
     IssueInput,
-    IssueLabelInput,
     IssueUpdateInput,
     ProjectUpdateInput,
 )
@@ -96,6 +95,10 @@ UPDATE_ISSUE_SCHEMA: dict[str, Any] = {
             "minimum": 0,
             "maximum": 4,
         },
+        "parent_id": {
+            "type": "string",
+            "description": "New parent issue ID — re-parents the issue under this parent (optional)",
+        },
     },
     "required": ["issue_id"],
 }
@@ -109,21 +112,6 @@ DELETE_ISSUE_SCHEMA: dict[str, Any] = {
         },
     },
     "required": ["issue_id"],
-}
-
-ADD_LABEL_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "issue_id": {
-            "type": "string",
-            "description": "Issue ID or identifier to add label to (required)",
-        },
-        "label_name": {
-            "type": "string",
-            "description": "Label name to add (creates if doesn't exist) (required)",
-        },
-    },
-    "required": ["issue_id", "label_name"],
 }
 
 LIST_TEAMS_SCHEMA: dict[str, Any] = {
@@ -213,6 +201,48 @@ GET_ISSUE_SCHEMA: dict[str, Any] = {
     "required": ["issue_id"],
 }
 
+CREATE_ISSUE_RELATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "description": "Source issue ID (required)",
+        },
+        "related_issue_id": {
+            "type": "string",
+            "description": "Target issue ID (required)",
+        },
+        "type": {
+            "type": "string",
+            "description": "Relation type: blocks, blocked_by, relates_to, duplicate_of (required)",
+            "enum": ["blocks", "blocked_by", "relates_to", "duplicate_of"],
+        },
+    },
+    "required": ["issue_id", "related_issue_id", "type"],
+}
+
+GET_ISSUE_RELATIONS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "description": "Issue ID or identifier whose relations to fetch (e.g., 'ENG-123') (required)",
+        },
+    },
+    "required": ["issue_id"],
+}
+
+LIST_SUB_ISSUES_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "description": "Parent issue ID or identifier whose sub-issues to list (e.g., 'ENG-123') (required)",
+        },
+    },
+    "required": ["issue_id"],
+}
+
 
 # -----------------------------------------------------------------------------
 # Linear Tools Implementation
@@ -265,12 +295,6 @@ class LinearTools:
         success = self._client.delete_issue(input_data["issue_id"])
         return {"success": success, "issue_id": input_data["issue_id"]}
 
-    async def _handle_add_label(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """Handler for linear_add_label tool."""
-        label_input = IssueLabelInput.model_validate(obj=input_data)
-        issue = self._client.add_label_to_issue(label_input)
-        return issue.model_dump(mode="json")
-
     async def _handle_list_teams(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_teams tool."""
         teams = self._client.list_teams()
@@ -318,6 +342,30 @@ class LinearTools:
             return {"error": f"Issue '{input_data['issue_id']}' not found"}
         return issue.model_dump(mode="json")
 
+    async def _handle_create_issue_relation(
+        self, input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handler for linear_create_issue_relation tool."""
+        return self._client.create_issue_relation(
+            issue_id=input_data["issue_id"],
+            related_issue_id=input_data["related_issue_id"],
+            relation_type=input_data["type"],
+        )
+
+    async def _handle_get_issue_relations(
+        self, input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handler for linear_get_issue_relations tool."""
+        relations = self._client.get_issue_relations(input_data["issue_id"])
+        return {"relations": [r.model_dump(mode="json") for r in relations]}
+
+    async def _handle_list_sub_issues(
+        self, input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handler for linear_list_sub_issues tool."""
+        sub_issues = self._client.list_sub_issues(input_data["issue_id"])
+        return {"sub_issues": [i.model_dump(mode="json") for i in sub_issues]}
+
     # -------------------------------------------------------------------------
     # Tool Specs
     # -------------------------------------------------------------------------
@@ -352,12 +400,6 @@ class LinearTools:
                 description="Delete a Linear issue by ID",
                 input_schema=DELETE_ISSUE_SCHEMA,
                 handler=self._handle_delete_issue,
-            ),
-            "linear_add_label": ToolSpec(
-                name="linear_add_label",
-                description="Add a label to a Linear issue (creates label if doesn't exist)",
-                input_schema=ADD_LABEL_SCHEMA,
-                handler=self._handle_add_label,
             ),
             "linear_list_teams": ToolSpec(
                 name="linear_list_teams",
@@ -401,6 +443,24 @@ class LinearTools:
                 input_schema=GET_ISSUE_SCHEMA,
                 handler=self._handle_get_issue,
             ),
+            "linear_create_issue_relation": ToolSpec(
+                name="linear_create_issue_relation",
+                description="Create a relation between two Linear issues (blocks, blocked_by, relates_to, duplicate_of)",
+                input_schema=CREATE_ISSUE_RELATION_SCHEMA,
+                handler=self._handle_create_issue_relation,
+            ),
+            "linear_get_issue_relations": ToolSpec(
+                name="linear_get_issue_relations",
+                description="Get all relations for a Linear issue (blocks, duplicate, related)",
+                input_schema=GET_ISSUE_RELATIONS_SCHEMA,
+                handler=self._handle_get_issue_relations,
+            ),
+            "linear_list_sub_issues": ToolSpec(
+                name="linear_list_sub_issues",
+                description="List all sub-issues (children) of a Linear parent issue",
+                input_schema=LIST_SUB_ISSUES_SCHEMA,
+                handler=self._handle_list_sub_issues,
+            ),
         }
 
         if tool_names is None:
@@ -419,7 +479,6 @@ class LinearTools:
             "linear_create_issue": self._handle_create_issue,
             "linear_update_issue": self._handle_update_issue,
             "linear_delete_issue": self._handle_delete_issue,
-            "linear_add_label": self._handle_add_label,
             "linear_list_teams": self._handle_list_teams,
             "linear_get_team": self._handle_get_team,
             "linear_list_projects": self._handle_list_projects,
@@ -427,4 +486,7 @@ class LinearTools:
             "linear_update_project": self._handle_update_project,
             "linear_list_issues": self._handle_list_issues,
             "linear_get_issue": self._handle_get_issue,
+            "linear_create_issue_relation": self._handle_create_issue_relation,
+            "linear_get_issue_relations": self._handle_get_issue_relations,
+            "linear_list_sub_issues": self._handle_list_sub_issues,
         }
