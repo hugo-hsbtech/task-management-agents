@@ -4,6 +4,7 @@ Uses internal mapping to convert between linear_api types and our own schemas.
 Consumers should import from libs.linear.schemas, not from linear_api.
 """
 
+import logging
 from typing import Any
 
 from linear_api import LinearClient as BaseLinearClient
@@ -20,6 +21,8 @@ from libs.linear.schemas import (
     Team,
     _map_priority_to_api,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LinearClient:
@@ -52,7 +55,11 @@ class LinearClient:
                 return Team.from_linear(linear_team)
             return None
         except Exception:
-            # Fallback: search in list
+            logger.warning(
+                "teams.get(%r) failed; falling back to list-and-match",
+                team_id,
+                exc_info=True,
+            )
             try:
                 teams = self._client.teams.get_all()
                 for team in teams.values():
@@ -60,6 +67,7 @@ class LinearClient:
                         return Team.from_linear(team)
                 return None
             except Exception:
+                logger.exception("teams.get_all() fallback failed for %r", team_id)
                 return None
 
     # -----------------------------------------------------------------------
@@ -82,6 +90,7 @@ class LinearClient:
                 return Project.from_linear(linear_project)
             return None
         except Exception:
+            logger.exception("projects.get(%r) failed", project_id)
             return None
 
     def update_project(
@@ -134,8 +143,11 @@ class LinearClient:
             }
             self._execute_raw(query, variables)
         except Exception:
-            # Best effort - don't fail the whole update if posting fails
-            pass
+            # Best effort — don't fail the whole update if posting fails,
+            # but surface the cause so callers can see it in traces.
+            logger.exception(
+                "projectUpdateCreate mutation failed for project %r", project_id
+            )
 
     def _execute_raw(
         self, query: str, variables: dict[str, Any] | None = None
@@ -178,6 +190,7 @@ class LinearClient:
                 return Issue.from_linear(linear_issue)
             return None
         except Exception:
+            logger.exception("issues.get(%r) failed", issue_id)
             return None
 
     def create_issue(self, input_data: IssueInput) -> Issue:
@@ -225,6 +238,7 @@ class LinearClient:
             self._client.issues.delete(issue_id)
             return True
         except Exception:
+            logger.exception("issues.delete(%r) failed", issue_id)
             return False
 
     def add_label_to_issue(self, input_data: IssueLabelInput) -> Issue:
@@ -247,4 +261,5 @@ class LinearClient:
                 return [Label.from_linear(label) for label in linear_issue.labels]
             return []
         except Exception:
+            logger.exception("issues.get(%r) failed while listing labels", issue_id)
             return []

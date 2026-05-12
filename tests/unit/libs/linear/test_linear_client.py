@@ -274,6 +274,27 @@ def test_update_project_error(client: LinearClient) -> None:
         client.update_project("proj-123", update_input)
 
 
+def test_post_project_update_logs_on_failure(
+    client: LinearClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """_post_project_update is best-effort but must log the cause so a
+    failed GraphQL mutation isn't invisible to callers."""
+    import logging
+
+    # Force the raw GraphQL path to fail.
+    client._client._execute.side_effect = RuntimeError("auth_error")
+
+    with caplog.at_level(logging.ERROR, logger="libs.linear.linear_client"):
+        client._post_project_update("proj-123", "Sprint shipped!")
+
+    assert any(
+        "projectUpdateCreate" in r.message and "proj-123" in r.message
+        for r in caplog.records
+    )
+    # The cause must appear in the captured traceback.
+    assert any(r.exc_info is not None for r in caplog.records)
+
+
 # -----------------------------------------------------------------------------
 # Issue Operations Tests
 # -----------------------------------------------------------------------------
