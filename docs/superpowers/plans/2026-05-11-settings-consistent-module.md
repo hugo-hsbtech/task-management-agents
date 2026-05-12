@@ -149,21 +149,21 @@ from pydantic import ValidationError
 
 def test_claim_delay_ms_default_is_200(monkeypatch):
     monkeypatch.delenv("HSB_CLAIM_DELAY_MS", raising=False)
-    from hsb.settings.orchestrator import OrchestratorSettings
+    from settings import OrchestratorSettings
 
     assert OrchestratorSettings().claim_delay_ms == 200
 
 
 def test_claim_delay_ms_reads_env(monkeypatch):
     monkeypatch.setenv("HSB_CLAIM_DELAY_MS", "500")
-    from hsb.settings.orchestrator import OrchestratorSettings
+    from settings import OrchestratorSettings
 
     assert OrchestratorSettings().claim_delay_ms == 500
 
 
 def test_claim_delay_ms_rejects_negative(monkeypatch):
     monkeypatch.setenv("HSB_CLAIM_DELAY_MS", "-1")
-    from hsb.settings.orchestrator import OrchestratorSettings
+    from settings import OrchestratorSettings
 
     with pytest.raises(ValidationError):
         OrchestratorSettings()
@@ -171,14 +171,14 @@ def test_claim_delay_ms_rejects_negative(monkeypatch):
 
 def test_project_default(monkeypatch):
     monkeypatch.delenv("HSB_PROJECT", raising=False)
-    from hsb.settings.orchestrator import OrchestratorSettings
+    from settings import OrchestratorSettings
 
     assert OrchestratorSettings().project == "task-management-agents"
 
 
 def test_project_reads_env(monkeypatch):
     monkeypatch.setenv("HSB_PROJECT", "org-acme")
-    from hsb.settings.orchestrator import OrchestratorSettings
+    from settings import OrchestratorSettings
 
     assert OrchestratorSettings().project == "org-acme"
 ```
@@ -252,14 +252,14 @@ from pathlib import Path
 
 def test_home_default_is_none(monkeypatch):
     monkeypatch.delenv("CODEX_HOME", raising=False)
-    from hsb.settings.codex import CodexSettings
+    from settings import CodexSettings
 
     assert CodexSettings().home is None
 
 
 def test_home_reads_env_as_path(monkeypatch):
     monkeypatch.setenv("CODEX_HOME", "/root/.codex")
-    from hsb.settings.codex import CodexSettings
+    from settings import CodexSettings
 
     settings = CodexSettings()
     assert settings.home == Path("/root/.codex")
@@ -268,14 +268,14 @@ def test_home_reads_env_as_path(monkeypatch):
 
 def test_path_override_default_is_none(monkeypatch):
     monkeypatch.delenv("CODEX_PATH_OVERRIDE", raising=False)
-    from hsb.settings.codex import CodexSettings
+    from settings import CodexSettings
 
     assert CodexSettings().path_override is None
 
 
 def test_path_override_reads_env_as_path(monkeypatch):
     monkeypatch.setenv("CODEX_PATH_OVERRIDE", "/usr/local/bin/codex")
-    from hsb.settings.codex import CodexSettings
+    from settings import CodexSettings
 
     assert CodexSettings().path_override == Path("/usr/local/bin/codex")
 ```
@@ -349,14 +349,14 @@ from pydantic import SecretStr
 
 def test_api_key_default_is_none(monkeypatch):
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
-    from hsb.settings.linear import LinearSettings
+    from settings import LinearSettings
 
     assert LinearSettings().api_key is None
 
 
 def test_api_key_reads_env_as_secretstr(monkeypatch):
     monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test_token")
-    from hsb.settings.linear import LinearSettings
+    from settings import LinearSettings
 
     settings = LinearSettings()
     assert isinstance(settings.api_key, SecretStr)
@@ -365,7 +365,7 @@ def test_api_key_reads_env_as_secretstr(monkeypatch):
 
 def test_api_key_does_not_leak_in_repr(monkeypatch):
     monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test_token")
-    from hsb.settings.linear import LinearSettings
+    from settings import LinearSettings
 
     settings = LinearSettings()
     assert "lin_api_test_token" not in repr(settings)
@@ -440,14 +440,14 @@ from pydantic import SecretStr
 
 def test_token_default_is_none(monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    from hsb.settings.github import GitHubSettings
+    from settings import GitHubSettings
 
     assert GitHubSettings().token is None
 
 
 def test_token_reads_env_as_secretstr(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token_value")
-    from hsb.settings.github import GitHubSettings
+    from settings import GitHubSettings
 
     settings = GitHubSettings()
     assert isinstance(settings.token, SecretStr)
@@ -456,7 +456,7 @@ def test_token_reads_env_as_secretstr(monkeypatch):
 
 def test_token_does_not_leak_in_repr(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token_value")
-    from hsb.settings.github import GitHubSettings
+    from settings import GitHubSettings
 
     settings = GitHubSettings()
     assert "ghp_test_token_value" not in repr(settings)
@@ -530,7 +530,7 @@ from pathlib import Path
 def test_defaults_are_none(monkeypatch):
     monkeypatch.delenv("HSB_WIO_INPUT_FILE", raising=False)
     monkeypatch.delenv("HSB_WIO_OUTPUT_FILE", raising=False)
-    from hsb.settings.wio_ipc import WIOIPCSettings
+    from settings import WIOIPCSettings
 
     settings = WIOIPCSettings()
     assert settings.input_file is None
@@ -540,7 +540,7 @@ def test_defaults_are_none(monkeypatch):
 def test_reads_env_as_paths(monkeypatch):
     monkeypatch.setenv("HSB_WIO_INPUT_FILE", "/tmp/wio-in.json")
     monkeypatch.setenv("HSB_WIO_OUTPUT_FILE", "/tmp/wio-out.json")
-    from hsb.settings.wio_ipc import WIOIPCSettings
+    from settings import WIOIPCSettings
 
     settings = WIOIPCSettings()
     assert settings.input_file == Path("/tmp/wio-in.json")
@@ -621,15 +621,15 @@ from pathlib import Path
 
 def test_all_defaults_when_unset(monkeypatch):
     for var in (
-        "HSB_TEST_FIXTURE_URL",
-        "HSB_TEST_FIXTURE_PATH",
-        "HSB_LIVE_CODEX",
-        "TEST_WORK_ITEM_ID",
-        "LINEAR_TEST_ISSUE_ID",
+            "HSB_TEST_FIXTURE_URL",
+            "HSB_TEST_FIXTURE_PATH",
+            "HSB_LIVE_CODEX",
+            "TEST_WORK_ITEM_ID",
+            "LINEAR_TEST_ISSUE_ID",
     ):
         monkeypatch.delenv(var, raising=False)
 
-    from hsb.settings.test_fixture import TestFixtureSettings
+    from settings import TestFixtureSettings
 
     s = TestFixtureSettings()
     assert s.fixture_url is None
@@ -641,45 +641,45 @@ def test_all_defaults_when_unset(monkeypatch):
 
 def test_fixture_url_alias(monkeypatch):
     monkeypatch.setenv("HSB_TEST_FIXTURE_URL", "https://github.com/me/hsb-test-fixture")
-    from hsb.settings.test_fixture import TestFixtureSettings
+    from settings import TestFixtureSettings
 
     assert (
-        TestFixtureSettings().fixture_url
-        == "https://github.com/me/hsb-test-fixture"
+            TestFixtureSettings().fixture_url
+            == "https://github.com/me/hsb-test-fixture"
     )
 
 
 def test_fixture_path_alias(monkeypatch):
     monkeypatch.setenv("HSB_TEST_FIXTURE_PATH", "/tmp/fixture")
-    from hsb.settings.test_fixture import TestFixtureSettings
+    from settings import TestFixtureSettings
 
     assert TestFixtureSettings().fixture_path == Path("/tmp/fixture")
 
 
 def test_live_codex_truthy(monkeypatch):
     monkeypatch.setenv("HSB_LIVE_CODEX", "1")
-    from hsb.settings.test_fixture import TestFixtureSettings
+    from settings import TestFixtureSettings
 
     assert TestFixtureSettings().live_codex is True
 
 
 def test_live_codex_falsy(monkeypatch):
     monkeypatch.setenv("HSB_LIVE_CODEX", "0")
-    from hsb.settings.test_fixture import TestFixtureSettings
+    from settings import TestFixtureSettings
 
     assert TestFixtureSettings().live_codex is False
 
 
 def test_test_work_item_id_alias(monkeypatch):
     monkeypatch.setenv("TEST_WORK_ITEM_ID", "LIN-999")
-    from hsb.settings.test_fixture import TestFixtureSettings
+    from settings import TestFixtureSettings
 
     assert TestFixtureSettings().test_work_item_id == "LIN-999"
 
 
 def test_linear_test_issue_id_alias(monkeypatch):
     monkeypatch.setenv("LINEAR_TEST_ISSUE_ID", "LIN-555")
-    from hsb.settings.test_fixture import TestFixtureSettings
+    from settings import TestFixtureSettings
 
     assert TestFixtureSettings().linear_test_issue_id == "LIN-555"
 ```
@@ -795,7 +795,7 @@ def _clear_runtime_env(monkeypatch):
 
 def test_all_agents_default_to_claude(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     s = RuntimeSettings()
     assert s.backlog == "claude"
@@ -812,7 +812,7 @@ def test_all_agents_default_to_claude(monkeypatch):
 def test_backlog_can_be_codex(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "codex")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     assert RuntimeSettings().backlog == "codex"
 
@@ -820,7 +820,7 @@ def test_backlog_can_be_codex(monkeypatch):
 def test_runtime_value_is_normalized_lower_stripped(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "  CODEX  ")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     assert RuntimeSettings().backlog == "codex"
 
@@ -828,7 +828,7 @@ def test_runtime_value_is_normalized_lower_stripped(monkeypatch):
 def test_wio_cannot_be_codex(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_WIO", "codex")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     with pytest.raises(ValidationError):
         RuntimeSettings()
@@ -837,7 +837,7 @@ def test_wio_cannot_be_codex(monkeypatch):
 def test_invalid_runtime_value_raises(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "gemini")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     with pytest.raises(ValidationError):
         RuntimeSettings()
@@ -845,7 +845,7 @@ def test_invalid_runtime_value_raises(monkeypatch):
 
 def test_oauth_token_default_is_none(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     assert RuntimeSettings().claude_code_oauth_token is None
 
@@ -853,7 +853,7 @@ def test_oauth_token_default_is_none(monkeypatch):
 def test_oauth_token_reads_alias(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-claude-oauth-test")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     s = RuntimeSettings()
     assert isinstance(s.claude_code_oauth_token, SecretStr)
@@ -863,7 +863,7 @@ def test_oauth_token_reads_alias(monkeypatch):
 def test_oauth_token_does_not_leak_in_repr(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-claude-oauth-test")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     assert "sk-claude-oauth-test" not in repr(RuntimeSettings())
 ```
@@ -987,7 +987,7 @@ Add the following at the end of the file (after the last test):
 
 
 def test_forbidden_vars_constant():
-    from hsb.settings.runtime import FORBIDDEN_API_KEY_VARS
+    from settings import FORBIDDEN_API_KEY_VARS
 
     assert FORBIDDEN_API_KEY_VARS == ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
 
@@ -995,7 +995,7 @@ def test_forbidden_vars_constant():
 def test_assert_oauth2_only_noop_when_clear(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    from hsb.settings.runtime import assert_oauth2_only
+    from settings import assert_oauth2_only
 
     # Should not raise.
     assert_oauth2_only()
@@ -1004,7 +1004,7 @@ def test_assert_oauth2_only_noop_when_clear(monkeypatch):
 def test_assert_oauth2_only_raises_on_anthropic(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "leaked")
-    from hsb.settings.runtime import assert_oauth2_only
+    from settings import assert_oauth2_only
 
     with pytest.raises(RuntimeError) as exc:
         assert_oauth2_only()
@@ -1015,7 +1015,7 @@ def test_assert_oauth2_only_raises_on_anthropic(monkeypatch):
 def test_assert_oauth2_only_raises_on_openai(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "leaked")
-    from hsb.settings.runtime import assert_oauth2_only
+    from settings import assert_oauth2_only
 
     with pytest.raises(RuntimeError) as exc:
         assert_oauth2_only()
@@ -1028,7 +1028,7 @@ def test_assert_oauth2_only_reexported_from_sdk_options(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     from hsb.agents._sdk_options import assert_oauth2_only as via_sdk_options
-    from hsb.settings.runtime import assert_oauth2_only as via_settings
+    from settings import assert_oauth2_only as via_settings
 
     assert via_sdk_options is via_settings
 ```
@@ -1102,7 +1102,7 @@ In `src/hsb/agents/_sdk_options.py`:
 Replace lines 43-65 (the `_FORBIDDEN_API_KEY_VARS = …` constant through the end of the `assert_oauth2_only()` function body — including the closing `)` of the `raise RuntimeError(...)` call) with:
 
 ```python
-from hsb.settings.runtime import (
+from settings import (
     FORBIDDEN_API_KEY_VARS as _FORBIDDEN_API_KEY_VARS,  # noqa: F401  re-export
     assert_oauth2_only,  # noqa: F401  re-export
 )
@@ -1218,7 +1218,7 @@ Then replace line 39:
 CLAIM_DELAY_MS = int(os.environ.get("HSB_CLAIM_DELAY_MS", "200"))
 
 # After:
-from hsb.settings.orchestrator import OrchestratorSettings  # noqa: E402
+from settings import OrchestratorSettings  # noqa: E402
 
 CLAIM_DELAY_MS = OrchestratorSettings().claim_delay_ms
 ```
@@ -1274,57 +1274,57 @@ Write `tests/unit/settings/test_init_reexports.py`:
 
 
 def test_orchestrator_settings_reexported():
-    from hsb.settings import OrchestratorSettings as Reexport
-    from hsb.settings.orchestrator import OrchestratorSettings as Original
+    from settings import OrchestratorSettings as Reexport
+    from settings import OrchestratorSettings as Original
 
     assert Reexport is Original
 
 
 def test_codex_settings_reexported():
-    from hsb.settings import CodexSettings as Reexport
-    from hsb.settings.codex import CodexSettings as Original
+    from settings import CodexSettings as Reexport
+    from settings import CodexSettings as Original
 
     assert Reexport is Original
 
 
 def test_linear_settings_reexported():
-    from hsb.settings import LinearSettings as Reexport
-    from hsb.settings.linear import LinearSettings as Original
+    from settings import LinearSettings as Reexport
+    from settings import LinearSettings as Original
 
     assert Reexport is Original
 
 
 def test_github_settings_reexported():
-    from hsb.settings import GitHubSettings as Reexport
-    from hsb.settings.github import GitHubSettings as Original
+    from settings import GitHubSettings as Reexport
+    from settings import GitHubSettings as Original
 
     assert Reexport is Original
 
 
 def test_wio_ipc_settings_reexported():
-    from hsb.settings import WIOIPCSettings as Reexport
-    from hsb.settings.wio_ipc import WIOIPCSettings as Original
+    from settings import WIOIPCSettings as Reexport
+    from settings import WIOIPCSettings as Original
 
     assert Reexport is Original
 
 
 def test_test_fixture_settings_reexported():
-    from hsb.settings import TestFixtureSettings as Reexport
-    from hsb.settings.test_fixture import TestFixtureSettings as Original
+    from settings import TestFixtureSettings as Reexport
+    from settings import TestFixtureSettings as Original
 
     assert Reexport is Original
 
 
 def test_runtime_settings_reexported():
-    from hsb.settings import RuntimeSettings as Reexport
-    from hsb.settings.runtime import RuntimeSettings as Original
+    from settings import RuntimeSettings as Reexport
+    from settings import RuntimeSettings as Original
 
     assert Reexport is Original
 
 
 def test_g1_helpers_reexported():
-    from hsb.settings import FORBIDDEN_API_KEY_VARS, assert_oauth2_only
-    from hsb.settings.runtime import (
+    from settings import FORBIDDEN_API_KEY_VARS, assert_oauth2_only
+    from settings import (
         FORBIDDEN_API_KEY_VARS as Original_Const,
         assert_oauth2_only as Original_Fn,
     )
@@ -1356,17 +1356,17 @@ The re-exports below are a convenience surface; per-module imports remain
 the canonical pattern.
 """
 
-from hsb.settings.codex import CodexSettings
-from hsb.settings.github import GitHubSettings
-from hsb.settings.linear import LinearSettings
-from hsb.settings.orchestrator import OrchestratorSettings
-from hsb.settings.runtime import (
+from settings import CodexSettings
+from settings import GitHubSettings
+from settings import LinearSettings
+from settings import OrchestratorSettings
+from settings import (
     FORBIDDEN_API_KEY_VARS,
     RuntimeSettings,
     assert_oauth2_only,
 )
-from hsb.settings.test_fixture import TestFixtureSettings
-from hsb.settings.wio_ipc import WIOIPCSettings
+from settings import TestFixtureSettings
+from settings import WIOIPCSettings
 
 __all__ = [
     "FORBIDDEN_API_KEY_VARS",

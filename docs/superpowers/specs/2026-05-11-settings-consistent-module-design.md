@@ -53,7 +53,8 @@ Plus 9 `load_dotenv()` calls (no parsing — just dotenv loading), all at module
 A new `src/hsb/settings/` package containing one **shared base** and one **per-domain settings class** per environment-variable group. No top-level aggregator. Consumers import what they need:
 
 ```python
-from hsb.settings.orchestrator import OrchestratorSettings
+from settings import OrchestratorSettings
+
 CLAIM_DELAY_MS = OrchestratorSettings().claim_delay_ms
 ```
 
@@ -298,17 +299,17 @@ class TestFixtureSettings(BaseSettings):
 This package has no top-level aggregator by design — see
 docs/superpowers/specs/2026-05-11-settings-consistent-module-design.md §4."""
 
-from hsb.settings.codex import CodexSettings
-from hsb.settings.github import GitHubSettings
-from hsb.settings.linear import LinearSettings
-from hsb.settings.orchestrator import OrchestratorSettings
-from hsb.settings.runtime import (
+from settings import CodexSettings
+from settings import GitHubSettings
+from settings import LinearSettings
+from settings import OrchestratorSettings
+from settings import (
     FORBIDDEN_API_KEY_VARS,
     RuntimeSettings,
     assert_oauth2_only,
 )
-from hsb.settings.test_fixture import TestFixtureSettings
-from hsb.settings.wio_ipc import WIOIPCSettings
+from settings import TestFixtureSettings
+from settings import WIOIPCSettings
 
 __all__ = [
     "CodexSettings",
@@ -333,6 +334,7 @@ The G1 forbidden-vars list (`("ANTHROPIC_API_KEY", "OPENAI_API_KEY")`) and the `
 # before
 _FORBIDDEN_API_KEY_VARS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
 
+
 def assert_oauth2_only() -> None:
     forbidden = [v for v in _FORBIDDEN_API_KEY_VARS if v in os.environ]
     if forbidden:
@@ -340,7 +342,7 @@ def assert_oauth2_only() -> None:
 
 
 # after
-from hsb.settings.runtime import assert_oauth2_only  # re-export
+from settings import assert_oauth2_only  # re-export
 
 # (module-level FORBIDDEN_API_KEY_VARS deleted; assert_oauth2_only is now imported)
 ```
@@ -364,7 +366,8 @@ A single production read site is migrated to prove the wiring end-to-end:
 CLAIM_DELAY_MS = int(os.environ.get("HSB_CLAIM_DELAY_MS", "200"))
 
 # after:
-from hsb.settings.orchestrator import OrchestratorSettings
+from settings import OrchestratorSettings
+
 CLAIM_DELAY_MS = OrchestratorSettings().claim_delay_ms
 ```
 
