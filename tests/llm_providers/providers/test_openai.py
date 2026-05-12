@@ -16,18 +16,24 @@ def _isolate_openai_registration():
     stubbed SDK. patch.dict("sys.modules", ...) evicts the re-imported
     module on exit, so the decorator re-runs the next time — which would
     collide with the prior registration. Pop the entry around each test so
-    re-registration is clean, and restore the original after so subsequent
-    tests on the same xdist worker still see it registered."""
+    re-registration is clean, then restore BOTH the registry entry and
+    sys.modules afterwards. sys.modules must be restored together with
+    the registry: if a later test re-imports the provider module while the
+    registry already has it, the @register decorator raises 'already
+    registered'."""
     import sys
 
-    original = ProviderRegistry._providers.get("openai")
+    original_module = sys.modules.get("llm_providers.providers.openai")
+    original_provider = ProviderRegistry._providers.get("openai")
     sys.modules.pop("llm_providers.providers.openai", None)
     ProviderRegistry._providers.pop("openai", None)
     yield
     sys.modules.pop("llm_providers.providers.openai", None)
     ProviderRegistry._providers.pop("openai", None)
-    if original is not None:
-        ProviderRegistry._providers["openai"] = original
+    if original_module is not None:
+        sys.modules["llm_providers.providers.openai"] = original_module
+    if original_provider is not None:
+        ProviderRegistry._providers["openai"] = original_provider
 
 
 def _stub_codex_sdk():
