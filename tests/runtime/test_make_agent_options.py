@@ -1,4 +1,5 @@
 """make_agent_options factory — runtime-agnostic AgentOptions builder."""
+
 from __future__ import annotations
 
 import pytest

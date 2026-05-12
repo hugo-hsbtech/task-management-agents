@@ -26,7 +26,9 @@ class LinearInput(BaseModel):
     """
 
     operation: LinearOperation
-    payload: dict  # Operation-specific; validated by operation-specific models
+    payload: dict[
+        str, object
+    ]  # Operation-specific; validated by operation-specific models
 
     model_config = {"extra": "forbid"}
 

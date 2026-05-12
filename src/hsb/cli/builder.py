@@ -31,7 +31,7 @@ def builder_implement(
     stack: list[str] = typer.Option(
         None, "--stack", help="Repeatable: --stack python --stack typer"
     ),
-):
+) -> None:
     """Implement a Linear work item locally (BLDR-01..04).
 
     Pitfall 6 mitigation: ALWAYS fetch fresh Linear state immediately before

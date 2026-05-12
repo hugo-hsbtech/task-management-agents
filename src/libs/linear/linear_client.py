@@ -5,7 +5,7 @@ Consumers should import from libs.linear.schemas, not from linear_api.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from linear_api import LinearClient as BaseLinearClient
 from linear_api import LinearIssueInput, LinearIssueUpdateInput
@@ -21,6 +21,9 @@ from libs.linear.schemas import (
     Team,
     _map_priority_to_api,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +166,6 @@ class LinearClient:
         self, query: str, variables: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Execute a raw GraphQL query (internal use only)."""
-        from collections.abc import Callable
         from typing import cast
 
         vars_dict = variables or {}
@@ -176,7 +178,7 @@ class LinearClient:
         # Fallback: try to use any public execute method
         execute_method = getattr(self._client, "execute", None)
         if execute_method:
-            typed_execute = cast(Callable[..., dict[str, Any]], execute_method)
+            typed_execute = cast("Callable[..., dict[str, Any]]", execute_method)
             return typed_execute(query, vars_dict)
 
         raise RuntimeError(

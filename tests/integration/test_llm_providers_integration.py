@@ -89,7 +89,11 @@ def _fake_async_openai_client(chunks: list[Any]) -> Any:
 def _isolate_provider_registration() -> Any:
     """Each test re-imports the provider modules under a fresh stubbed SDK,
     so we evict cached modules and registry entries around every test (same
-    pattern as the per-provider unit tests)."""
+    pattern as the per-provider unit tests). Originals are restored after
+    each test so subsequent tests on the same xdist worker still see them."""
+    originals = {
+        name: ProviderRegistry._providers.get(name) for name in ("claude", "openai")
+    }
     for mod in (
         "llm_providers.providers.claude",
         "llm_providers.providers.openai",
@@ -105,6 +109,9 @@ def _isolate_provider_registration() -> Any:
         sys.modules.pop(mod, None)
     ProviderRegistry._providers.pop("claude", None)
     ProviderRegistry._providers.pop("openai", None)
+    for name, original in originals.items():
+        if original is not None:
+            ProviderRegistry._providers[name] = original
 
 
 # ---------------------------------------------------------------------------

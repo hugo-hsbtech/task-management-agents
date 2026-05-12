@@ -438,4 +438,8 @@ class LinearTools:
             Dict mapping tool name to handler function.
             Useful for providers that need explicit handler registration.
         """
-        return {spec.name: spec.handler for spec in self.get_tool_specs()}
+        return {
+            spec.name: spec.handler
+            for spec in self.get_tool_specs()
+            if spec.handler is not None
+        }

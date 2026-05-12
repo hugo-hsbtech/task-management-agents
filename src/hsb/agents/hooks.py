@@ -14,8 +14,25 @@ import json
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from claude_agent_sdk import HookMatcher
+from claude_agent_sdk.types import (
+    AsyncHookJSONOutput,
+    HookContext,
+    HookEvent,
+    NotificationHookInput,
+    PermissionRequestHookInput,
+    PostToolUseFailureHookInput,
+    PostToolUseHookInput,
+    PreCompactHookInput,
+    PreToolUseHookInput,
+    StopHookInput,
+    SubagentStartHookInput,
+    SubagentStopHookInput,
+    SyncHookJSONOutput,
+    UserPromptSubmitHookInput,
+)
 
 # Module-level retry counter; keyed by tool_use_id (or tool_name as fallback)
 _retry_counts: dict[str, int] = {}
@@ -24,12 +41,29 @@ BASE_DELAY_SECONDS = 1.0
 AUDIT_LOG_PATH = ".claude/linear_audit.log"
 
 
-async def linear_retry_hook(input_data: dict, tool_use_id: str | None, context) -> dict:
+_HookInput = (
+    PreToolUseHookInput
+    | PostToolUseHookInput
+    | PostToolUseFailureHookInput
+    | UserPromptSubmitHookInput
+    | StopHookInput
+    | SubagentStopHookInput
+    | PreCompactHookInput
+    | NotificationHookInput
+    | SubagentStartHookInput
+    | PermissionRequestHookInput
+)
+
+
+async def linear_retry_hook(
+    input_data: _HookInput, tool_use_id: str | None, context: HookContext
+) -> AsyncHookJSONOutput | SyncHookJSONOutput:
     """PostToolUseFailure: exponential backoff for mcp__linear__* failures.
 
     Implements LINR-05 retry semantics: delays 1s, 2s, 4s; cap at 3 attempts.
     """
-    tool_name = input_data.get("tool_name", "")
+    raw: dict[str, Any] = cast("dict[str, Any]", input_data)
+    tool_name: str = raw.get("tool_name", "")
     if not tool_name.startswith("mcp__linear__"):
         return {}
 
@@ -57,14 +91,17 @@ async def linear_retry_hook(input_data: dict, tool_use_id: str | None, context) 
     }
 
 
-async def linear_audit_hook(input_data: dict, tool_use_id: str | None, context) -> dict:
+async def linear_audit_hook(
+    input_data: _HookInput, tool_use_id: str | None, context: HookContext
+) -> AsyncHookJSONOutput | SyncHookJSONOutput:
     """PostToolUse: append a JSON line to .claude/linear_audit.log per Linear call.
 
     Logs tool name + truncated output. Clears retry counter on success.
     Per LINR-05, the agent's system prompt is responsible for ensuring updatedAt
     is captured pre/post-write — the audit log records whatever the tool returned.
     """
-    tool_name = input_data.get("tool_name", "")
+    raw: dict[str, Any] = cast("dict[str, Any]", input_data)
+    tool_name: str = raw.get("tool_name", "")
     if not tool_name.startswith("mcp__linear__"):
         return {}
 
@@ -73,7 +110,7 @@ async def linear_audit_hook(input_data: dict, tool_use_id: str | None, context) 
 
     Path(AUDIT_LOG_PATH).parent.mkdir(parents=True, exist_ok=True)
 
-    output = input_data.get("tool_output", {})
+    output = raw.get("tool_output", {})
     # Truncate large outputs so the audit log stays bounded
     output_repr = (
         json.dumps(output)[:2000] if not isinstance(output, str) else output[:2000]
@@ -92,13 +129,14 @@ async def linear_audit_hook(input_data: dict, tool_use_id: str | None, context) 
 
 
 async def pre_compact_handler(
-    input_data: dict, tool_use_id: str | None, context
-) -> dict:
+    input_data: _HookInput, tool_use_id: str | None, context: HookContext
+) -> AsyncHookJSONOutput | SyncHookJSONOutput:
     """PreCompact: archive transcript and instruct agent to re-read Linear state.
 
     Prevents Pitfall 6 (silent context loss during auto-compaction).
     """
-    transcript_path = input_data.get("transcript_path")
+    raw: dict[str, Any] = cast("dict[str, Any]", input_data)
+    transcript_path: str | None = raw.get("transcript_path")
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     archive_path = f".claude/compaction_archive_{ts}.jsonl"
     if transcript_path:
@@ -114,16 +152,17 @@ async def pre_compact_handler(
 
 
 async def enforce_list_filters(
-    input_data: dict, tool_use_id: str | None, context
-) -> dict:
+    input_data: _HookInput, tool_use_id: str | None, context: HookContext
+) -> AsyncHookJSONOutput | SyncHookJSONOutput:
     """PreToolUse: block mcp__linear__list_issues without teamId or projectId.
 
     Prevents Pitfall 4 (context overflow on unfiltered list). The hook returns
     a deny decision, forcing the agent to add a filter and retry.
     """
-    if input_data.get("tool_name") != "mcp__linear__list_issues":
+    raw: dict[str, Any] = cast("dict[str, Any]", input_data)
+    if raw.get("tool_name") != "mcp__linear__list_issues":
         return {}
-    tool_input = input_data.get("tool_input", {})
+    tool_input: dict[str, Any] = raw.get("tool_input", {})
     if not tool_input.get("teamId") and not tool_input.get("projectId"):
         return {
             "hookSpecificOutput": {
@@ -139,7 +178,7 @@ async def enforce_list_filters(
 
 
 # Hook bundle wired into ClaudeAgentOptions(hooks=...)
-LINEAR_HOOKS = {
+LINEAR_HOOKS: dict[HookEvent, list[HookMatcher]] = {
     "PostToolUseFailure": [
         HookMatcher(matcher="^mcp__linear__", hooks=[linear_retry_hook])
     ],

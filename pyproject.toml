@@ -69,6 +69,9 @@ strict = true
 warn_return_any = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+# pydantic.mypy teaches mypy about Field(alias=...) + populate_by_name so
+# constructors accept both the python attribute name and the alias.
+plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

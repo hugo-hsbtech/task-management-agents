@@ -1,11 +1,13 @@
 """Tests for the runtime-agnostic Protocol surface."""
+
 from __future__ import annotations
 
 import dataclasses
-import pytest
 from typing import get_type_hints
 
-from hsb.runtime.protocol import AgentOptions, Runtime, Message
+import pytest
+
+from hsb.runtime.protocol import AgentOptions, Message, Runtime
 
 
 def test_agent_options_is_frozen_dataclass():

@@ -1,4 +1,5 @@
 """Tests for Codex-side OAuth and MCP verification helpers."""
+
 from __future__ import annotations
 
 import pytest

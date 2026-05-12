@@ -3,7 +3,7 @@
 import json
 
 
-def extract_json_object(text: str) -> dict:
+def extract_json_object(text: str) -> dict[str, object]:
     """Extract the first JSON object from a string.
 
     Finds the outermost ``{...}`` block and parses it.
@@ -32,5 +32,6 @@ def extract_json_object(text: str) -> dict:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return json.loads(text[start : i + 1])
+                result: dict[str, object] = json.loads(text[start : i + 1])
+                return result
     raise ValueError("No complete JSON object found in string")

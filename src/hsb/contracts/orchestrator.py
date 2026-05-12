@@ -30,9 +30,9 @@ class WorkItemOrchInput(BaseModel):
       pr_link, etc.) required by downstream skills.
     """
 
-    work_item: dict
-    epic_context: dict
-    linear_state: dict
+    work_item: dict[str, object]
+    epic_context: dict[str, object]
+    linear_state: dict[str, object]
 
     model_config = {"extra": "forbid"}
 
@@ -73,7 +73,7 @@ class WorkItemOrchOutput(BaseModel):
         ]
         | None
     ) = None
-    handoff_payload: dict = Field(default_factory=dict)
+    handoff_payload: dict[str, object] = Field(default_factory=dict)
     lifecycle_summary: str  # WORC-05 — posted to Linear as a comment after each cycle
 
     model_config = {"extra": "forbid"}

@@ -30,7 +30,7 @@ def backlog_create(
     stack: list[str] = typer.Option(
         None, "--stack", help="Repeatable: --stack python --stack typer"
     ),
-):
+) -> None:
     """Create Linear EPIC -> Story -> Task hierarchy from plan.md (BKPK-01..05)."""
     input = BacklogInput(
         plan_source=plan,

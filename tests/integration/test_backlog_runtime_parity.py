@@ -6,6 +6,7 @@ Covers three assertions:
 2. Codex runtime path yields a valid BacklogOutput (same fixture JSON).
 3. Pydantic retry (up to 3 attempts) never silently swaps runtimes.
 """
+
 from __future__ import annotations
 
 import json
@@ -165,9 +166,7 @@ async def test_codex_path_yields_valid_backlog_output(
         yield fake_event
 
     fake_thread = MagicMock()
-    fake_thread.run_streamed = AsyncMock(
-        return_value=SimpleNamespace(events=_events())
-    )
+    fake_thread.run_streamed = AsyncMock(return_value=SimpleNamespace(events=_events()))
     fake_codex = MagicMock()
     fake_codex.start_thread = MagicMock(return_value=fake_thread)
 
@@ -215,9 +214,7 @@ async def test_pydantic_retry_does_not_swap_runtimes(monkeypatch, backlog_input)
             yield good_result
 
     with (
-        patch(
-            "hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query
-        ) as q,
+        patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query) as q,
         patch("hsb.runtime.codex.CodexRuntime") as codex_cls,
     ):
         out = await _run_backlog_agent_async(backlog_input)
