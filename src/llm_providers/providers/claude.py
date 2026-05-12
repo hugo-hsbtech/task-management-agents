@@ -197,9 +197,11 @@ class ClaudeProvider(BaseProvider):
                         f"McpServerSpec {s.name!r}: transport='stdio' requires "
                         "command=(...)."
                     )
-                # Convert tuple/list to space-separated string
-                cmd = s.command if isinstance(s.command, str) else " ".join(s.command)
-                entry = {"transport": "stdio", "command": cmd}
+                entry = {
+                    "transport": "stdio",
+                    "command": s.command[0],
+                    "args": list(s.command[1:]),
+                }
                 if s.env:
                     entry["env"] = dict(s.env)
                 out[s.name] = entry

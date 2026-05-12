@@ -100,8 +100,11 @@ class LinearClient:
             else:
                 linear_project = self._client.projects.get(project_id)
 
+            if linear_project is None:
+                raise RuntimeError(f"Project {project_id!r} not found.")
+
             # Post project update if message provided
-            if input_data.update_message and linear_project:
+            if input_data.update_message:
                 self._post_project_update(project_id, input_data.update_message)
 
             return Project.from_linear(linear_project)
