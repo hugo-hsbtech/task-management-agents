@@ -9,6 +9,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.ruff_cache/
 .pytest_cache/
 .claude/session_cache.json
 .claude/linear_audit.log
@@ -20,3 +21,6 @@ build/
 
 # Jupyter notebook checkpoints — local-only, never commit
 .ipynb_checkpoints/
+
+.coverage/
+.hypothesis/
