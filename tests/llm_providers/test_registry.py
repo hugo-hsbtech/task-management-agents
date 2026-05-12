@@ -95,7 +95,7 @@ def test_register_rejects_name_mismatch():
 def test_build_constructs_with_auth(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
     _make_provider("foo")
-    p = ProviderRegistry.build("foo", auth=ApiKey())
+    p = ProviderRegistry.build("foo", auth=ApiKey.default())
     assert p.name == "foo"
 
 
