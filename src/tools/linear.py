@@ -438,16 +438,4 @@ class LinearTools:
             Dict mapping tool name to handler function.
             Useful for providers that need explicit handler registration.
         """
-        return {
-            "linear_create_issue": self._handle_create_issue,
-            "linear_update_issue": self._handle_update_issue,
-            "linear_delete_issue": self._handle_delete_issue,
-            "linear_add_label": self._handle_add_label,
-            "linear_list_teams": self._handle_list_teams,
-            "linear_get_team": self._handle_get_team,
-            "linear_list_projects": self._handle_list_projects,
-            "linear_get_project": self._handle_get_project,
-            "linear_update_project": self._handle_update_project,
-            "linear_list_issues": self._handle_list_issues,
-            "linear_get_issue": self._handle_get_issue,
-        }
+        return {spec.name: spec.handler for spec in self.get_tool_specs()}

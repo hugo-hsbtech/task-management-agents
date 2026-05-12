@@ -44,7 +44,7 @@ def client(mock_linear_api: MagicMock) -> LinearClient:
 
 def test_client_initialization_requires_api_key() -> None:
     """LinearClient should require API key."""
-    with pytest.raises(RuntimeError, match="Linear API key required"):
+    with pytest.raises(ValueError, match="Linear API key required"):
         LinearClient(api_key="")
 
 

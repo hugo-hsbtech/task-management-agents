@@ -26,14 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 class LinearClient:
-    """Wrapper around linear-api package with typed responses.
-
-    This is a low-level client. For high-level operations, use LinearService.
-    """
+    """Wrapper around linear-api package with typed responses."""
 
     def __init__(self, api_key: str) -> None:
         if not api_key:
-            raise RuntimeError(
+            raise ValueError(
                 "Linear API key required. Get API key from: https://linear.app/settings/api"
             )
         self._client = BaseLinearClient(api_key=api_key)
