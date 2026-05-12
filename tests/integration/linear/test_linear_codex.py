@@ -23,7 +23,13 @@ import os
 import pytest
 
 from linear.agent import run_validated_linear_agent
-from linear.contracts import LinearInput, LinearOperation, Plan, Project
+from linear.contracts import (
+    LinearInput,
+    LinearItemInput,
+    LinearItemType,
+    LinearOperation,
+    Project,
+)
 from linear.prompts import SYSTEM_PROMPT
 from llm_providers import McpServerSpec, ProviderRegistry
 from llm_providers.prompt import TextSystemPrompt
@@ -37,15 +43,18 @@ pytestmark = [pytest.mark.integration]
 # Constants
 # ---------------------------------------------------------------------------
 
-SAMPLE_PLAN_CONTENT = b"""# Feature: Linear Agent Integration Test (Codex)
-
-## Goal
-Verify that the Linear Agent can create tasks in Linear via MCP using Codex backend.
-
-## Tasks
-- Create a test task to verify Codex connectivity
-- Confirm issue is visible in the test project
-"""
+SAMPLE_ITEMS = [
+    LinearItemInput(
+        type=LinearItemType.epic,
+        title="[Integration Test] Linear Agent Connectivity (Codex)",
+        description="Verify the Linear Agent can persist items via MCP using Codex backend.",
+    ),
+    LinearItemInput(
+        type=LinearItemType.task,
+        title="Create a test task via Codex agent",
+        description="Confirm the agent creates issues visible in the test project.",
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -57,14 +66,6 @@ Verify that the Linear Agent can create tasks in Linear via MCP using Codex back
 def test_project() -> Project:
     name = os.environ.get("LINEAR_TEST_PROJECT_NAME", "Linear Integration Tests")
     return Project(name=name)
-
-
-@pytest.fixture(scope="module")
-def sample_plan() -> Plan:
-    return Plan(
-        content=SAMPLE_PLAN_CONTENT,
-        stacks=["python", "pytest"],
-    )
 
 
 @pytest.fixture(scope="module")
@@ -109,11 +110,11 @@ def codex_options() -> ProviderOptions:
 
 
 @pytest.fixture
-def create_input(test_project: Project, sample_plan: Plan) -> LinearInput:
+def create_input(test_project: Project) -> LinearInput:
     return LinearInput(
         operation=LinearOperation.create,
         project=test_project,
-        plan=sample_plan,
+        items=SAMPLE_ITEMS,
     )
 
 

@@ -72,10 +72,16 @@ async def run_validated_linear_agent(
 ) -> LinearOutput:
     """Execute a Linear operation with retry and Pydantic output validation."""
 
+    items_json = json.dumps(
+        [item.model_dump(exclude_none=True) for item in input.items],
+        indent=2,
+    )
+    project_ref = str(input.project.url or input.project.name)
     prompt = OPERATION_PROMPT.format(
         operation=input.operation.value,
-        content=input.plan.content.decode(),
-        stacks=", ".join(input.plan.stacks) or "not specified",
+        project=project_ref,
+        item_count=len(input.items),
+        items_json=items_json,
     )
 
     last_error: Exception | None = None

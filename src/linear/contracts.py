@@ -12,14 +12,23 @@ class LinearOperation(StrEnum):
     read = "read"
     link = "link"
     comment = "comment"
-    create_subtasks = "create_subtasks"
 
 
-class Plan(BaseModel):
-    """The plan to be persisted into Linear."""
+class LinearItemType(StrEnum):
+    epic = "epic"
+    user_story = "user_story"
+    task = "task"
+    subtask = "subtask"
 
-    content: bytes
-    stacks: list[str] = Field(default_factory=list)
+
+class LinearItemInput(BaseModel):
+    """A pre-planned work item to be created or updated in Linear."""
+
+    id: str | None = Field(None, pattern=r"^LIN-\d+$")
+    type: LinearItemType
+    title: str
+    description: str | None = None
+    parent_id: str | None = Field(None, pattern=r"^LIN-\d+$")
 
     model_config = {"extra": "forbid"}
 
@@ -38,20 +47,27 @@ class Project(BaseModel):
 
 
 class LinearInput(BaseModel):
-    """Input contract for the Linear System of Record Agent."""
+    """Input contract for the Linear System of Record Agent.
+
+    The caller is responsible for decomposing the plan into epics, user
+    stories, tasks, and subtasks before calling the agent. The agent
+    only persists the pre-planned items into Linear.
+    """
 
     operation: LinearOperation
     project: Project
-    plan: Plan
+    items: list[LinearItemInput] = Field(
+        ..., min_length=1, description="Pre-planned work items to persist."
+    )
 
     model_config = {"extra": "forbid"}
 
 
 class LinearEntity(BaseModel):
-    """A Linear entity returned after a create/update operation."""
+    """A Linear entity after it has been persisted (id and url are known)."""
 
     id: str = Field(..., pattern=r"^LIN-\d+$")
-    type: Literal["epic", "user_story", "task", "subtask"]
+    type: LinearItemType
     url: str = Field(..., pattern=r"^https://linear\.app/")
 
     model_config = {"extra": "forbid"}
