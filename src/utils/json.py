@@ -13,8 +13,21 @@ def extract_json_object(text: str) -> dict:
     """
     start = text.index("{")
     depth = 0
+    in_string = False
+    escape = False
     for i, ch in enumerate(text[start:], start):
-        if ch == "{":
+        if escape:
+            escape = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
             depth += 1
         elif ch == "}":
             depth -= 1

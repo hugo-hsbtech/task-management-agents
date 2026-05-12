@@ -192,10 +192,10 @@ class ClaudeProvider(BaseProvider):
                     entry["env"] = dict(s.env)
                 out[s.name] = entry
             elif s.transport == "stdio":
-                if s.command is None:
+                if not s.command:
                     raise TranslationError(
                         f"McpServerSpec {s.name!r}: transport='stdio' requires "
-                        "command=(...)."
+                        "a non-empty command=(...)."
                     )
                 entry = {
                     "transport": "stdio",

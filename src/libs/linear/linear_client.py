@@ -182,13 +182,22 @@ class LinearClient:
 
     def create_issue(self, input_data: IssueInput) -> Issue:
         """Create a new Linear issue."""
-        # Map our schema to linear_api input
-        # LinearIssueInput uses teamName and projectName
+        # LinearIssueInput expects human-readable teamName / projectName, not
+        # IDs — the linear-api package resolves names → IDs internally. Our
+        # IssueInput schema carries IDs, so we resolve them here.
+        team = self.get_team(input_data.team_id)
+        if team is None:
+            raise RuntimeError(f"Team {input_data.team_id!r} not found.")
+
+        project = self.get_project(input_data.project_id)
+        if project is None:
+            raise RuntimeError(f"Project {input_data.project_id!r} not found.")
+
         issue_input = LinearIssueInput(
             title=input_data.title,
             description=input_data.description,
-            teamName=input_data.team_id,
-            projectName=input_data.project_id,
+            teamName=team.name,
+            projectName=project.name,
             priority=_map_priority_to_api(input_data.priority),
             parentId=input_data.parent_id,
         )

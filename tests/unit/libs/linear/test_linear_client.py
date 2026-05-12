@@ -369,6 +369,21 @@ def test_get_issue_not_found(client: LinearClient) -> None:
 
 def test_create_issue(client: LinearClient) -> None:
     """create_issue should create and return Issue."""
+    mock_team = MagicMock()
+    mock_team.id = "team-123"
+    mock_team.name = "Engineering"
+    mock_team.key = "ENG"
+    mock_team.description = None
+    client._client.teams.get.return_value = mock_team
+
+    mock_project = MagicMock()
+    mock_project.id = "proj-456"
+    mock_project.name = "Roadmap"
+    mock_project.description = None
+    mock_project.team_id = "team-123"
+    mock_project.state = None
+    client._client.projects.get.return_value = mock_project
+
     mock_issue = MagicMock()
     mock_issue.id = "new-issue-id"
     mock_issue.identifier = "ENG-99"
@@ -398,6 +413,10 @@ def test_create_issue(client: LinearClient) -> None:
     assert issue.id == "new-issue-id"
     assert issue.identifier == "ENG-99"
     client._client.issues.create.assert_called_once()
+    # IDs must be resolved to human-readable names before calling linear-api
+    sent_issue = client._client.issues.create.call_args.kwargs["issue"]
+    assert sent_issue.teamName == "Engineering"
+    assert sent_issue.projectName == "Roadmap"
 
 
 def test_update_issue(client: LinearClient) -> None:
