@@ -1,0 +1,298 @@
+"""Unit tests for the provider-agnostic backlog agent."""
+
+from __future__ import annotations
+
+import json
+from typing import TYPE_CHECKING, Any
+
+import pytest
+
+import backlog.agent as backlog_agent
+from backlog.agent import (
+    BacklogAgent,
+    build_provider,
+    run_backlog_agent,
+    run_backlog_agent_async,
+)
+from backlog.contracts import BacklogInput
+from backlog.platforms import LinearPlatform
+from llm_providers.auth.api_key import ApiKey
+from llm_providers.auth.oauth2_cli import OAuth2CliToken
+from llm_providers.protocol import Message, ProviderOptions
+from llm_providers.registry import ProviderRegistry
+from llm_providers.tools import ToolPolicy
+from settings.provider import (
+    ApiKeyAuth,
+    OAuth2ADCAuth,
+    OAuth2CliAuth,
+    ProviderName,
+    ProviderSettings,
+)
+
+EMPTY_TOOL_POLICY = ToolPolicy()
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+
+class FakeProvider:
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = responses
+        self.prompts: list[str] = []
+        self.options: list[ProviderOptions] = []
+
+    async def query(
+        self,
+        prompt: str,
+        options: ProviderOptions,
+    ) -> AsyncIterator[Message]:
+        self.prompts.append(prompt)
+        self.options.append(options)
+        yield Message(text=self.responses.pop(0), is_final=True)
+
+
+@pytest.fixture
+def backlog_input() -> BacklogInput:
+    return BacklogInput(
+        plan_content="# Plan\nBuild login.",
+        stacks=["python"],
+        platform=LinearPlatform(team_id="team-1", project_id="project-1"),
+        context={"repository": "repo"},
+    )
+
+
+def provider_settings(model: str = "gpt-4o") -> ProviderSettings:
+    return ProviderSettings(
+        name=ProviderName.openai,
+        model=model,
+        auth=ApiKeyAuth(key="sk-test"),
+    )
+
+
+def output_json(*, include_platform_fields: bool = False) -> str:
+    fields: dict[str, Any] = {
+        "title": "[EPIC] Login",
+        "description": "Build login.",
+        "priority": 2,
+    }
+    if include_platform_fields:
+        fields["platform_fields"] = {"team_id": "custom-team"}
+    return json.dumps(
+        {
+            "platform": {
+                "team_id": "team-1",
+                "project_id": "project-1",
+            },
+            "issues": [
+                {
+                    "issue_type": "epic",
+                    "fields": fields,
+                }
+            ],
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_uses_provider_settings_model_and_validates_output(
+    backlog_input: BacklogInput,
+) -> None:
+    provider = FakeProvider([output_json()])
+
+    output = await run_backlog_agent_async(
+        backlog_input,
+        provider_settings=provider_settings(model="o4-mini"),
+        provider=provider,  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+    )
+
+    assert output.platform.platform_name == "linear"
+    assert output.issues[0].fields.platform_fields == {
+        "team_id": "team-1",
+        "project_id": "project-1",
+    }
+    assert provider.options[0].model == "o4-mini"
+    assert provider.options[0].output_schema is not None
+
+
+@pytest.mark.asyncio
+async def test_backlog_agent_class_controls_state(
+    backlog_input: BacklogInput,
+) -> None:
+    provider = FakeProvider([output_json()])
+    agent = BacklogAgent(
+        provider_settings=provider_settings(model="o4-mini"),
+        provider=provider,  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+        max_validation_retries=1,
+        max_turns=7,
+    )
+
+    output = await agent.run(backlog_input)
+
+    assert agent.provider is provider
+    assert agent.tool_policy is EMPTY_TOOL_POLICY
+    assert provider.options[0].max_turns == 7
+    assert output.platform.team_id == "team-1"
+
+
+@pytest.mark.asyncio
+async def test_agent_retries_after_invalid_provider_output(
+    backlog_input: BacklogInput,
+) -> None:
+    provider = FakeProvider(["not json", output_json()])
+
+    output = await run_backlog_agent_async(
+        backlog_input,
+        provider_settings=provider_settings(),
+        provider=provider,  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+    )
+
+    assert len(provider.prompts) == 2
+    assert output.issues[0].fields.title == "[EPIC] Login"
+
+
+@pytest.mark.asyncio
+async def test_agent_retries_after_empty_final_message(
+    backlog_input: BacklogInput,
+) -> None:
+    provider = FakeProvider(["", output_json()])
+
+    output = await run_backlog_agent_async(
+        backlog_input,
+        provider_settings=provider_settings(),
+        provider=provider,  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+    )
+
+    assert len(provider.prompts) == 2
+    assert output.issues[0].fields.title == "[EPIC] Login"
+
+
+@pytest.mark.asyncio
+async def test_agent_raises_after_exhausted_validation_retries(
+    backlog_input: BacklogInput,
+) -> None:
+    provider = FakeProvider(["not json", "still not json", "nope"])
+
+    with pytest.raises(ValueError, match="failed validation after 3 attempts"):
+        await run_backlog_agent_async(
+            backlog_input,
+            provider_settings=provider_settings(),
+            provider=provider,  # type: ignore[arg-type]
+            tool_policy=EMPTY_TOOL_POLICY,
+        )
+
+    assert len(provider.prompts) == 3
+
+
+@pytest.mark.asyncio
+async def test_agent_preserves_provider_platform_fields_over_defaults(
+    backlog_input: BacklogInput,
+) -> None:
+    provider = FakeProvider([output_json(include_platform_fields=True)])
+
+    output = await run_backlog_agent_async(
+        backlog_input,
+        provider_settings=provider_settings(),
+        provider=provider,  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+    )
+
+    assert output.issues[0].fields.platform_fields == {
+        "team_id": "custom-team",
+        "project_id": "project-1",
+    }
+
+
+def test_run_backlog_agent_sync_wrapper_returns_output(
+    backlog_input: BacklogInput,
+) -> None:
+    provider = FakeProvider([output_json()])
+
+    output = run_backlog_agent(
+        backlog_input,
+        provider_settings=provider_settings(),
+        provider=provider,  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+    )
+
+    assert output.issues[0].fields.title == "[EPIC] Login"
+
+
+def test_build_provider_uses_provider_settings_without_direct_env_access(
+    monkeypatch,
+) -> None:
+    class TestProvider:
+        def __init__(self, auth: ApiKey) -> None:
+            self.auth = auth
+
+    calls: list[tuple[str, ApiKey]] = []
+
+    def fake_build(name: str, *, auth: ApiKey) -> TestProvider:
+        calls.append((name, auth))
+        return TestProvider(auth)
+
+    monkeypatch.setattr(ProviderRegistry, "build", fake_build)
+    configured = provider_settings()
+
+    provider = build_provider(configured)
+
+    assert isinstance(provider, TestProvider)
+    assert calls[0][0] == "openai"
+    assert provider.auth.resolve().payload["api_key"] == "sk-test"
+
+
+def test_build_provider_uses_settings_provider_when_not_explicit(
+    monkeypatch,
+) -> None:
+    class TestProvider:
+        def __init__(self, auth: ApiKey) -> None:
+            self.auth = auth
+
+    def fake_build(name: str, *, auth: ApiKey) -> TestProvider:
+        assert name == "openai"
+        return TestProvider(auth)
+
+    monkeypatch.setattr(ProviderRegistry, "build", fake_build)
+    monkeypatch.setattr(
+        backlog_agent,
+        "settings",
+        type("FakeSettings", (), {"provider": provider_settings()})(),
+    )
+
+    provider = build_provider()
+
+    assert isinstance(provider, TestProvider)
+
+
+def test_build_provider_accepts_oauth2_cli_auth(monkeypatch) -> None:
+    captured: list[OAuth2CliToken] = []
+
+    def fake_build(name: str, *, auth: OAuth2CliToken) -> object:
+        captured.append(auth)
+        return object()
+
+    monkeypatch.setattr(ProviderRegistry, "build", fake_build)
+    configured = ProviderSettings(
+        name=ProviderName.claude,
+        model="claude-haiku-4-5",
+        auth=OAuth2CliAuth(env_var="TOKEN"),
+    )
+
+    build_provider(configured)
+
+    assert isinstance(captured[0], OAuth2CliToken)
+
+
+def test_build_provider_rejects_unwired_oauth2_adc_auth() -> None:
+    configured = ProviderSettings(
+        name=ProviderName.gemini,
+        model="gemini-2.5-pro",
+        auth=OAuth2ADCAuth(),
+        gemini={"project_id": "project-1"},
+    )
+
+    with pytest.raises(ValueError, match="oauth2_adc auth is not wired"):
+        build_provider(configured)

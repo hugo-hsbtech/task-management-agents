@@ -10,10 +10,10 @@ Covers:
 
 Uses spec-bound MagicMocks matching the pattern from test_backlog_runtime_parity.py.
 """
+
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -89,9 +89,7 @@ def _make_system_message(*, subtype: str, data: dict) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_system_message_init_with_failed_mcp_raises(
-    monkeypatch, backlog_input
-):
+async def test_system_message_init_with_failed_mcp_raises(monkeypatch, backlog_input):
     """Lines 99-106: SystemMessage subtype='init' with a non-connected MCP server
     must raise RuntimeError matching 'Linear MCP failed'."""
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "claude")
@@ -108,9 +106,11 @@ async def test_system_message_init_with_failed_mcp_raises(
     async def fake_query(prompt, options):
         yield sys_msg
 
-    with patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query):
-        with pytest.raises(RuntimeError, match=r"Linear MCP failed"):
-            await _run_backlog_agent_async(backlog_input)
+    with (
+        patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query),
+        pytest.raises(RuntimeError, match=r"Linear MCP failed"),
+    ):
+        await _run_backlog_agent_async(backlog_input)
 
 
 # ---------------------------------------------------------------------------
@@ -170,9 +170,11 @@ async def test_result_message_failure_subtype_raises(monkeypatch, backlog_input)
     async def fake_query(prompt, options):
         yield result_msg
 
-    with patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query):
-        with pytest.raises(RuntimeError, match=r"Backlog Agent failed"):
-            await _run_backlog_agent_async(backlog_input)
+    with (
+        patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query),
+        pytest.raises(RuntimeError, match=r"Backlog Agent failed"),
+    ):
+        await _run_backlog_agent_async(backlog_input)
 
 
 # ---------------------------------------------------------------------------
@@ -262,9 +264,11 @@ async def test_raises_after_exhausted_retries_with_validation_failure(
     async def fake_query(prompt, options):
         yield bad_result
 
-    with patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query):
-        with pytest.raises(ValueError, match=r"failed validation after 3 attempts"):
-            await _run_backlog_agent_async(backlog_input)
+    with (
+        patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query),
+        pytest.raises(ValueError, match=r"failed validation after 3 attempts"),
+    ):
+        await _run_backlog_agent_async(backlog_input)
 
 
 # ---------------------------------------------------------------------------
