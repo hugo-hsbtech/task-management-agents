@@ -251,7 +251,10 @@ class LinearTools:
     async def _handle_create_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_create_issue tool."""
         issue_input = IssueInput.model_validate(obj=input_data)
-        issue = self._client.create_issue(issue_input)
+        try:
+            issue = self._client.create_issue(issue_input)
+        except RuntimeError as e:
+            return {"error": str(e)}
         return issue.model_dump(mode="json")
 
     async def _handle_update_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -268,7 +271,10 @@ class LinearTools:
     async def _handle_add_label(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_add_label tool."""
         label_input = IssueLabelInput.model_validate(obj=input_data)
-        issue = self._client.add_label_to_issue(label_input)
+        try:
+            issue = self._client.add_label_to_issue(label_input)
+        except RuntimeError as e:
+            return {"error": str(e)}
         return issue.model_dump(mode="json")
 
     async def _handle_list_teams(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -303,7 +309,12 @@ class LinearTools:
     ) -> dict[str, Any]:
         """Handler for linear_update_project tool."""
         update_input = ProjectUpdateInput.model_validate(obj=input_data)
-        project = self._client.update_project(input_data["project_id"], update_input)
+        try:
+            project = self._client.update_project(
+                input_data["project_id"], update_input
+            )
+        except RuntimeError as e:
+            return {"error": str(e)}
         return project.model_dump(mode="json")
 
     async def _handle_list_issues(self, input_data: dict[str, Any]) -> dict[str, Any]:
