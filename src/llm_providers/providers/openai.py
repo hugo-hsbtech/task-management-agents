@@ -261,7 +261,9 @@ class _CodexBackend(_Backend):
         if options.cwd:
             cmd.extend(["--workdir", str(options.cwd)])
 
-        # Run Codex as subprocess
+        # Run Codex as subprocess.
+        # NOTE: max_turns is not enforced here; the subprocess CLI has no
+        # per-turn event stream, so turn tracking is unavailable on this path.
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.PIPE,
@@ -273,14 +275,24 @@ class _CodexBackend(_Backend):
             },
         )
 
-        stdout, stderr = await proc.communicate(input=prompt.encode())
+        proc.stdin.write(prompt.encode())
+        proc.stdin.close()
+
+        buffer: list[str] = []
+        async for line_bytes in proc.stdout:
+            chunk = line_bytes.decode()
+            if chunk:
+                buffer.append(chunk)
+                yield Message(text=chunk, is_final=False, raw=None)
+
+        stderr_data = await proc.stderr.read()
+        await proc.wait()
 
         if proc.returncode != 0:
-            err_text = stderr.decode()[:500]
+            err_text = stderr_data.decode()[:500]
             raise RuntimeError(f"Codex CLI failed (exit {proc.returncode}): {err_text}")
 
-        output = stdout.decode()
-        yield Message(text=output, is_final=True, raw=None)
+        yield Message(text="".join(buffer), is_final=True, raw=None)
 
     async def _query_legacy_api(
         self, prompt: str, options: ProviderOptions, approval: Any

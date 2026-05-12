@@ -147,6 +147,8 @@ def test_translate_mcp_returns_dict(provider):
     out = provider._translate_mcp((spec,))
     assert "linear" in out
     assert out["linear"]["transport"] == "stdio"
+    assert out["linear"]["command"] == "npx"
+    assert out["linear"]["args"] == ["linear-mcp"]
 
 
 def test_translate_mcp_rejects_stdio_without_command(provider):

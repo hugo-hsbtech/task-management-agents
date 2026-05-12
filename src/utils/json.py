@@ -12,5 +12,25 @@ def extract_json_object(text: str) -> dict:
     Raises ``json.JSONDecodeError`` if the extracted block is not valid JSON.
     """
     start = text.index("{")
-    end = text.rindex("}") + 1
-    return json.loads(text[start:end])
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text[start:], start):
+        if escape:
+            escape = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start : i + 1])
+    raise ValueError("No complete JSON object found in string")

@@ -52,8 +52,8 @@ def _make_issue_mock(
     created_at=None,
     updated_at=None,
 ) -> MagicMock:
-    """Build a MagicMock with the attribute shape of linear_api.LinearIssue."""
-    m = MagicMock()
+    """Build a MagicMock with snake_case attributes matching _field() lookup order."""
+    m = MagicMock(spec=[])
     m.id = id
     m.identifier = identifier
     m.title = title
@@ -61,22 +61,12 @@ def _make_issue_mock(
     m.state = state
     # Real LinearIssue.priority is a LinearPriority enum, not an int.
     m.priority = _PRIORITY_INT_TO_LINEAR.get(priority, LinearPriority.MEDIUM)
-    if team_id is None:
-        m.team = None
-    else:
-        team = MagicMock()
-        team.id = team_id
-        m.team = team
-    if project_id is None:
-        m.project = None
-    else:
-        project = MagicMock()
-        project.id = project_id
-        m.project = project
-    m.parentId = parent_id
+    m.team_id = team_id
+    m.project_id = project_id
+    m.parent_id = parent_id
     m.url = url
-    m.createdAt = created_at
-    m.updatedAt = updated_at
+    m.created_at = created_at
+    m.updated_at = updated_at
     return m
 
 
@@ -134,7 +124,7 @@ def _make_state_mock(
     type: str = "backlog",
 ) -> MagicMock:
     """Build a MagicMock matching linear_api.LinearState (WorkflowState)."""
-    m = MagicMock()
+    m = MagicMock(spec=[])
     m.id = id
     m.name = name
     m.color = color
@@ -167,7 +157,7 @@ def client(mock_linear_api: MagicMock) -> LinearClient:
 
 def test_client_initialization_requires_api_key() -> None:
     """LinearClient should require API key."""
-    with pytest.raises(RuntimeError, match="Linear API key required"):
+    with pytest.raises(ValueError, match="Linear API key required"):
         LinearClient(api_key="")
 
 
@@ -219,6 +209,17 @@ def test_list_teams_empty(client: LinearClient) -> None:
     teams = client.list_teams()
 
     assert teams == []
+
+
+def test_list_teams_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """list_teams must wrap underlying failures so handlers can return
+    a structured error dict."""
+    client._client.teams.get_all.side_effect = Exception("API boom")
+
+    with pytest.raises(RuntimeError, match="Failed to list teams"):
+        client.list_teams()
 
 
 def test_get_team_success(client: LinearClient) -> None:
@@ -318,6 +319,17 @@ def test_list_projects_empty_team_id(client: LinearClient) -> None:
     client._client.projects.get_all.assert_not_called()
 
 
+def test_list_projects_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """list_projects must wrap underlying failures so handlers can return
+    a structured error dict."""
+    client._client.projects.get_all.side_effect = Exception("API boom")
+
+    with pytest.raises(RuntimeError, match="Failed to list projects for team 'team-1'"):
+        client.list_projects("team-1")
+
+
 def test_get_project_success(client: LinearClient) -> None:
     """get_project should return Project when found."""
     mock_project = _make_project_mock(
@@ -337,11 +349,11 @@ def test_get_project_success(client: LinearClient) -> None:
 
 
 def test_get_project_not_found(client: LinearClient) -> None:
-    """get_project propagates exceptions from the underlying SDK call."""
+    """get_project returns None and logs when the underlying SDK call raises."""
     client._client.projects.get.side_effect = Exception("Not found")
 
-    with pytest.raises(Exception, match="Not found"):
-        client.get_project("non-existent")
+    project = client.get_project("non-existent")
+    assert project is None
 
 
 def test_update_project(client: LinearClient) -> None:
@@ -389,13 +401,77 @@ def test_update_project_with_message(client: LinearClient) -> None:
 
 
 def test_update_project_error(client: LinearClient) -> None:
-    """update_project should raise RuntimeError on failure."""
+    """update_project should raise RuntimeError on API failure."""
     client._client.projects.update.side_effect = Exception("API Error")
 
     update_input = ProjectUpdateInput(name="New Name")
 
     with pytest.raises(RuntimeError, match="Failed to update project"):
         client.update_project("proj-123", update_input)
+
+
+def test_update_project_clears_field_when_empty_string(
+    client: LinearClient,
+) -> None:
+    """Passing description='' or state='' is a clear-the-field request, not
+    'no update'. The truthy check used to skip the API call entirely; must
+    use `is not None`."""
+    mock_project = MagicMock()
+    mock_project.id = "p-1"
+    mock_project.name = "Project"
+    mock_project.description = ""
+    mock_project.team_id = "t-1"
+    mock_project.state = "started"
+    mock_project.url = "https://linear.app/project/p-1"
+    mock_project.status = None
+    mock_project.teams = []
+    client._client.projects.update.return_value = mock_project
+
+    client.update_project("p-1", ProjectUpdateInput(description=""))
+
+    client._client.projects.update.assert_called_once_with(
+        project_id="p-1",
+        name=None,
+        description="",
+        state=None,
+    )
+    client._client.projects.get.assert_not_called()
+
+
+def test_update_project_not_found_raises_clean_message(
+    client: LinearClient,
+) -> None:
+    """A None return from the underlying client must surface as a 'not found'
+    RuntimeError, not get masked as a generic 'Failed to update project'."""
+    client._client.projects.update.return_value = None
+
+    update_input = ProjectUpdateInput(name="New Name")
+
+    with pytest.raises(RuntimeError, match=r"Project 'proj-123' not found\.$"):
+        client.update_project("proj-123", update_input)
+
+
+def test_post_project_update_logs_on_failure(
+    client: LinearClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """_post_project_update is best-effort but must log the cause so a
+    failed GraphQL mutation isn't invisible to callers."""
+    import logging
+
+    # Force the raw GraphQL path to fail (both execute_graphql and _execute
+    # since _execute_raw checks execute_graphql first).
+    client._client.execute_graphql.side_effect = RuntimeError("auth_error")
+    client._client._execute.side_effect = RuntimeError("auth_error")
+
+    with caplog.at_level(logging.ERROR, logger="libs.linear.linear_client"):
+        client._post_project_update("proj-123", "Sprint shipped!")
+
+    assert any(
+        "projectUpdateCreate" in r.message and "proj-123" in r.message
+        for r in caplog.records
+    )
+    # The cause must appear in the captured traceback.
+    assert any(r.exc_info is not None for r in caplog.records)
 
 
 # -----------------------------------------------------------------------------
@@ -443,6 +519,93 @@ def test_list_issues(client: LinearClient) -> None:
     client._client.projects.get_issues.assert_called_once_with(project_id="proj-456")
 
 
+def test_list_issues_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """list_issues must wrap underlying failures so handlers can return
+    a structured error dict."""
+    client._client.projects.get_issues.side_effect = Exception("API boom")
+
+    with pytest.raises(
+        RuntimeError, match="Failed to list issues for project 'proj-1'"
+    ):
+        client.list_issues("proj-1")
+
+
+def test_list_issues_coerces_linear_priority_enum_to_int(
+    client: LinearClient,
+) -> None:
+    """linear-api's LinearPriority is a plain Enum (not IntEnum), so
+    int(value) fails directly and only .value is safe. Pydantic happens to
+    coerce it today, but we don't want to rely on that — extract the int
+    value explicitly."""
+    from linear_api import LinearPriority
+
+    mock_issue = MagicMock()
+    mock_issue.id = "i-1"
+    mock_issue.identifier = "ENG-1"
+    mock_issue.title = "T"
+    mock_issue.description = None
+    mock_issue.state = None
+    mock_issue.priority = LinearPriority.HIGH
+    mock_issue.team_id = None
+    mock_issue.project_id = None
+    mock_issue.parent_id = None
+    mock_issue.url = "https://x"
+    mock_issue.created_at = None
+    mock_issue.updated_at = None
+
+    client._client.issues.get.return_value = mock_issue
+    issue = client.get_issue("i-1")
+
+    assert issue is not None
+    assert issue.priority == 3
+    assert isinstance(issue.priority, int)
+    assert not isinstance(issue.priority, LinearPriority)
+
+
+def test_list_issues_handles_dict_response_from_linear_api(
+    client: LinearClient,
+) -> None:
+    """projects.get_issues() returns raw GraphQL dicts, not LinearIssue
+    objects. Issue.from_linear must handle that shape — otherwise listing
+    a project's issues blows up with AttributeError: 'dict' object has no
+    attribute 'id'."""
+    client._client.projects.get_issues.return_value = [
+        {
+            "id": "i-1",
+            "title": "First",
+            "description": None,
+            "state": {"id": "s-1", "name": "Todo", "type": "unstarted"},
+            "priority": 2,
+            "priorityLabel": "Medium",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-01-02T00:00:00Z",
+        },
+        {
+            "id": "i-2",
+            "title": "Second",
+            "description": "Body",
+            "state": None,
+            "priority": 3,
+            "createdAt": None,
+            "updatedAt": None,
+        },
+    ]
+
+    issues = client.list_issues("proj-1")
+
+    assert [i.id for i in issues] == ["i-1", "i-2"]
+    assert issues[0].title == "First"
+    assert issues[0].state is not None
+    assert issues[0].state.name == "Todo"
+    assert issues[0].created_at == "2024-01-01T00:00:00Z"
+    assert issues[1].state is None
+    # identifier is absent from the GraphQL projection — must be None,
+    # not a validation failure.
+    assert issues[0].identifier is None
+
+
 def test_get_issue_success(client: LinearClient) -> None:
     """get_issue should return Issue when found."""
     mock_issue = _make_issue_mock(
@@ -477,7 +640,7 @@ def test_get_issue_not_found(client: LinearClient) -> None:
 
 
 def test_create_issue(client: LinearClient) -> None:
-    """create_issue should resolve team/project names then create and return Issue."""
+    """create_issue should create and return Issue."""
     mock_team = MagicMock()
     mock_team.id = "team-123"
     mock_team.name = "Engineering"
@@ -485,17 +648,30 @@ def test_create_issue(client: LinearClient) -> None:
     mock_team.description = None
     client._client.teams.get.return_value = mock_team
 
-    mock_project = _make_project_mock(id="proj-456", name="My Project")
+    mock_project = MagicMock()
+    mock_project.id = "proj-456"
+    mock_project.name = "Roadmap"
+    mock_project.description = None
+    mock_project.team_id = "team-123"
+    mock_project.state = None
+    mock_project.url = "https://linear.app/project/proj-456"
+    mock_project.status = None
+    mock_project.teams = []
     client._client.projects.get.return_value = mock_project
 
-    mock_issue = _make_issue_mock(
-        id="new-issue-id",
-        identifier="ENG-99",
-        title="New Issue",
-        description="Description",
-        priority=Priority.MEDIUM,
-        url="https://linear.app/issue/ENG-99",
-    )
+    mock_issue = MagicMock()
+    mock_issue.id = "new-issue-id"
+    mock_issue.identifier = "ENG-99"
+    mock_issue.title = "New Issue"
+    mock_issue.description = "Description"
+    mock_issue.state = None
+    mock_issue.priority = 2
+    mock_issue.team_id = None
+    mock_issue.project_id = None
+    mock_issue.parent_id = None
+    mock_issue.url = "https://linear.app/issue/ENG-99"
+    mock_issue.created_at = None
+    mock_issue.updated_at = None
     client._client.issues.create.return_value = mock_issue
 
     input_data = IssueInput(
@@ -511,21 +687,59 @@ def test_create_issue(client: LinearClient) -> None:
     assert issue.id == "new-issue-id"
     assert issue.identifier == "ENG-99"
     client._client.issues.create.assert_called_once()
+    # IDs must be resolved to human-readable names before calling linear-api
+    sent_issue = client._client.issues.create.call_args.kwargs["issue"]
+    assert sent_issue.teamName == "Engineering"
+    assert sent_issue.projectName == "Roadmap"
+
+
+def test_create_issue_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """A non-RuntimeError from issues.create must be wrapped so the handler
+    layer's RuntimeError filter catches it."""
+    mock_team = MagicMock(
+        name="Engineering", id="team-123", key="ENG", description=None
+    )
+    mock_team.name = "Engineering"
+    mock_project = MagicMock(
+        id="proj-456", description=None, team_id="team-123", state=None
+    )
+    mock_project.name = "Roadmap"
+    mock_project.url = "https://linear.app/project/proj-456"
+    mock_project.status = None
+    mock_project.teams = []
+    client._client.teams.get.return_value = mock_team
+    client._client.projects.get.return_value = mock_project
+    client._client.issues.create.side_effect = Exception("API boom")
+
+    input_data = IssueInput(title="X", teamId="team-123", projectId="proj-456")
+
+    with pytest.raises(RuntimeError, match="Failed to create issue"):
+        client.create_issue(input_data)
 
 
 def test_update_issue(client: LinearClient) -> None:
     """update_issue should update and return Issue."""
-    mock_issue = _make_issue_mock(
-        id="issue-123",
-        identifier="ENG-42",
-        title="Updated Title",
-        description="Updated Desc",
-        state=_make_state_mock(
-            id="state-done", name="completed", color="#0f0", type="completed"
-        ),
-        priority=Priority.URGENT,
-        url="https://linear.app/issue/ENG-42",
-    )
+    mock_issue = MagicMock()
+    mock_issue.id = "issue-123"
+    mock_issue.identifier = "ENG-42"
+    mock_issue.title = "Updated Title"
+    mock_issue.description = "Updated Desc"
+    mock_state = MagicMock()
+    mock_state.id = "state-done"
+    mock_state.name = "completed"
+    mock_state.color = "#0f0"
+    mock_state.type = "completed"
+    mock_issue.state = mock_state
+    # Linear's wire value: 0 = URGENT (Linear's enum inverts ours).
+    mock_issue.priority = 0
+    mock_issue.team_id = None
+    mock_issue.project_id = None
+    mock_issue.parent_id = None
+    mock_issue.url = "https://linear.app/issue/ENG-42"
+    mock_issue.created_at = None
+    mock_issue.updated_at = None
 
     client._client.issues.update.return_value = mock_issue
 
@@ -539,9 +753,25 @@ def test_update_issue(client: LinearClient) -> None:
     issue = client.update_issue("issue-123", update_input)
 
     assert issue.title == "Updated Title"
+    # Linear URGENT (0) maps to our URGENT (4).
     assert issue.priority == 4
     assert issue.state.name == "completed"
     client._client.issues.update.assert_called_once()
+    # IssueUpdateInput.state must be forwarded as stateName (linear-api
+    # resolves the workflow state name to an ID internally).
+    sent_update = client._client.issues.update.call_args.args[1]
+    assert sent_update.stateName == "completed"
+
+
+def test_update_issue_error(client: LinearClient) -> None:
+    """update_issue should wrap underlying failures as RuntimeError so the
+    handler layer can return a structured error dict."""
+    client._client.issues.update.side_effect = Exception("API Error")
+
+    update_input = IssueUpdateInput(title="X")
+
+    with pytest.raises(RuntimeError, match="Failed to update issue 'issue-123'"):
+        client.update_issue("issue-123", update_input)
 
 
 def test_delete_issue_success(client: LinearClient) -> None:
@@ -1187,11 +1417,12 @@ def test_get_team_value_error(client: LinearClient) -> None:
 
 
 def test_get_project_value_error(client: LinearClient) -> None:
-    """get_project should return None on ValueError."""
+    """get_project should return None on ValueError (swallowed and logged)."""
     client._client.projects.get.side_effect = ValueError("Invalid project")
 
-    with pytest.raises(ValueError, match="Invalid project"):
-        client.get_project("invalid-project")
+    result = client.get_project("invalid-project")
+
+    assert result is None
 
 
 def test_get_issue_value_error(client: LinearClient) -> None:
@@ -1213,7 +1444,7 @@ def test_update_project_linear_project_none(client: LinearClient) -> None:
 
     client._client.projects.update.return_value = None
 
-    with pytest.raises(RuntimeError, match="Failed to update project"):
+    with pytest.raises(RuntimeError, match="project-123"):
         client.update_project("project-123", mock_update_input)
 
 
@@ -1264,13 +1495,13 @@ def test_post_project_update_exception(client: LinearClient) -> None:
 
 
 def test_create_issue_team_not_found(client: LinearClient) -> None:
-    """create_issue should raise ValueError when team not found."""
+    """create_issue should raise RuntimeError when team not found."""
     mock_input = MagicMock()
     mock_input.team_id = "non-existent-team"
 
     with (
         unittest.mock.patch.object(client, "get_team", return_value=None),
-        pytest.raises(ValueError, match="Linear team not found"),
+        pytest.raises(RuntimeError, match="Team.*not found"),
     ):
         client.create_issue(mock_input)
 
@@ -1288,7 +1519,7 @@ def test_create_issue_project_not_found(client: LinearClient) -> None:
     with (
         unittest.mock.patch.object(client, "get_team", return_value=mock_team),
         unittest.mock.patch.object(client, "get_project", return_value=None),
-        pytest.raises(ValueError, match="Linear project not found"),
+        pytest.raises(RuntimeError, match="Project.*not found"),
     ):
         client.create_issue(mock_input)
 
@@ -1609,11 +1840,12 @@ def test_get_team_value_error_in_catch(client: LinearClient) -> None:
 
 
 def test_get_project_value_error_in_catch(client: LinearClient) -> None:
-    """get_project should return None on ValueError in catch block."""
+    """get_project should return None on ValueError (swallowed and logged)."""
     client._client.projects.get.side_effect = ValueError("Invalid project")
 
-    with pytest.raises(ValueError, match="Invalid project"):
-        client.get_project("invalid-project")
+    result = client.get_project("invalid-project")
+
+    assert result is None
 
 
 def test_get_issue_value_error_in_catch(client: LinearClient) -> None:
@@ -1666,11 +1898,12 @@ def test_get_team_exception_in_catch(client: LinearClient) -> None:
 
 
 def test_get_project_exception_in_catch(client: LinearClient) -> None:
-    """get_project should return None on general exception in catch block."""
+    """get_project should return None on general exception (swallowed and logged)."""
     client._client.projects.get.side_effect = Exception("General error")
 
-    with pytest.raises(Exception, match="General error"):
-        client.get_project("project-123")
+    result = client.get_project("project-123")
+
+    assert result is None
 
 
 def test_get_issue_exception_in_catch(client: LinearClient) -> None:
@@ -1827,7 +2060,7 @@ def test_delete_project_exception_handling(client: LinearClient) -> None:
 
 
 def test_list_issues_dict_branch(client: LinearClient) -> None:
-    """list_issues should handle dict items (line 192)."""
+    """list_issues should handle dict items via Issue.from_linear."""
     # Create a dict issue (raw format from API)
     dict_issue = {
         "id": "issue-123",
@@ -1838,18 +2071,12 @@ def test_list_issues_dict_branch(client: LinearClient) -> None:
     # Mock the client to return our dict issue
     client._client.projects.get_issues.return_value = [dict_issue]
 
-    # Mock Issue.model_validate to return a proper Issue object
-    with unittest.mock.patch(
-        "libs.linear.linear_client.Issue.model_validate"
-    ) as mock_model_validate:
-        mock_issue_obj = MagicMock()
-        mock_model_validate.return_value = mock_issue_obj
+    result = client.list_issues("project-123")
 
-        result = client.list_issues("project-123")
-
-        assert len(result) == 1
-        assert result[0] == mock_issue_obj
-        mock_model_validate.assert_called_once_with(dict_issue)
+    assert len(result) == 1
+    assert result[0].id == "issue-123"
+    assert result[0].title == "Test Issue"
+    assert result[0].description == "Test Description"
 
 
 # -----------------------------------------------------------------------------

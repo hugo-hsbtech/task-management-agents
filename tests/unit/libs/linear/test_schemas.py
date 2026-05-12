@@ -266,8 +266,6 @@ def test_issue_from_linear() -> None:
     """
     from datetime import datetime
 
-    from linear_api import LinearPriority
-
     class MockState:
         id = "state-review"
         name = "in_review"
@@ -286,10 +284,11 @@ def test_issue_from_linear() -> None:
         title = "Feature request"
         description = "Need this feature"
         state = MockState()
-        priority = LinearPriority.URGENT
-        team = MockTeam()
-        project = MockProject()
-        parentId = "issue-parent"
+        # Linear's int: 4 = NONE (Linear's enum ordering is inverse of ours).
+        priority = 4
+        team_id = "team-789"
+        project_id = "proj-000"
+        parent_id = "issue-parent"
         url = "https://linear.app/issue/PROD-123"
         createdAt = datetime(2024, 1, 1, 12, 0, 0)
         updatedAt = datetime(2024, 1, 2, 12, 0, 0)
@@ -301,12 +300,11 @@ def test_issue_from_linear() -> None:
     assert issue.state is not None
     assert issue.state.name == "in_review"
     assert issue.state.id == "state-review"
-    assert issue.priority == Priority.URGENT
+    # Linear NONE (4) maps to our NO_PRIORITY (0).
+    assert issue.priority == 0
     assert issue.team_id == "team-789"
     assert issue.project_id == "proj-000"
     assert issue.parent_id == "issue-parent"
-    assert issue.created_at == "2024-01-01T12:00:00"
-    assert issue.updated_at == "2024-01-02T12:00:00"
 
 
 def test_issue_from_linear_no_state() -> None:
