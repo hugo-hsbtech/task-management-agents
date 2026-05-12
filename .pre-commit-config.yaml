@@ -19,3 +19,17 @@ repos:
         types_or: [python, pyi]
         pass_filenames: false
         require_serial: true
+
+  # mypy runs as a `local` hook via `uv run` so it picks up the project's
+  # actual dependencies (claude-agent-sdk, pydantic, linear-api, ...) — the
+  # upstream `mirrors-mypy` hook installs into an isolated pre-commit env
+  # and would miss them, producing false positives.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (strict, src only)
+        entry: uv run mypy src/
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
