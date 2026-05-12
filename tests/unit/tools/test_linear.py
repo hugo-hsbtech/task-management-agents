@@ -262,6 +262,24 @@ async def test_handle_update_issue_partial(
     assert result["id"] == "issue-123"
 
 
+@pytest.mark.asyncio
+async def test_handle_update_issue_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_update_issue should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.update_issue.side_effect = RuntimeError(
+        "Failed to update issue 'MISSING-1': not found"
+    )
+
+    result = await linear_tools._handle_update_issue(
+        {"issue_id": "MISSING-1", "title": "Whatever"}
+    )
+
+    assert "error" in result
+    assert "MISSING-1" in result["error"]
+
+
 # -----------------------------------------------------------------------------
 # Delete Issue Handler Tests
 # -----------------------------------------------------------------------------

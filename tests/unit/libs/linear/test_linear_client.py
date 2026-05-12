@@ -482,6 +482,17 @@ def test_update_issue(client: LinearClient) -> None:
     assert sent_update.stateName == "completed"
 
 
+def test_update_issue_error(client: LinearClient) -> None:
+    """update_issue should wrap underlying failures as RuntimeError so the
+    handler layer can return a structured error dict."""
+    client._client.issues.update.side_effect = Exception("API Error")
+
+    update_input = IssueUpdateInput(title="X")
+
+    with pytest.raises(RuntimeError, match="Failed to update issue 'issue-123'"):
+        client.update_issue("issue-123", update_input)
+
+
 def test_delete_issue_success(client: LinearClient) -> None:
     """delete_issue should return True on success."""
     client._client.issues.delete.return_value = None

@@ -260,7 +260,10 @@ class LinearTools:
     async def _handle_update_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_update_issue tool."""
         update_input = IssueUpdateInput.model_validate(obj=input_data)
-        issue = self._client.update_issue(input_data["issue_id"], update_input)
+        try:
+            issue = self._client.update_issue(input_data["issue_id"], update_input)
+        except RuntimeError as e:
+            return {"error": str(e)}
         return issue.model_dump(mode="json")
 
     async def _handle_delete_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:

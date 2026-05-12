@@ -229,8 +229,11 @@ class LinearClient:
             priority=_map_priority_to_api(input_data.priority),
         )
 
-        linear_issue = self._client.issues.update(issue_id, update)
-        return Issue.from_linear(linear_issue)
+        try:
+            linear_issue = self._client.issues.update(issue_id, update)
+            return Issue.from_linear(linear_issue)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update issue {issue_id!r}: {e}") from e
 
     def delete_issue(self, issue_id: str) -> bool:
         """Delete a Linear issue. Returns True if successful."""
