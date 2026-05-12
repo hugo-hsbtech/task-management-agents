@@ -395,7 +395,12 @@ class LinearClient:
             }
 
             result = self._execute_raw(query, variables)
-            comment_data = result.get("commentCreate", {}).get("comment") or {}
+            mutation_result = result.get("commentCreate") or {}
+            if not mutation_result.get("success"):
+                raise RuntimeError("commentCreate mutation returned success=false")
+            comment_data = mutation_result.get("comment") or {}
+            if not comment_data.get("id"):
+                raise RuntimeError("commentCreate returned no comment data")
             user_data = comment_data.get("user") or {}
             return Comment(
                 id=comment_data["id"],
@@ -650,7 +655,12 @@ class LinearClient:
             }
 
             result = self._execute_raw(query, variables)
-            comment_data = result.get("commentCreate", {}).get("comment") or {}
+            mutation_result = result.get("commentCreate") or {}
+            if not mutation_result.get("success"):
+                raise RuntimeError("commentCreate mutation returned success=false")
+            comment_data = mutation_result.get("comment") or {}
+            if not comment_data.get("id"):
+                raise RuntimeError("commentCreate returned no comment data")
             user_data = comment_data.get("user") or {}
             return Comment(
                 id=comment_data["id"],
