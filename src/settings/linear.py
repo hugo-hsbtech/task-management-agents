@@ -9,8 +9,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class LinearSettings(BaseSettings):
-    """Optional Linear API key for non-OAuth Linear MCP authentication."""
+    """Linear MCP configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="LINEAR_")
-
+    model_config = SettingsConfigDict(
+        env_prefix="LINEAR_",
+        env_nested_delimiter="_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
     api_key: SecretStr | None = None

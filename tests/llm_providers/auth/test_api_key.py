@@ -49,3 +49,34 @@ def test_default_uses_class_default_env_var(monkeypatch):
 
 def test_kind_classvar():
     assert ApiKey.kind == "api_key"
+
+
+def test_init_no_args_raises():
+    with pytest.raises(ValueError, match="requires either api_key= or env_var="):
+        ApiKey()
+
+
+def test_detect_true_when_explicit_key():
+    s = ApiKey(api_key="sk-test")
+    assert s.detect() is True
+
+
+def test_resolve_returns_credential_for_explicit_key():
+    s = ApiKey(api_key="sk-test", source="test")
+    cred = s.resolve()
+    assert cred.kind == "api_key"
+    assert cred.payload["api_key"] == "sk-test"
+    assert cred.payload["source"] == "test"
+
+
+def test_from_auth_creates_api_key():
+    from unittest.mock import MagicMock
+
+    from pydantic import SecretStr
+
+    mock_auth = MagicMock()
+    mock_auth.key = SecretStr("sk-from-settings")
+    s = ApiKey.from_auth(mock_auth)
+    assert s.detect() is True
+    cred = s.resolve()
+    assert cred.payload["api_key"] == "sk-from-settings"

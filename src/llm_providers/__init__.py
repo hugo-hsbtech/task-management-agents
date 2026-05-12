@@ -15,6 +15,8 @@ from llm_providers.base import BaseProvider, StatefulClient
 from llm_providers.errors import (
     AuthDetectionFailed,
     AuthResolutionError,
+    ClaudeAuthError,
+    ClaudeRateLimitError,
     CredentialMismatch,
     LLMProvidersError,
     ProviderNotFoundError,
@@ -54,6 +56,8 @@ __all__ = [
     # Errors
     "AuthDetectionFailed",
     "AuthResolutionError",
+    "ClaudeAuthError",
+    "ClaudeRateLimitError",
     "CredentialMismatch",
     "LLMProvidersError",
     "ProviderNotFoundError",

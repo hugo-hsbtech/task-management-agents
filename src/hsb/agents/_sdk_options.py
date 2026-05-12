@@ -36,10 +36,7 @@ from claude_agent_sdk.types import (
     ToolsPreset,
 )
 
-from hsb.settings.runtime import (
-    FORBIDDEN_API_KEY_VARS as _FORBIDDEN_API_KEY_VARS,  # noqa: F401  re-export
-)
-from hsb.settings.runtime import (
+from settings import (
     assert_oauth2_only,  # noqa: F401  re-export
 )
 

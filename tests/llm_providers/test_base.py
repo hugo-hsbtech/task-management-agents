@@ -41,12 +41,12 @@ class _DummyProvider(BaseProvider):
 
 def test_base_provider_cannot_be_instantiated():
     with pytest.raises(TypeError, match="abstract"):
-        BaseProvider(auth=ApiKey())  # type: ignore[abstract]
+        BaseProvider(auth=ApiKey.default())  # type: ignore[abstract]
 
 
 def test_subclass_validates_auth_type(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey())
+    p = _DummyProvider(auth=ApiKey.default())
     assert p._auth.kind == "api_key"  # noqa: SLF001
 
 
@@ -60,13 +60,13 @@ def test_subclass_rejects_unsupported_auth():
 
 def test_require_capability_passes_when_true(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey())
+    p = _DummyProvider(auth=ApiKey.default())
     p.require_capability("mcp")  # supports_mcp=True
 
 
 def test_require_capability_raises_when_false(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey())
+    p = _DummyProvider(auth=ApiKey.default())
     with pytest.raises(UnsupportedCapabilityError) as exc:
         p.require_capability("hooks")
     assert exc.value.provider == "dummy"
@@ -75,7 +75,7 @@ def test_require_capability_raises_when_false(monkeypatch):
 
 def test_translate_hooks_default_to_NotImplementedError(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey())
+    p = _DummyProvider(auth=ApiKey.default())
     with pytest.raises(NotImplementedError):
         p._translate_system_prompt(None)  # type: ignore[arg-type]  # noqa: SLF001
     with pytest.raises(NotImplementedError):

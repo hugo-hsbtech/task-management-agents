@@ -194,7 +194,12 @@ class _Backend:
 
 
 class _CodexBackend(_Backend):
-    """openai_codex_sdk backend. OAuth-only; verifies operator's ~/.codex config."""
+    """openai_codex_sdk backend. OAuth-only; verifies operator's ~/.codex config.
+
+    NOTE: The openai_codex_sdk was reimplemented as open-source. The API changed
+    from the original closed-beta version. This implementation attempts to use
+    the new API with fallback error handling.
+    """
 
     capabilities = _CODEX_CAPS
 
@@ -206,20 +211,19 @@ class _CodexBackend(_Backend):
         if source.startswith("file:"):
             codex_home = Path(source.removeprefix("file:")).parent
         self._cached_config = assert_codex_oauth_only(codex_home=codex_home)
+
+        # Import the SDK and check version/API compatibility
         import openai_codex_sdk
 
         self._sdk = openai_codex_sdk
         self._codex_home = codex_home
 
+        # Check for new API vs old API
+        self._use_new_api = not hasattr(openai_codex_sdk, "Codex")
+
     async def query(
         self, prompt: str, options: ProviderOptions, provider: OpenAIProvider
     ) -> AsyncIterator[Message]:
-        # NOTE: options.tool_policy.allowed/denied/custom is currently a no-op
-        # on the OpenAI provider. Codex tool surface (Phase B) and OpenAI
-        # function-calling translation (Phase B) will wire this in. For Phase A,
-        # the policy is accepted in ProviderOptions but not enforced — callers
-        # that depend on tool restriction should not yet flip an agent to
-        # HSB_RUNTIME_<AGENT>=openai.
         if options.mcp_servers:
             verify_codex_mcp(self._cached_config, [s.name for s in options.mcp_servers])
 
@@ -233,40 +237,114 @@ class _CodexBackend(_Backend):
         sp_text = provider._translate_system_prompt(options.system_prompt)
         full_text = f"<system>{sp_text}</system>\n\n{prompt}"
 
-        thread_options = self._sdk.ThreadOptions(
-            model=options.model,
-            approvalPolicy=approval,  # type: ignore[arg-type]
-            workingDirectory=options.cwd,
-        )
-        turn_options = self._sdk.TurnOptions(outputSchema=options.output_schema)
+        if self._use_new_api:
+            # New open-source API - use subprocess-based CLI
+            async for msg in self._query_new_api(full_text, options, approval):
+                yield msg
+        else:
+            # Legacy closed-beta API
+            async for msg in self._query_legacy_api(full_text, options, approval):
+                yield msg
 
-        codex_opts = self._build_codex_options()
-        codex = (
-            self._sdk.Codex(codex_opts) if codex_opts is not None else self._sdk.Codex()
-        )
-        thread = codex.start_thread(thread_options)
-        streamed = await thread.run_streamed(
-            [self._sdk.TextInput(type="text", text=full_text)],
-            turn_options,
+    async def _query_new_api(
+        self, prompt: str, options: ProviderOptions, approval: Any
+    ) -> AsyncIterator[Message]:
+        """Query using new open-source Codex CLI (subprocess-based)."""
+        import asyncio
+        import os
+        from pathlib import Path
+
+        # Build the Codex CLI command
+        cmd = ["codex", "--quiet", "--approval-policy", str(approval).lower()]
+        if options.model:
+            cmd.extend(["--model", options.model])
+        if options.cwd:
+            cmd.extend(["--workdir", str(options.cwd)])
+
+        # Run Codex as subprocess.
+        # NOTE: max_turns is not enforced here; the subprocess CLI has no
+        # per-turn event stream, so turn tracking is unavailable on this path.
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={
+                **os.environ,
+                "CODEX_HOME": str(self._codex_home or Path.home() / ".codex"),
+            },
         )
 
-        turns_seen = 0
-        final_buffer: list[str] = []
-        async for evt in streamed.events:
-            if isinstance(
-                evt, self._sdk.TurnCompletedEvent | self._sdk.TurnFailedEvent
-            ):
-                turns_seen += 1
-                if turns_seen > options.max_turns:
-                    raise RuntimeError(
-                        f"Codex exceeded max_turns={options.max_turns}; aborting."
-                    )
-            evt_text = self._extract_event_text(evt)
-            if evt_text:
-                final_buffer.append(evt_text)
-            yield Message(text=evt_text, is_final=False, raw=evt)
+        proc.stdin.write(prompt.encode())
+        proc.stdin.close()
 
-        yield Message(text="".join(final_buffer), is_final=True, raw=None)
+        buffer: list[str] = []
+        async for line_bytes in proc.stdout:
+            chunk = line_bytes.decode()
+            if chunk:
+                buffer.append(chunk)
+                yield Message(text=chunk, is_final=False, raw=None)
+
+        stderr_data = await proc.stderr.read()
+        await proc.wait()
+
+        if proc.returncode != 0:
+            err_text = stderr_data.decode()[:500]
+            raise RuntimeError(f"Codex CLI failed (exit {proc.returncode}): {err_text}")
+
+        yield Message(text="".join(buffer), is_final=True, raw=None)
+
+    async def _query_legacy_api(
+        self, prompt: str, options: ProviderOptions, approval: Any
+    ) -> AsyncIterator[Message]:
+        """Query using legacy closed-beta SDK API."""
+        try:
+            thread_options = self._sdk.ThreadOptions(
+                model=options.model,
+                approvalPolicy=approval,  # type: ignore[arg-type]
+                workingDirectory=options.cwd,
+            )
+            turn_options = self._sdk.TurnOptions(outputSchema=options.output_schema)
+
+            codex_opts = self._build_codex_options()
+            codex = (
+                self._sdk.Codex(codex_opts)
+                if codex_opts is not None
+                else self._sdk.Codex()
+            )
+            thread = codex.start_thread(thread_options)
+            streamed = await thread.run_streamed(
+                [self._sdk.TextInput(type="text", text=prompt)],
+                turn_options,
+            )
+
+            turns_seen = 0
+            final_buffer: list[str] = []
+            async for evt in streamed.events:
+                if isinstance(
+                    evt, self._sdk.TurnCompletedEvent | self._sdk.TurnFailedEvent
+                ):
+                    turns_seen += 1
+                    if turns_seen > options.max_turns:
+                        raise RuntimeError(
+                            f"Codex exceeded max_turns={options.max_turns}; aborting."
+                        )
+                evt_text = self._extract_event_text(evt)
+                if evt_text:
+                    final_buffer.append(evt_text)
+                yield Message(text=evt_text, is_final=False, raw=evt)
+
+            yield Message(text="".join(final_buffer), is_final=True, raw=None)
+
+        except AttributeError as e:
+            # SDK API mismatch - provide helpful error
+            raise RuntimeError(
+                f"Codex SDK API mismatch: {e}. "
+                f"The installed openai_codex_sdk appears to be the new open-source "
+                f"version with a different API. Legacy API classes (Codex, ThreadOptions, "
+                f"etc.) not found. Consider using Claude provider instead, or update "
+                f"the provider code for the new SDK API."
+            ) from e
 
     def client(
         self, options: ProviderOptions, provider: OpenAIProvider

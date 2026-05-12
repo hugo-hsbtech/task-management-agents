@@ -69,6 +69,30 @@ class ProviderRegistry:
         return cls.get(name)(auth=auth)
 
     @classmethod
+    def build_from_auth_method(
+        cls,
+        name: str,
+        *,
+        auth_method: str,
+    ) -> BaseProvider:
+        """Instantiate a provider using a named auth method (e.g. 'api_key', 'oauth2').
+
+        Walks ``provider_cls.supported_auth`` and picks the first strategy whose
+        ``kind`` matches ``auth_method``, then calls its ``default()`` constructor.
+
+        Raises ``ValueError`` if no registered strategy matches ``auth_method``.
+        """
+        provider_cls = cls.get(name)
+        for strat_cls in provider_cls.supported_auth:
+            if strat_cls.kind == auth_method:
+                return provider_cls(auth=strat_cls.default())
+
+        raise ValueError(
+            f"Provider {name!r} has no auth strategy with kind={auth_method!r}. "
+            f"Available: {[s.kind for s in provider_cls.supported_auth]}"
+        )
+
+    @classmethod
     def build_auto(
         cls,
         name: str,

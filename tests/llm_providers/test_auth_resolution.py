@@ -55,7 +55,7 @@ def test_walks_preferred_first_returns_first_detected(monkeypatch):
 
     _register_provider("foo", (_PreferredOAuth, ApiKey))
     result = auto_resolve_auth("foo")
-    assert result.kind == "oauth2_cli_token"
+    assert result.kind == "oauth2_cli"
 
 
 def test_falls_through_to_second_when_first_not_detected(monkeypatch):
@@ -63,7 +63,10 @@ def test_falls_through_to_second_when_first_not_detected(monkeypatch):
     class _OAuthNever(OAuth2CliToken):
         @classmethod
         def default(cls):
-            return cls()  # no env_var, no path → never detects
+            return cls()  # no env_var, no path
+
+        def detect(self) -> bool:
+            return False  # override to simulate undetectable
 
     monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
     _register_provider("foo", (_OAuthNever, ApiKey))

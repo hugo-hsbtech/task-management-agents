@@ -5,10 +5,9 @@ implement query() and client(). Translation hooks default to NotImplementedError
 each subclass overrides the ones relevant to its capability set.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol
+from collections.abc import AsyncIterator
+from typing import Any, ClassVar, Protocol, Self
 
 from llm_providers.auth.base import AuthStrategy
 from llm_providers.errors import UnsupportedAuthError, UnsupportedCapabilityError
@@ -16,14 +15,11 @@ from llm_providers.prompt import SystemPrompt
 from llm_providers.protocol import Capabilities, Message, ProviderOptions
 from llm_providers.tools import McpServerSpec, ToolPolicy
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
 
 class StatefulClient(Protocol):
     """Multi-turn session counterpart to query(). Used by stateful providers."""
 
-    async def __aenter__(self) -> StatefulClient: ...
+    async def __aenter__(self) -> Self: ...
     async def __aexit__(self, *exc: Any) -> None: ...
     async def query(self, prompt: str) -> AsyncIterator[Message]: ...
 
