@@ -653,6 +653,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },
+    { name = "linear-api" },
     { name = "openai-codex-sdk" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -677,6 +678,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.1.73" },
+    { name = "linear-api", specifier = ">=0.2.0" },
     { name = "openai-codex-sdk", specifier = ">=0.1.11" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
@@ -1146,6 +1148,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/15/1f/dc6771a52592a4451be6effa200cbfc9cec61e4393d3033d81a9d307961d/librt-0.11.0-cp314-cp314t-win32.whl", hash = "sha256:2b481d846ac894c4e8403c5fd0e87c5d11d6499e404b474602508a224ff531c8", size = 103562, upload-time = "2026-05-10T18:17:03.99Z" },
     { url = "https://files.pythonhosted.org/packages/62/4a/7d1415567027286a75ba1093ec4aca11f073e0f559c530cf3e0a757ad55c/librt-0.11.0-cp314-cp314t-win_amd64.whl", hash = "sha256:28edb433edde181112a908c78907af28f964eabc15f4dd16c9d66c834302677c", size = 124327, upload-time = "2026-05-10T18:17:05.465Z" },
     { url = "https://files.pythonhosted.org/packages/ce/62/b40b382fa0c66fee1478073eb8db352a4a6beda4a1adccf1df911d8c289c/librt-0.11.0-cp314-cp314t-win_arm64.whl", hash = "sha256:dee008f20b542e3cd162ba338a7f9ec0f6d23d395f66fe8aeeec3c9d067ea253", size = 102572, upload-time = "2026-05-10T18:17:06.809Z" },
+]
+
+[[package]]
+name = "linear-api"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4c/80/c0ae46e4f451c47c92b93bb51f70667c380ccfe7dbdad9361694f582b97d/linear_api-0.2.0.tar.gz", hash = "sha256:bca2263371ee6a99e014bf3445cd169d225841890622951cee400831dcfd8cc7", size = 73189, upload-time = "2025-05-15T14:18:58.685Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/6f/25b17344492d01570cdaad13a8e25acb228257cad2fe0968cdf889317347/linear_api-0.2.0-py3-none-any.whl", hash = "sha256:503eb24c8736ca7168cca4aa26ce2d5d5afe293a64774635ba959d442ab3cf1c", size = 58749, upload-time = "2025-05-15T14:18:56.753Z" },
 ]
 
 [[package]]

@@ -7,8 +7,6 @@ headless/CI fallback. Env var: LINEAR_API_KEY.
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from settings.provider import ProviderSettings
-
 
 class LinearSettings(BaseSettings):
     """Linear MCP configuration."""
@@ -16,12 +14,8 @@ class LinearSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LINEAR_",
         env_nested_delimiter="_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
-
-    provider: ProviderSettings = ProviderSettings()
     api_key: SecretStr | None = None
-    mcp_url: str = (
-        "https://mcp.linear.app/mcp"  # LINEAR_MCP_URL to override (e.g. self-hosted)
-    )
-    audit_log_path: str = ".linear/audit.log"  # appended by linear_audit_hook on every mcp__linear__* call
-    compaction_archive_dir: str = ".linear/compaction"  # transcript copy destination before Claude context compaction

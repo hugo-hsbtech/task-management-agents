@@ -128,7 +128,7 @@ class ProviderSettings(BaseModel):
     """
 
     name: ProviderName = ProviderName.claude
-    model: str = ClaudeModel.opus_4_5
+    model: str = ClaudeModel.haiku_4_5
     auth: AuthConfig = Field(
         default_factory=lambda: OAuth2CliAuth(env_var="CLAUDE_CODE_OAUTH_TOKEN")
     )
