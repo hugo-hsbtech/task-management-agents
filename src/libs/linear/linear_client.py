@@ -213,8 +213,11 @@ class LinearClient:
             parentId=input_data.parent_id,
         )
 
-        linear_issue = self._client.issues.create(issue=issue_input)
-        return Issue.from_linear(linear_issue)
+        try:
+            linear_issue = self._client.issues.create(issue=issue_input)
+            return Issue.from_linear(linear_issue)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create issue: {e}") from e
 
     def update_issue(self, issue_id: str, input_data: IssueUpdateInput) -> Issue:
         """Update an existing Linear issue."""

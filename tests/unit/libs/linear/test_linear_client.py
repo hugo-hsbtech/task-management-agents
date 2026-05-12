@@ -453,6 +453,29 @@ def test_create_issue(client: LinearClient) -> None:
     assert sent_issue.projectName == "Roadmap"
 
 
+def test_create_issue_api_failure_wraps_as_runtime_error(
+    client: LinearClient,
+) -> None:
+    """A non-RuntimeError from issues.create must be wrapped so the handler
+    layer's RuntimeError filter catches it."""
+    mock_team = MagicMock(
+        name="Engineering", id="team-123", key="ENG", description=None
+    )
+    mock_team.name = "Engineering"
+    mock_project = MagicMock(
+        id="proj-456", description=None, team_id="team-123", state=None
+    )
+    mock_project.name = "Roadmap"
+    client._client.teams.get.return_value = mock_team
+    client._client.projects.get.return_value = mock_project
+    client._client.issues.create.side_effect = Exception("API boom")
+
+    input_data = IssueInput(title="X", teamId="team-123", projectId="proj-456")
+
+    with pytest.raises(RuntimeError, match="Failed to create issue"):
+        client.create_issue(input_data)
+
+
 def test_update_issue(client: LinearClient) -> None:
     """update_issue should update and return Issue."""
     mock_issue = MagicMock()
