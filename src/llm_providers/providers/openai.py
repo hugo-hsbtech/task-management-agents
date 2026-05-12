@@ -275,6 +275,13 @@ class _CodexBackend(_Backend):
             },
         )
 
+        # All three pipes are PIPE-configured above, so they are never None
+        # in practice; the asserts narrow the StreamReader/Writer | None types
+        # for mypy.
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+
         proc.stdin.write(prompt.encode())
         proc.stdin.close()
 
@@ -301,10 +308,10 @@ class _CodexBackend(_Backend):
         try:
             thread_options = self._sdk.ThreadOptions(
                 model=options.model,
-                approvalPolicy=approval,  # type: ignore[arg-type]
-                workingDirectory=options.cwd,
+                approval_policy=approval,
+                working_directory=options.cwd,
             )
-            turn_options = self._sdk.TurnOptions(outputSchema=options.output_schema)
+            turn_options = self._sdk.TurnOptions(output_schema=options.output_schema)
 
             codex_opts = self._build_codex_options()
             codex = (
@@ -380,7 +387,7 @@ class _CodexBackend(_Backend):
 
         override = os.environ.get("CODEX_PATH_OVERRIDE")
         if override:
-            return CodexOptions(codexPathOverride=override)
+            return CodexOptions(codex_path_override=override)
         return None
 
 

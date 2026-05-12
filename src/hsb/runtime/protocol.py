@@ -62,9 +62,9 @@ class AgentOptions:
     permission_mode: PermissionMode
     max_turns: int
     model: str
-    mcp_servers: dict[str, dict] | None = None
+    mcp_servers: dict[str, dict[str, object]] | None = None
     cwd: str | None = None
-    output_schema: dict | None = None
+    output_schema: dict[str, object] | None = None
     hooks: Any = None  # Claude-only HookMatcher list; CodexRuntime rejects non-None.
 
 

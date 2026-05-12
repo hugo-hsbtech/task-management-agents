@@ -12,7 +12,6 @@ import pytest
 
 from backlog.agent import BacklogAgent
 from backlog.contracts import BacklogInput, IssueType
-from backlog.executor import validate_linear_platform_target
 from backlog.platforms import LinearPlatform
 from settings import settings
 from settings.provider import OAuth2CliAuth, ProviderName, ProviderSettings
@@ -70,8 +69,7 @@ def test_claude_generates_realistic_backlog_for_product_plan(capsys) -> None:
     )
     try:
         asyncio.run(
-            validate_linear_platform_target(
-                platform,
+            platform.validate_target(
                 api_key=linear_settings.api_key.get_secret_value(),
             )
         )

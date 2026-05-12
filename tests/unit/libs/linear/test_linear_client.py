@@ -2098,8 +2098,12 @@ def test_execute_raw_uses_execute_graphql_first(client: LinearClient) -> None:
 
 
 def test_execute_raw_falls_back_to_private_execute(client: LinearClient) -> None:
-    """_execute_raw should fall back to _execute when execute_graphql is absent."""
+    """_execute_raw should fall back to _execute when execute_graphql and execute are absent."""
     del client._client.execute_graphql
+    # Also remove the public `execute` fallback so the private `_execute`
+    # path is exercised. MagicMock auto-creates attributes, so we must
+    # explicitly suppress `execute` to reach the older-SDK branch.
+    client._client.execute = None
 
     expected_result = {"data": {"test": "value"}}
     client._client._execute.return_value = expected_result
@@ -2116,6 +2120,9 @@ def test_execute_raw_no_method_available(client: LinearClient) -> None:
         delattr(client._client, "execute_graphql")
     if hasattr(client._client, "_execute"):
         delattr(client._client, "_execute")
+    # MagicMock auto-creates `execute` — set it falsy so the public-method
+    # fallback is skipped and the RuntimeError branch is reached.
+    client._client.execute = None
 
     with pytest.raises(RuntimeError, match="Raw GraphQL execution not supported"):
         client._execute_raw("query { test }")

@@ -76,10 +76,10 @@ class QAInput(BaseModel):
     """
 
     work_item_id: str
-    linear_issue: dict
+    linear_issue: dict[str, object]
     pull_request: PullRequestInput
-    implementation_notes: dict = Field(default_factory=dict)
-    epic_context: dict = Field(default_factory=dict)
+    implementation_notes: dict[str, object] = Field(default_factory=dict)
+    epic_context: dict[str, object] = Field(default_factory=dict)
     qa_cycle_count: int = Field(ge=0, le=2)
 
     model_config = {"extra": "forbid"}

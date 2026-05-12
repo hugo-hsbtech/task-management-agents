@@ -21,7 +21,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 
@@ -40,7 +40,7 @@ WORKTREES_DIR = ".worktrees"
 CLAIM_DELAY_MS = settings.orchestrator.claim_delay_ms
 
 
-def _entity_get(entity, key: str, default=None):
+def _entity_get(entity: Any, key: str, default: Any = None) -> Any:
     """Defensive accessor — entities may be Pydantic instances or plain dicts."""
     if hasattr(entity, "get") and callable(entity.get):
         return entity.get(key, default)
@@ -91,7 +91,7 @@ async def run_main_orchestrator(
 
 
 async def _cascade_dispatch(
-    ready_tasks: list,
+    ready_tasks: list[Any],
     repo_root: str,
 ) -> list[DispatchedItem]:
     """
@@ -116,9 +116,9 @@ async def _cascade_dispatch(
 
 
 async def _sequential_claiming_loop(
-    ready_tasks: list,
+    ready_tasks: list[Any],
     delay_ms: int = CLAIM_DELAY_MS,
-) -> list[tuple]:
+) -> list[tuple[Any, str]]:
     """
     MORD-03 + D-04 + D-05 + D-06: sequential claiming loop with optimistic lock.
 
@@ -130,7 +130,7 @@ async def _sequential_claiming_loop(
 
     Returns list of (task, post_updated_at) tuples for successfully claimed tasks.
     """
-    claimed: list[tuple] = []
+    claimed: list[tuple[Any, str]] = []
     for task in ready_tasks:
         # Step 1: Capture pre-write updatedAt
         fresh_before = await run_validated_linear_agent(
@@ -231,7 +231,7 @@ async def _git_worktree_remove(repo_root: str, task_id: str) -> None:
         )
 
 
-async def _run_wio_subprocess(task, worktree_path: str) -> dict:
+async def _run_wio_subprocess(task: Any, worktree_path: str) -> dict[str, Any]:
     """
     Spawns the Phase 3 Work Item Orchestrator as a subprocess in the given worktree.
 
@@ -281,7 +281,8 @@ async def _run_wio_subprocess(task, worktree_path: str) -> dict:
 
         if Path(output_path).exists():
             with open(output_path) as f:
-                return json.load(f)
+                result: dict[str, Any] = json.load(f)
+                return result
         return {"status": "completed", "task_id": task.id}
     finally:
         Path(input_path).unlink(missing_ok=True)
@@ -289,7 +290,7 @@ async def _run_wio_subprocess(task, worktree_path: str) -> dict:
 
 
 async def _parallel_dispatch(
-    ready_tasks: list,
+    ready_tasks: list[Any],
     repo_root: str,
 ) -> list[DispatchedItem]:
     """
@@ -340,7 +341,7 @@ async def _parallel_dispatch(
         wt_path = await _git_worktree_add(repo_root, task.id, branch)
         worktree_paths.append(wt_path)
 
-    normalized: list[dict] = []
+    normalized: list[dict[str, Any]] = []
     try:
         # Phase 3: asyncio.gather — return_exceptions=True per Pitfall E.
         # One WIO failure does not abort the others; exceptions are normalized below.

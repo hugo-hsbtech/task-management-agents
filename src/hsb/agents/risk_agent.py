@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from claude_agent_sdk import ResultMessage, query
 from dotenv import load_dotenv
@@ -61,9 +61,9 @@ class RiskAgent:
 
     def calculate_quality_score(
         self,
-        work_item: dict,
-        qa_history: list[dict],
-        uat_results: list[dict],
+        work_item: dict[str, Any],
+        qa_history: list[dict[str, Any]],
+        uat_results: list[dict[str, Any]],
     ) -> QualityScore:
         """Skill 12 deterministic formula.
 
@@ -103,7 +103,7 @@ class RiskAgent:
         )
 
     def get_priority_queue(
-        self, ready_tasks: list[str], linear_state: dict
+        self, ready_tasks: list[str], linear_state: dict[str, Any]
     ) -> PriorityQueue:
         """Skill 13: sort tasks by score descending, tiebreak by ``updatedAt`` ascending."""
         scores: dict[str, float] = {}
@@ -145,7 +145,7 @@ class RiskAgent:
         return "high"
 
     def _build_risk_summary(
-        self, qa_history: list[dict], scores: list[QualityScore]
+        self, qa_history: list[dict[str, Any]], scores: list[QualityScore]
     ) -> str:
         """Plain-text summary the skill 14 LLM analyzes for patterns."""
         lines = ["Quality scores:"]
@@ -164,7 +164,7 @@ class RiskAgent:
 
     async def detect_improvement_triggers(
         self,
-        qa_history: list[dict],
+        qa_history: list[dict[str, Any]],
         scores: list[QualityScore],
     ) -> list[AutoImprovementTrigger]:
         """Isolated Haiku SDK call (Pattern C, AI-SPEC §3). No MCP. No tools.

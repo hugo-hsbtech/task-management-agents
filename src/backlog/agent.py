@@ -63,7 +63,7 @@ class BacklogAgent:
         last_error: Exception | None = None
         for _attempt in range(1, self.max_validation_retries + 1):
             final_text = ""
-            async for message in self.provider.query(prompt, options):
+            async for message in self.provider.query(prompt, options):  # type: ignore[attr-defined]
                 if message.is_final:
                     final_text = message.text
 

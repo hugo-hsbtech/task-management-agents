@@ -177,10 +177,10 @@ def _create_payload(issue: IssuePlan) -> IssueInput:
     return IssueInput(
         title=fields.title,
         description=fields.description,
-        teamId=fields.platform_fields["team_id"],
-        projectId=fields.platform_fields["project_id"],
+        team_id=fields.platform_fields["team_id"],
+        project_id=fields.platform_fields["project_id"],
         priority=fields.priority,
-        parentId=fields.parent_id,
+        parent_id=fields.parent_id,
     )
 
 

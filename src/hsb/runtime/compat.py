@@ -171,11 +171,11 @@ class CodexRuntime:
         thread_options = _codex_mod.ThreadOptions(
             model=options.model,
             # str → Literal narrowed by _PERMISSION_MAP
-            approvalPolicy=approval_policy,  # type: ignore[arg-type]
-            workingDirectory=options.cwd,
+            approval_policy=approval_policy,
+            working_directory=options.cwd,
         )
         turn_options = _codex_mod.TurnOptions(
-            outputSchema=options.output_schema,
+            output_schema=options.output_schema,
         )
 
         codex_opts = _codex_mod._build_codex_options()

@@ -176,22 +176,32 @@ class Team(BaseModel):
 class Project(BaseModel):
     """Linear project representation.
 
-    `team` is populated automatically by `from_linear` by accessing
-    `linear_project.teams`. If the teams list is unavailable (e.g. partial
-    payloads), `team` is left as `None`.
+    Note: the upstream ``LinearProject`` model has no ``team_id`` field —
+    a Linear project can belong to multiple teams, exposed only via the
+    ``teams`` property. ``from_linear`` defensively reads ``teams[0]``
+    when available and stores it as ``team``; if the teams list is
+    unavailable (partial payloads), ``team`` is left as ``None``.
     """
 
     id: str
     name: str
     description: str | None = None
     team: Team | None = None
-    state: str | None = None  # ProjectStatusType value
+    state: str | None = (
+        None  # ProjectStatusType value (planned, started, paused, completed, canceled)
+    )
     url: str | None = None
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": True, "populate_by_name": True}
 
     @classmethod
     def from_linear(cls, linear_project: LinearProject) -> Self:
+        """Create a Project from a linear-api LinearProject object.
+
+        ``state`` is derived from ``status.type`` (a ``ProjectStatusType``
+        StrEnum). ``team`` is read from ``linear_project.teams[0]`` when
+        available; partial payloads leave it as ``None``.
+        """
         # status is a required ProjectStatus on LinearProject; .type is a
         # ProjectStatusType (StrEnum). Be defensive against partial payloads.
         status: LinearProjectStatus | None = getattr(linear_project, "status", None)
@@ -211,10 +221,10 @@ class Project(BaseModel):
         return cls(
             id=linear_project.id,
             name=linear_project.name,
-            description=linear_project.description,
+            description=getattr(linear_project, "description", None),
             team=team,
             state=status_value,
-            url=linear_project.url,
+            url=getattr(linear_project, "url", None),
         )
 
 

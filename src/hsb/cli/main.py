@@ -8,6 +8,7 @@ asyncio.run() is safe here. NEVER nest asyncio.run() inside an async function.
 from __future__ import annotations
 
 import asyncio
+from typing import Any, Literal
 
 import typer
 from rich.console import Console
@@ -39,7 +40,7 @@ app.add_typer(git_app, name="git")
 app.add_typer(qa_app, name="qa")
 
 
-def _dispatch(operation: str, payload: dict) -> LinearOutput:
+def _dispatch(operation: str, payload: dict[str, Any]) -> LinearOutput:
     """Run validated agent and render the LinearOutput. Exit 1 on failure."""
     try:
         result = asyncio.run(
@@ -146,7 +147,7 @@ def link_pr(
 # (CLIR-05 enforcement).
 
 
-def _parse_epics_from_linear_output(result: LinearOutput) -> list[dict]:
+def _parse_epics_from_linear_output(result: LinearOutput) -> list[dict[str, Any]]:
     """Best-effort projection of LinearOutput → ``[{"title", "tasks": [...]}]``.
 
     The Phase 1 ``LinearOutput`` contract only guarantees ``linear_entities``
@@ -159,8 +160,8 @@ def _parse_epics_from_linear_output(result: LinearOutput) -> list[dict]:
     NOTE: exact LinearOutput.read shape is finalized during Plan 04 against
     the live workspace. See CONTEXT.md "Claude's Discretion".
     """
-    epics: list[dict] = []
-    tasks: list[dict] = []
+    epics: list[dict[str, Any]] = []
+    tasks: list[dict[str, Any]] = []
     for ent in result.linear_entities:
         # LinearEntity is a pydantic model; coerce to dict for uniform access
         data = ent.model_dump() if hasattr(ent, "model_dump") else dict(ent)
@@ -313,7 +314,7 @@ def run(
     Use --parallel for concurrent WIO dispatch (D-10).
     Parallel never activates by accident — requires explicit opt-in (D-10).
     """
-    mode = "parallel" if parallel else "cascade"
+    mode: Literal["cascade", "parallel"] = "parallel" if parallel else "cascade"
     # asyncio.run() at the CLI boundary only — NEVER inside a coroutine
     # (Phase 1 Shared Patterns; RESEARCH.md Anti-Patterns).
     asyncio.run(run_main_orchestrator(mode=mode))
