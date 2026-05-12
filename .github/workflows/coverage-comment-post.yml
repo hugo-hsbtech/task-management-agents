@@ -1,0 +1,32 @@
+name: Post coverage comment
+
+# Fork PRs receive a read-only GITHUB_TOKEN, so the in-PR coverage-comment
+# step in ci.yml cannot post directly. It uploads the rendered comment as
+# an artifact instead, and this workflow runs from the base repo context
+# (with write permissions) to post it. Internal-PR coverage comments are
+# already posted by ci.yml and this workflow is a no-op for them.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  post:
+    name: Post coverage comment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    permissions:
+      pull-requests: write
+      contents: write
+      actions: read
+
+    steps:
+      - name: Post coverage comment
+        uses: py-cov-action/python-coverage-comment-action@53ff7553078bad69030786e486677315346c2dd2  # v3
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_RUN_ID: ${{ github.event.workflow_run.id }}
