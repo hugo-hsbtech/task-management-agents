@@ -51,7 +51,7 @@ class LinearClient:
             if linear_team:
                 return Team.from_linear(linear_team)
             return None
-        except (ValueError, Exception):
+        except Exception:
             # Fallback: search in list
             try:
                 teams = self._client.teams.get_all()
