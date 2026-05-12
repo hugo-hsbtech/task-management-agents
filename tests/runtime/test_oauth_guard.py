@@ -1,4 +1,5 @@
 """G1 guard now forbids both ANTHROPIC_API_KEY and OPENAI_API_KEY."""
+
 from __future__ import annotations
 
 import pytest
@@ -31,3 +32,15 @@ def test_rejects_when_both_set(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "y")
     with pytest.raises(RuntimeError, match=r"G1 violation"):
         assert_oauth2_only()
+
+
+def test_per_agent_escape_hatch_allows_api_key(monkeypatch):
+    """Task 21: assert_oauth2_only(agent_name) delegates to policy.
+
+    With HSB_AUTH_ALLOW_API_KEY_BACKLOG=1 set, the backlog agent is allowed
+    to use ANTHROPIC_API_KEY and the guard must not raise.
+    """
+    monkeypatch.setenv("HSB_AUTH_ALLOW_API_KEY_BACKLOG", "1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-foo")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert_oauth2_only("backlog")  # no raise — per-agent escape honored

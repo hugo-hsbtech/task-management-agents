@@ -61,7 +61,7 @@ class AgentRuntime(StrEnum):
     CODEX = "codex"
 
 
-def assert_oauth2_only() -> None:
+def assert_oauth2_only(agent_name: str | None = None) -> None:
     """G1 (AI-SPEC §6) — function-entry-time guard. Rejects metered API keys
     for either runtime. Operators must use OAuth tokens:
       - Claude:  CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`)
@@ -73,7 +73,20 @@ def assert_oauth2_only() -> None:
     not break pytest collection. The defensive pairing is the session-scoped
     autouse fixture in ``tests/conftest.py`` that unsets the env var at
     session start.
+
+    When ``agent_name`` is provided, delegates to
+    :func:`hsb.runtime.policy.allowed_auth_kinds` for the per-agent escape
+    hatch (``HSB_AUTH_ALLOW_API_KEY_<AGENT>=1``). When ``agent_name`` is
+    ``None`` (legacy default), applies the strict pydantic-settings check
+    unconditionally.
     """
+    if agent_name is not None:
+        # Lazy import — hsb.runtime.policy is in a sibling subpackage and
+        # only relevant when a caller explicitly opts into per-agent G1.
+        from hsb.runtime.policy import allowed_auth_kinds
+
+        if "api_key" in allowed_auth_kinds(agent_name):
+            return
     _G1Guard()
 
 

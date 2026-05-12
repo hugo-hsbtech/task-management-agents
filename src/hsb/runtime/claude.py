@@ -1,13 +1,19 @@
-"""ClaudeRuntime — wraps claude_agent_sdk.
+"""Deprecation shim — see :mod:`hsb.runtime.compat`.
 
-Translates the runtime-agnostic AgentOptions into ClaudeAgentOptions
-and yields Protocol Messages. No behavior change vs. calling
-claude_agent_sdk.query() directly.
+The canonical body lives in :mod:`hsb.runtime.compat`. SDK symbols are
+re-exported here so existing call sites (and ``mock.patch`` targets in
+the test suite) keep resolving to module-level names on
+``hsb.runtime.claude``.
+
+Prefer ``llm_providers.ProviderRegistry.build_auto("claude", ...)`` for
+new code.
 """
+
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
-
+# Module-level re-exports of the SDK symbols the legacy runtime touched.
+# Tests patch ``hsb.runtime.claude.claude_agent_sdk.query`` — keeping the
+# module imported here means the patch target resolves correctly.
 import claude_agent_sdk
 from claude_agent_sdk import (
     AssistantMessage,
@@ -15,46 +21,12 @@ from claude_agent_sdk import (
     ResultMessage,
 )
 
-from hsb.runtime.protocol import AgentOptions, Message, RuntimeName
+from hsb.runtime.compat import ClaudeRuntime
 
-
-class ClaudeRuntime:
-    name: RuntimeName = "claude"
-
-    async def query(self, prompt: str, options: AgentOptions) -> AsyncIterator[Message]:
-        sdk_options = self._translate(options)
-        async for sdk_msg in claude_agent_sdk.query(prompt=prompt, options=sdk_options):
-            yield self._to_message(sdk_msg)
-
-    def client(self, options: AgentOptions) -> Any:
-        # WIO port lands separately; raise to make accidental use loud.
-        raise NotImplementedError(
-            "ClaudeRuntime.client() not yet wired — WIO port pending. "
-            "Use claude_agent_sdk.ClaudeSDKClient directly until then."
-        )
-
-    @staticmethod
-    def _translate(options: AgentOptions) -> ClaudeAgentOptions:
-        kwargs: dict[str, Any] = dict(
-            system_prompt=options.system_prompt,
-            allowed_tools=list(options.allowed_tools),
-            permission_mode=options.permission_mode,
-            max_turns=options.max_turns,
-            model=options.model,
-        )
-        if options.mcp_servers is not None:
-            kwargs["mcp_servers"] = options.mcp_servers
-        if options.cwd is not None:
-            kwargs["cwd"] = options.cwd
-        if options.hooks is not None:
-            kwargs["hooks"] = options.hooks
-        return ClaudeAgentOptions(**kwargs)
-
-    @staticmethod
-    def _to_message(sdk_msg: Any) -> Message:
-        if isinstance(sdk_msg, ResultMessage):
-            return Message(text="", is_final=True, raw=sdk_msg)
-        if isinstance(sdk_msg, AssistantMessage):
-            text = "".join(getattr(b, "text", "") for b in (sdk_msg.content or []))
-            return Message(text=text, is_final=False, raw=sdk_msg)
-        return Message(text="", is_final=False, raw=sdk_msg)
+__all__ = [
+    "AssistantMessage",
+    "ClaudeAgentOptions",
+    "ClaudeRuntime",
+    "ResultMessage",
+    "claude_agent_sdk",
+]
