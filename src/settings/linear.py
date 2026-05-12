@@ -19,3 +19,5 @@ class LinearSettings(BaseSettings):
         env_file_encoding="utf-8",
     )
     api_key: SecretStr | None = None
+    team_id: str | None = None
+    project_id: str | None = None
