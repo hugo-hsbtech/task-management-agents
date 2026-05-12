@@ -102,8 +102,15 @@ class LinearClient:
         self, project_id: str, input_data: ProjectUpdateInput
     ) -> Project:
         """Update a project (name, description, state) and optionally post an update."""
+        # `is not None` (not truthy) so empty-string clears (description="")
+        # still hit the update endpoint instead of falling through to get().
+        has_field_update = (
+            input_data.name is not None
+            or input_data.description is not None
+            or input_data.state is not None
+        )
         try:
-            if input_data.name or input_data.description or input_data.state:
+            if has_field_update:
                 linear_project = self._client.projects.update(
                     project_id=project_id,
                     name=input_data.name,

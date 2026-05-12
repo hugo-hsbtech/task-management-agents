@@ -296,6 +296,31 @@ def test_update_project_error(client: LinearClient) -> None:
         client.update_project("proj-123", update_input)
 
 
+def test_update_project_clears_field_when_empty_string(
+    client: LinearClient,
+) -> None:
+    """Passing description='' or state='' is a clear-the-field request, not
+    'no update'. The truthy check used to skip the API call entirely; must
+    use `is not None`."""
+    mock_project = MagicMock()
+    mock_project.id = "p-1"
+    mock_project.name = "Project"
+    mock_project.description = ""
+    mock_project.team_id = "t-1"
+    mock_project.state = "started"
+    client._client.projects.update.return_value = mock_project
+
+    client.update_project("p-1", ProjectUpdateInput(description=""))
+
+    client._client.projects.update.assert_called_once_with(
+        project_id="p-1",
+        name=None,
+        description="",
+        state=None,
+    )
+    client._client.projects.get.assert_not_called()
+
+
 def test_update_project_not_found_raises_clean_message(
     client: LinearClient,
 ) -> None:
@@ -394,6 +419,38 @@ def test_list_issues_api_failure_wraps_as_runtime_error(
         RuntimeError, match="Failed to list issues for project 'proj-1'"
     ):
         client.list_issues("proj-1")
+
+
+def test_list_issues_coerces_linear_priority_enum_to_int(
+    client: LinearClient,
+) -> None:
+    """linear-api's LinearPriority is a plain Enum (not IntEnum), so
+    int(value) fails directly and only .value is safe. Pydantic happens to
+    coerce it today, but we don't want to rely on that — extract the int
+    value explicitly."""
+    from linear_api import LinearPriority
+
+    mock_issue = MagicMock()
+    mock_issue.id = "i-1"
+    mock_issue.identifier = "ENG-1"
+    mock_issue.title = "T"
+    mock_issue.description = None
+    mock_issue.state = None
+    mock_issue.priority = LinearPriority.HIGH
+    mock_issue.team_id = None
+    mock_issue.project_id = None
+    mock_issue.parent_id = None
+    mock_issue.url = "https://x"
+    mock_issue.created_at = None
+    mock_issue.updated_at = None
+
+    client._client.issues.get.return_value = mock_issue
+    issue = client.get_issue("i-1")
+
+    assert issue is not None
+    assert issue.priority == 3
+    assert isinstance(issue.priority, int)
+    assert not isinstance(issue.priority, LinearPriority)
 
 
 def test_list_issues_handles_dict_response_from_linear_api(
@@ -566,7 +623,8 @@ def test_update_issue(client: LinearClient) -> None:
     mock_state.color = "#0f0"
     mock_state.type = "completed"
     mock_issue.state = mock_state
-    mock_issue.priority = 4
+    # Linear's wire value: 0 = URGENT (Linear's enum inverts ours).
+    mock_issue.priority = 0
     mock_issue.team_id = None
     mock_issue.project_id = None
     mock_issue.parent_id = None
@@ -586,6 +644,7 @@ def test_update_issue(client: LinearClient) -> None:
     issue = client.update_issue("issue-123", update_input)
 
     assert issue.title == "Updated Title"
+    # Linear URGENT (0) maps to our URGENT (4).
     assert issue.priority == 4
     assert issue.state.name == "completed"
     client._client.issues.update.assert_called_once()

@@ -210,6 +210,7 @@ def test_issue_from_linear() -> None:
         title = "Feature request"
         description = "Need this feature"
         state = MockState()
+        # Linear's int: 4 = NONE (Linear's enum ordering is inverse of ours).
         priority = 4
         team_id = "team-789"
         project_id = "proj-000"
@@ -224,7 +225,8 @@ def test_issue_from_linear() -> None:
     assert issue.title == "Feature request"
     assert issue.state.name == "in_review"
     assert issue.state.id == "state-review"
-    assert issue.priority == 4
+    # Linear NONE (4) maps to our NO_PRIORITY (0).
+    assert issue.priority == 0
 
 
 def test_issue_from_linear_no_state() -> None:

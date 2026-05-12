@@ -33,6 +33,39 @@ def _field(source: Any, *names: str, default: Any = None) -> Any:
     return default
 
 
+def _map_priority_from_api(value: Any) -> int:
+    """Map a linear-api priority (Enum or int) to our Priority int value.
+
+    linear-api's LinearPriority is a plain Enum (NOT IntEnum) with
+    URGENT=0, HIGH=1, MEDIUM=2, LOW=3, NONE=4 — the inverse ordering of
+    our Priority (NO_PRIORITY=0, LOW=1, MEDIUM=2, HIGH=3, URGENT=4).
+
+    Both `int(enum)` (fails on plain Enum) and `.value` (semantically wrong
+    because of the inverse ordering) are unsafe; we map by name. Dicts from
+    GraphQL responses carry the raw int — we invert that too.
+    """
+    if value is None:
+        return int(Priority.MEDIUM)
+
+    # Normalize to Linear's int value, however the value was carried.
+    if isinstance(value, Enum):
+        linear_value = value.value
+    else:
+        try:
+            linear_value = int(value)
+        except (TypeError, ValueError):
+            return int(Priority.MEDIUM)
+
+    linear_to_ours = {
+        0: Priority.URGENT,
+        1: Priority.HIGH,
+        2: Priority.MEDIUM,
+        3: Priority.LOW,
+        4: Priority.NO_PRIORITY,
+    }
+    return int(linear_to_ours.get(linear_value, Priority.MEDIUM))
+
+
 class Priority(int, Enum):
     """Linear priority levels."""
 
@@ -142,7 +175,7 @@ class Issue(BaseModel):
             title=_field(linear_issue, "title"),
             description=_field(linear_issue, "description"),
             state=IssueState.from_linear(state) if state else None,
-            priority=_field(linear_issue, "priority", default=Priority.MEDIUM),
+            priority=_map_priority_from_api(_field(linear_issue, "priority")),
             team_id=_field(linear_issue, "team_id", "teamId"),
             project_id=_field(linear_issue, "project_id", "projectId"),
             parent_id=_field(linear_issue, "parent_id", "parentId"),
