@@ -35,9 +35,6 @@ from linear_api.domain import (
     LinearProject,
     LinearUser,
 )
-from linear_api.domain import (
-    ProjectStatus as LinearProjectStatus,
-)
 from pydantic import BaseModel, Field
 
 _MISSING = object()
@@ -176,45 +173,35 @@ class Team(BaseModel):
 class Project(BaseModel):
     """Linear project representation.
 
-    `team` is populated automatically by `from_linear` by accessing
-    `linear_project.teams`. If the teams list is unavailable (e.g. partial
-    payloads), `team` is left as `None`.
+    Note: ``team_id`` is intentionally optional and not populated by
+    :meth:`from_linear`. The upstream ``LinearProject`` model has no
+    ``team_id`` field — a Linear project can belong to multiple teams,
+    exposed only via the ``teams`` property which triggers a separate API
+    call. Callers that need the team(s) should fetch them explicitly.
     """
 
     id: str
     name: str
     description: str | None = None
-    team: Team | None = None
-    state: str | None = None  # ProjectStatusType value
+    team_id: str | None = Field(alias="teamId", default=None)
+    state: str | None = None  # planned, started, paused, completed, canceled
     url: str | None = None
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": True, "populate_by_name": True}
 
     @classmethod
     def from_linear(cls, linear_project: LinearProject) -> Self:
-        # status is a required ProjectStatus on LinearProject; .type is a
-        # ProjectStatusType (StrEnum). Be defensive against partial payloads.
-        status: LinearProjectStatus | None = getattr(linear_project, "status", None)
-        status_value: str | None = str(status.type) if status else None
+        """Create a Project from a linear-api Project object.
 
-        try:
-            linear_teams = linear_project.teams or []
-        except Exception:
-            linear_teams = []
-        team = None
-        if linear_teams and isinstance(linear_teams, list):
-            try:
-                team = Team.from_linear(linear_team=linear_teams[0])
-            except Exception:
-                team = None
-
+        ``team_id`` is left unset: ``LinearProject`` does not expose a
+        single team_id (see class docstring).
+        """
         return cls(
             id=linear_project.id,
             name=linear_project.name,
-            description=linear_project.description,
-            team=team,
-            state=status_value,
-            url=linear_project.url,
+            description=getattr(linear_project, "description", None),
+            state=getattr(linear_project, "state", None),
+            url=getattr(linear_project, "url", None),
         )
 
 

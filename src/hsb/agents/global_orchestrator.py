@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -199,7 +200,9 @@ class GlobalOrchestrator:
             improvement_triggers=improvement_triggers,
         )
 
-    async def _detect_uat_ready_user_stories(self, linear_state: dict) -> list[dict]:
+    async def _detect_uat_ready_user_stories(
+        self, linear_state: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Phase 5 (UATA-01 / D-01).
 
         Detect User Stories where all child tasks are QA-approved and UAT
@@ -210,7 +213,7 @@ class GlobalOrchestrator:
         (posts a Linear comment via the camelCase ``linear_createComment``
         payload shape — ``issueId``, ``body`` — NOT Python snake_case).
         """
-        uat_ready: list[dict] = []
+        uat_ready: list[dict[str, Any]] = []
         user_stories = [
             item
             for item in linear_state.values()
@@ -261,7 +264,7 @@ class GlobalOrchestrator:
                 uat_ready.append(us_dict)
         return uat_ready
 
-    async def _fetch_children(self, parent_id: str) -> list[dict]:
+    async def _fetch_children(self, parent_id: str) -> list[dict[str, Any]]:
         """Fetch direct children of a Linear work item (used by Phase 5
         UAT-readiness detection).
 
@@ -273,7 +276,7 @@ class GlobalOrchestrator:
             operation="list_children",
             payload={"parent_id": parent_id},
         )
-        items: list[dict] = []
+        items: list[dict[str, Any]] = []
         for entity in result.linear_entities or []:
             if hasattr(entity, "model_dump"):
                 items.append(entity.model_dump())
@@ -283,7 +286,9 @@ class GlobalOrchestrator:
                 items.append(dict(entity))
         return items
 
-    def _filter_ready_items(self, all_items: list[dict]) -> list[dict]:
+    def _filter_ready_items(
+        self, all_items: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         GORD-01: Return items with status='todo'.
         GORD-02: Exclude items with any unresolved blocked-by dependency.
@@ -298,7 +303,7 @@ class GlobalOrchestrator:
                 ready.append(item)
         return ready
 
-    def _check_epic_complete(self, all_items: list[dict]) -> bool:
+    def _check_epic_complete(self, all_items: list[dict[str, Any]]) -> bool:
         """
         GORD-04: Signal is_epic_ready when all EPIC children are done + qa_approved.
         Returns False if no children exist (empty backlog case already handled above).
@@ -312,7 +317,7 @@ class GlobalOrchestrator:
             for i in children
         )
 
-    async def _fetch_all_items(self) -> list[dict]:
+    async def _fetch_all_items(self) -> list[dict[str, Any]]:
         """
         Fetch all work items from Linear for the current project scope.
         Uses run_validated_linear_agent — all Linear reads go through OAuth2 MCP layer (no API keys).
@@ -325,7 +330,7 @@ class GlobalOrchestrator:
             operation="read",
             payload={"filter": {"project": {"id": {"eq": "CURRENT_PROJECT_ID"}}}},
         )
-        items: list[dict] = []
+        items: list[dict[str, Any]] = []
         for entity in result.linear_entities:
             if hasattr(entity, "model_dump"):
                 items.append(entity.model_dump())

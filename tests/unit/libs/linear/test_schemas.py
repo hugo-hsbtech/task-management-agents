@@ -102,102 +102,62 @@ def test_team_from_linear_no_description() -> None:
 
 def test_project_creation() -> None:
     """Project model should be created with required fields."""
-    team = Team(id="team-456", name="Engineering", key="ENG")
-    project = Project(id="proj-123", name="Sprint 1", team=team)
+    project = Project(id="proj-123", name="Sprint 1")
     assert project.id == "proj-123"
     assert project.name == "Sprint 1"
-    assert project.team is not None
-    assert project.team.id == "team-456"
+    assert project.team_id is None
     assert project.state is None
     assert project.description is None
 
 
 def test_project_with_optional_fields() -> None:
     """Project model should accept optional fields."""
-    team = Team(id="team-456", name="Engineering", key="ENG")
     project = Project(
         id="proj-123",
         name="Sprint 1",
-        team=team,
+        teamId="team-456",
         description="Q1 sprint",
         state="started",
     )
     assert project.description == "Q1 sprint"
     assert project.state == "started"
+    assert project.team_id == "team-456"
 
 
 def test_project_from_linear() -> None:
-    """Project.from_linear should convert a linear_api LinearProject.
+    """Project.from_linear should convert linear_api Project object.
 
-    State is derived from status.type (a ProjectStatusType StrEnum, where str(t)
-    returns its value). team is read from linear_project.teams[0].
+    team_id is left unset: LinearProject doesn't expose a single team_id
+    (a project can belong to multiple teams; see Project.team_id docs).
     """
-
-    class _StatusType(str):
-        value = "completed"
-
-    class MockStatus:
-        type = _StatusType("completed")
-
-    class MockTeam:
-        id = "team-123"
-        name = "Engineering"
-        key = "ENG"
-        description = None
 
     class MockLinearProject:
         id = "proj-789"
         name = "Sprint 2"
         description = None
-        status = MockStatus()
+        state = "completed"
         url = "https://linear.app/p/proj-789"
-        teams = [MockTeam()]
 
     project = Project.from_linear(MockLinearProject())
     assert project.id == "proj-789"
     assert project.name == "Sprint 2"
-    assert project.team is not None
-    assert project.team.id == "team-123"
+    assert project.team_id is None
     assert project.state == "completed"
     assert project.url == "https://linear.app/p/proj-789"
 
 
-def test_project_from_linear_without_teams() -> None:
-    """Project.from_linear leaves team as None when teams list is empty."""
-
-    class _StatusType(str):
-        value = "started"
-
-    class MockStatus:
-        type = _StatusType("started")
-
-    class MockLinearProject:
-        id = "proj-1"
-        name = "P"
-        description = "d"
-        status = MockStatus()
-        url = None
-        teams: list = []
-
-    project = Project.from_linear(MockLinearProject())
-    assert project.team is None
-    assert project.state == "started"
-
-
-def test_project_from_linear_no_status() -> None:
-    """Project.from_linear tolerates a missing status payload."""
+def test_project_from_linear_no_state() -> None:
+    """Project.from_linear tolerates a missing state attribute."""
 
     class MockLinearProject:
         id = "proj-x"
         name = "X"
         description = None
-        status = None
         url = None
-        teams: list = []
 
     project = Project.from_linear(MockLinearProject())
     assert project.state is None
-    assert project.team is None
+    assert project.team_id is None
 
 
 # -----------------------------------------------------------------------------

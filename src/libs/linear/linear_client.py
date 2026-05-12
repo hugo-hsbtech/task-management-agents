@@ -5,7 +5,7 @@ Consumers should import from libs.linear.schemas, not from linear_api.
 """
 
 import logging
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from linear_api import LinearClient as BaseLinearClient
 from linear_api import LinearIssueInput, LinearIssueUpdateInput
@@ -27,6 +27,9 @@ from libs.linear.schemas import (
     Team,
     _map_priority_to_api,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +193,8 @@ class LinearClient:
         self, query: str, variables: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Execute a raw GraphQL query (internal use only)."""
+        from typing import cast
+
         vars_dict = variables or {}
 
         # SDK public method (linear-api >= 0.3)
@@ -201,6 +206,12 @@ class LinearClient:
         if hasattr(self._client, "_execute"):
             result = self._client._execute(query, vars_dict)
             return result
+
+        # Fallback: try to use any public execute method
+        execute_method = getattr(self._client, "execute", None)
+        if execute_method:
+            typed_execute = cast("Callable[..., dict[str, Any]]", execute_method)
+            return typed_execute(query, vars_dict)
 
         raise RuntimeError(
             "Raw GraphQL execution not supported by this linear-api version"
@@ -424,7 +435,7 @@ class LinearClient:
         except Exception:
             return []
 
-    def list_issue_attachments(self, issue_id: str) -> list[dict]:
+    def list_issue_attachments(self, issue_id: str) -> list[dict[str, Any]]:
         """List all attachments on an issue."""
         try:
             linear_attachments = self._client.issues.get_attachments(issue_id)
@@ -443,7 +454,7 @@ class LinearClient:
         except Exception:
             return []
 
-    def create_attachment(self, issue_id: str, title: str, url: str) -> dict:
+    def create_attachment(self, issue_id: str, title: str, url: str) -> dict[str, Any]:
         """Create an attachment on an issue.
 
         linear_api.IssueManager.create_attachment takes a LinearAttachmentInput
@@ -468,7 +479,7 @@ class LinearClient:
         except Exception as e:
             raise RuntimeError(f"Failed to create attachment: {e}") from e
 
-    def get_team_members(self, team_id: str) -> list[dict]:
+    def get_team_members(self, team_id: str) -> list[dict[str, Any]]:
         """Get all members of a team."""
         try:
             linear_members = self._client.teams.get_members(team_id)
@@ -484,7 +495,7 @@ class LinearClient:
         except Exception:
             return []
 
-    def get_team_labels(self, team_id: str) -> list[dict]:
+    def get_team_labels(self, team_id: str) -> list[dict[str, Any]]:
         """Get all labels in a team."""
         try:
             linear_labels = self._client.teams.get_labels(team_id)
@@ -518,7 +529,7 @@ class LinearClient:
         except Exception:
             return []
 
-    def get_project_members(self, project_id: str) -> list[dict]:
+    def get_project_members(self, project_id: str) -> list[dict[str, Any]]:
         """Get all members of a project."""
         try:
             linear_members = self._client.projects.get_members(project_id)
@@ -534,7 +545,7 @@ class LinearClient:
         except Exception:
             return []
 
-    def get_project_labels(self, project_id: str) -> list[dict]:
+    def get_project_labels(self, project_id: str) -> list[dict[str, Any]]:
         """Get all labels in a project."""
         try:
             linear_labels = self._client.projects.get_labels(project_id)

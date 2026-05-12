@@ -18,7 +18,9 @@ from pydantic import BaseModel, Field, field_validator
 
 class KnowledgeEnrichmentOutput(BaseModel):
     work_item_id: str
-    enrichment_report: dict  # matches AGENT-CONTRACTS.md §9 output structure
+    enrichment_report: dict[
+        str, object
+    ]  # matches AGENT-CONTRACTS.md §9 output structure
     retrieved_entries: list[str]  # file paths of Knowledge Store entries retrieved
 
     model_config = {"extra": "forbid"}
@@ -38,7 +40,7 @@ class KnowledgeStorageInput(BaseModel):
         "anti_pattern",
     ]
     context: str
-    evidence: dict  # linear_issue, pr, files, qa_finding
+    evidence: dict[str, object]  # linear_issue, pr, files, qa_finding
     insight: str
     recommendation: str
     applicability: str = Field(..., description="Non-empty, not 'all tasks'")

@@ -36,10 +36,10 @@ class BuilderInput(BaseModel):
     work_item_id: str
     issue_description: str
     acceptance_criteria: list[str] = Field(default_factory=list)
-    epic_context: dict = Field(default_factory=dict)
+    epic_context: dict[str, object] = Field(default_factory=dict)
     plan_source: str
     repository_context: RepositoryContext
-    knowledge_context: dict = Field(default_factory=dict)
+    knowledge_context: dict[str, object] = Field(default_factory=dict)
 
     model_config = {"extra": "forbid"}
 

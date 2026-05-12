@@ -33,7 +33,9 @@ def build_enrichment_prompt(work_item_id: str, work_item_json: str) -> str:
     )
 
 
-def build_storage_prompt(qa_result: dict, implementation_notes: dict) -> str:
+def build_storage_prompt(
+    qa_result: dict[str, object], implementation_notes: dict[str, object]
+) -> str:
     """WIO Step 5 prompt — Knowledge Store write evaluation (skill 11)."""
     return (
         "Evaluate QA findings and implementation notes from this cycle. "

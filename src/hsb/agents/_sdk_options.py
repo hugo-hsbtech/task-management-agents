@@ -19,8 +19,9 @@ import functools
 import inspect
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar, overload
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -43,6 +44,10 @@ from settings import (
 logger = logging.getLogger(__name__)
 
 _FORBIDDEN_TOOLS = {"Agent"}  # G2: WORC-02
+
+# Type-parameter aliases for linear_write_guard overloads (see end of file).
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
 def make_options(
@@ -174,7 +179,16 @@ def _stack_includes_risk_agent_excluding_delegated() -> bool:
     return found_risk_frame and not found_delegated_frame
 
 
-def linear_write_guard(fn):
+# Classic ParamSpec instead of PEP 695 here: mypy 2.1 fails to resolve these
+# overloads across module boundaries when PEP 695 syntax is used (callers see
+# the impl signature `Any -> Any` instead of the typed overloads).
+@overload
+def linear_write_guard(  # noqa: UP047
+    fn: Callable[_P, Awaitable[_R]],
+) -> Callable[_P, Awaitable[_R]]: ...
+@overload
+def linear_write_guard(fn: Callable[_P, _R]) -> Callable[_P, _R]: ...  # noqa: UP047
+def linear_write_guard(fn: Any) -> Any:
     """G5 decorator. Apply to every ``LinearAgent`` write method
     (``create_issue``, ``update_issue``, ``create_comment``,
     ``create_subtasks``, etc.). Stack-inspects on every call; denies if
@@ -187,23 +201,26 @@ def linear_write_guard(fn):
     ``src/hsb/agents/global_orchestrator.py::approve_improvement_trigger()``,
     deny.'
     """
+    if inspect.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def _async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            if _stack_includes_risk_agent_excluding_delegated():
+                logger.error(
+                    "G5 violation: LinearAgent write attempted from risk_agent.py "
+                    "outside the operator-delegated approve_improvement_trigger() path. "
+                    "RISK-04 enforcement: denying."
+                )
+                raise PermissionError(
+                    "RISK-04 violation (G5): Risk Agent attempted Linear write "
+                    "without explicit operator delegation."
+                )
+            return await fn(*args, **kwargs)
+
+        return _async_wrapper
 
     @functools.wraps(fn)
-    async def _async_wrapper(*args, **kwargs):
-        if _stack_includes_risk_agent_excluding_delegated():
-            logger.error(
-                "G5 violation: LinearAgent write attempted from risk_agent.py "
-                "outside the operator-delegated approve_improvement_trigger() path. "
-                "RISK-04 enforcement: denying."
-            )
-            raise PermissionError(
-                "RISK-04 violation (G5): Risk Agent attempted Linear write "
-                "without explicit operator delegation."
-            )
-        return await fn(*args, **kwargs)
-
-    @functools.wraps(fn)
-    def _sync_wrapper(*args, **kwargs):
+    def _sync_wrapper(*args: Any, **kwargs: Any) -> Any:
         if _stack_includes_risk_agent_excluding_delegated():
             logger.error(
                 "G5 violation: LinearAgent write attempted from risk_agent.py "
@@ -215,9 +232,6 @@ def linear_write_guard(fn):
             )
         return fn(*args, **kwargs)
 
-    if inspect.iscoroutinefunction(fn):
-        return _async_wrapper
-
     return _sync_wrapper
 
 
@@ -227,7 +241,7 @@ def linear_write_guard(fn):
 # ---------------------------------------------------------------------------
 
 
-def resolve_runtime(agent_name: str):
+def resolve_runtime(agent_name: str) -> Any:
     """Return the Runtime implementation for the given agent.
 
     Reads env var HSB_RUNTIME_<AGENT_NAME_UPPER>; default "claude".
@@ -254,15 +268,15 @@ def resolve_runtime(agent_name: str):
 
 def make_agent_options(
     system_prompt: str,
-    allowed_tools,
-    permission_mode,
+    allowed_tools: list[str] | tuple[str, ...],
+    permission_mode: Any,
     max_turns: int,
     model: str,
-    mcp_servers: dict | None = None,
+    mcp_servers: dict[str, Any] | None = None,
     cwd: str | None = None,
-    output_schema: dict | None = None,
-    hooks=None,
-):
+    output_schema: dict[str, Any] | None = None,
+    hooks: Any = None,
+) -> Any:
     """Runtime-agnostic options factory. Returns AgentOptions.
 
     Enforces G1 + G2 (same as make_options). Use this when an agent goes

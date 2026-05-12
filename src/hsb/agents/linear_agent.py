@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import Any, cast
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -126,7 +127,7 @@ async def run_linear_agent(prompt: str) -> str | None:
 
 async def _run_validated_linear_agent_impl(
     operation: str,
-    payload: dict,
+    payload: dict[str, Any],
 ) -> LinearOutput:
     """Internal implementation. Use :func:`run_validated_linear_agent` instead.
 
@@ -197,7 +198,7 @@ async def _run_validated_linear_agent_impl(
 @linear_write_guard
 async def _run_validated_linear_agent_write(
     operation: str,
-    payload: dict,
+    payload: dict[str, Any],
 ) -> LinearOutput:
     """G5-guarded WRITE entry point. Delegates to the unguarded implementation
     after passing the stack-inspection check."""
@@ -206,7 +207,7 @@ async def _run_validated_linear_agent_write(
 
 async def run_validated_linear_agent(
     operation: str,
-    payload: dict,
+    payload: dict[str, Any],
 ) -> LinearOutput:
     """Public Linear Agent entry point.
 
@@ -218,7 +219,16 @@ async def run_validated_linear_agent(
     runtime defense.
     """
     if operation in _WRITE_OPERATIONS:
-        return await _run_validated_linear_agent_write(operation, payload)
+        # mypy can't resolve linear_write_guard's overloads across module
+        # boundaries (it picks the impl signature `Any -> Any` instead of the
+        # `Callable[P, Awaitable[R]] -> Callable[P, Awaitable[R]]` overload).
+        # The decorator preserves the wrapped function's signature at runtime;
+        # cast restores the type-checker's view of the awaited result, and the
+        # no-untyped-call suppression covers the call itself.
+        return cast(
+            "LinearOutput",
+            await _run_validated_linear_agent_write(operation, payload),  # type: ignore[no-untyped-call]
+        )
     return await _run_validated_linear_agent_impl(operation, payload)
 
 

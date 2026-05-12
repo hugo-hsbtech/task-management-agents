@@ -18,7 +18,7 @@ class RuntimeEnvelope(BaseModel):
     requested_by: Literal["global_orchestrator", "work_item_orchestrator", "human"]
     skill: str
     agent: str
-    input: dict
+    input: dict[str, object]
     output: LinearOutput | None = None
     status: Literal["success", "failed", "blocked"]
     errors: list[str] = Field(default_factory=list)

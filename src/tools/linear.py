@@ -17,7 +17,7 @@ Example:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -407,7 +407,7 @@ class LinearTools:
         return self._client.create_issue_relation(
             issue_id=src_id,
             related_issue_id=tgt_id,
-            relation_type=api_type,
+            relation_type=cast("Literal['blocks', 'duplicate', 'related']", api_type),
         )
 
     async def _handle_get_issue_relations(
@@ -539,4 +539,8 @@ class LinearTools:
             Dict mapping tool name to handler function.
             Useful for providers that need explicit handler registration.
         """
-        return {spec.name: spec.handler for spec in self.get_tool_specs()}
+        return {
+            spec.name: spec.handler
+            for spec in self.get_tool_specs()
+            if spec.handler is not None
+        }
