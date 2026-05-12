@@ -279,6 +279,12 @@ def test_resolve_runtime_returns_handle_wrapping_claude_provider(
     )
     fake_assistant.content = [text_block]  # type: ignore[list-item]
     fake_result = MagicMock(spec=claude_agent_sdk.ResultMessage)
+    # spec=ResultMessage causes MagicMock to auto-create `structured_output`
+    # as a MagicMock; claude.py's _to_message would then json.dumps that and
+    # fail. Force the result-text branch by clearing structured_output.
+    fake_result.structured_output = None
+    fake_result.subtype = "success"
+    fake_result.result = "ok"
 
     async def _aiter(prompt: str, options: Any) -> AsyncIterator[Any]:
         yield fake_assistant
