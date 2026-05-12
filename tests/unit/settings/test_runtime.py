@@ -23,7 +23,7 @@ def _clear_runtime_env(monkeypatch):
 
 def test_all_agents_default_to_claude(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     s = RuntimeSettings()
     assert s.backlog == "claude"
@@ -38,7 +38,7 @@ def test_all_agents_default_to_claude(monkeypatch):
 
 
 def test_agent_runtime_enum_values():
-    from hsb.settings.runtime import AgentRuntime
+    from settings import AgentRuntime
 
     assert AgentRuntime.CLAUDE.value == "claude"
     assert AgentRuntime.CODEX.value == "codex"
@@ -50,7 +50,7 @@ def test_agent_runtime_enum_values():
 def test_backlog_can_be_codex(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "codex")
-    from hsb.settings.runtime import AgentRuntime, RuntimeSettings
+    from settings import AgentRuntime, RuntimeSettings
 
     s = RuntimeSettings()
     assert s.backlog == AgentRuntime.CODEX
@@ -60,7 +60,7 @@ def test_backlog_can_be_codex(monkeypatch):
 def test_runtime_value_is_normalized_lower_stripped(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "  CODEX  ")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     assert RuntimeSettings().backlog == "codex"
 
@@ -74,7 +74,7 @@ def test_work_item_orchestrator_cannot_be_codex(monkeypatch):
     explanation."""
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR", "codex")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     with pytest.raises(ValidationError) as exc:
         RuntimeSettings()
@@ -86,7 +86,7 @@ def test_work_item_orchestrator_cannot_be_codex(monkeypatch):
 def test_invalid_runtime_value_raises(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "gemini")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     with pytest.raises(ValidationError):
         RuntimeSettings()
@@ -94,7 +94,7 @@ def test_invalid_runtime_value_raises(monkeypatch):
 
 def test_oauth_token_default_is_none(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     assert RuntimeSettings().claude_code_oauth_token is None
 
@@ -102,7 +102,7 @@ def test_oauth_token_default_is_none(monkeypatch):
 def test_oauth_token_reads_alias(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-claude-oauth-test")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     s = RuntimeSettings()
     assert isinstance(s.claude_code_oauth_token, SecretStr)
@@ -112,7 +112,7 @@ def test_oauth_token_reads_alias(monkeypatch):
 def test_oauth_token_does_not_leak_in_repr(monkeypatch):
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-claude-oauth-test")
-    from hsb.settings.runtime import RuntimeSettings
+    from settings import RuntimeSettings
 
     assert "sk-claude-oauth-test" not in repr(RuntimeSettings())
 
@@ -121,7 +121,7 @@ def test_oauth_token_does_not_leak_in_repr(monkeypatch):
 
 
 def test_forbidden_vars_constant():
-    from hsb.settings.runtime import FORBIDDEN_API_KEY_VARS
+    from settings import FORBIDDEN_API_KEY_VARS
 
     assert FORBIDDEN_API_KEY_VARS == ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
 
@@ -129,7 +129,7 @@ def test_forbidden_vars_constant():
 def test_assert_oauth2_only_noop_when_clear(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    from hsb.settings.runtime import assert_oauth2_only
+    from settings import assert_oauth2_only
 
     # Should not raise.
     assert_oauth2_only()
@@ -138,7 +138,7 @@ def test_assert_oauth2_only_noop_when_clear(monkeypatch):
 def test_assert_oauth2_only_raises_on_anthropic(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "leaked")
-    from hsb.settings.runtime import assert_oauth2_only
+    from settings import assert_oauth2_only
 
     with pytest.raises(RuntimeError) as exc:
         assert_oauth2_only()
@@ -149,7 +149,7 @@ def test_assert_oauth2_only_raises_on_anthropic(monkeypatch):
 def test_assert_oauth2_only_raises_on_openai(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "leaked")
-    from hsb.settings.runtime import assert_oauth2_only
+    from settings import assert_oauth2_only
 
     with pytest.raises(RuntimeError) as exc:
         assert_oauth2_only()
@@ -162,6 +162,6 @@ def test_assert_oauth2_only_reexported_from_sdk_options(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     from hsb.agents._sdk_options import assert_oauth2_only as via_sdk_options
-    from hsb.settings.runtime import assert_oauth2_only as via_settings
+    from settings import assert_oauth2_only as via_settings
 
     assert via_sdk_options is via_settings

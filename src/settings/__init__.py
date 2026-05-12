@@ -22,18 +22,28 @@ Two access patterns, both first-class:
        assert OrchestratorSettings().claim_delay_ms == 200
 """
 
-from hsb.settings.codex import CodexSettings
-from hsb.settings.github import GitHubSettings
-from hsb.settings.linear import LinearSettings
-from hsb.settings.orchestrator import OrchestratorSettings
-from hsb.settings.runtime import (
+from settings.codex import CodexSettings
+from settings.github import GitHubSettings
+from settings.linear import LinearSettings
+from settings.orchestrator import OrchestratorSettings
+from settings.provider import (
+    ApiKeyAuth,
+    AuthConfig,
+    ClaudeConfig,
+    GeminiConfig,
+    OAuth2ADCAuth,
+    OAuth2CliAuth,
+    OpenAIConfig,
+    ProviderSettings,
+)
+from settings.runtime import (
     FORBIDDEN_API_KEY_VARS,
     AgentRuntime,
     RuntimeSettings,
     assert_oauth2_only,
 )
-from hsb.settings.test_fixture import TestFixtureSettings
-from hsb.settings.wio_ipc import WIOIPCSettings
+from settings.test_fixture import TestFixtureSettings
+from settings.wio_ipc import WIOIPCSettings
 
 
 class _Settings:
@@ -84,10 +94,18 @@ settings = _Settings()
 __all__ = [
     "FORBIDDEN_API_KEY_VARS",
     "AgentRuntime",
+    "ApiKeyAuth",
+    "AuthConfig",
+    "ClaudeConfig",
     "CodexSettings",
+    "GeminiConfig",
     "GitHubSettings",
     "LinearSettings",
+    "OAuth2ADCAuth",
+    "OAuth2CliAuth",
+    "OpenAIConfig",
     "OrchestratorSettings",
+    "ProviderSettings",
     "RuntimeSettings",
     "TestFixtureSettings",
     "WIOIPCSettings",
