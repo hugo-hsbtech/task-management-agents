@@ -202,16 +202,16 @@ class LinearClient:
             result: dict[str, Any] = self._client.execute_graphql(query, vars_dict)
             return result
 
-        # Older SDK private method
-        if hasattr(self._client, "_execute"):
-            result = self._client._execute(query, vars_dict)
-            return result
-
-        # Fallback: try to use any public execute method
+        # Fallback: try public execute method first (more stable)
         execute_method = getattr(self._client, "execute", None)
         if execute_method:
             typed_execute = cast("Callable[..., dict[str, Any]]", execute_method)
             return typed_execute(query, vars_dict)
+
+        # Older SDK private method (fallback for older versions)
+        if hasattr(self._client, "_execute"):
+            result = self._client._execute(query, vars_dict)
+            return result
 
         raise RuntimeError(
             "Raw GraphQL execution not supported by this linear-api version"

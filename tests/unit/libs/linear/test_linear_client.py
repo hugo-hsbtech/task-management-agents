@@ -83,19 +83,32 @@ def _make_project_mock(
 ) -> MagicMock:
     """Build a MagicMock matching linear_api.LinearProject's read surface.
 
-    from_linear reads `getattr(linear_project, "state", None)` directly.
-    team_id is unused by from_linear (LinearProject has no single team_id),
-    but kept as a parameter so existing call sites don't need to change.
+    from_linear reads `status.type` for state and `teams[0]` for team.
     """
     m = MagicMock()
     m.id = id
     m.name = name
     m.description = description
-    m.state = state
     m.url = url
-    # Keep teams/status for legacy compatibility in mocks that set them directly.
-    m.teams = []
-    m.status = None
+
+    # status.type drives state mapping
+    if state is not None:
+        status_mock = MagicMock()
+        status_mock.type = state
+        m.status = status_mock
+    else:
+        m.status = None
+
+    # teams[0] drives team mapping
+    if team_id is not None:
+        team_mock = MagicMock()
+        team_mock.id = team_id
+        team_mock.name = team_name
+        team_mock.key = team_key
+        team_mock.description = None
+        m.teams = [team_mock]
+    else:
+        m.teams = []
     return m
 
 
@@ -288,8 +301,9 @@ def test_list_projects(client: LinearClient) -> None:
 
     assert len(projects) == 2
     assert projects[0].id == "proj-1"
-    # LinearProject has no team_id field, so from_linear leaves it unset.
-    assert projects[0].team_id is None
+    # team is read from linear_project.teams[0] inside from_linear.
+    assert projects[0].team is not None
+    assert projects[0].team.id == "team-123"
     assert projects[0].state == "started"
     client._client.projects.get_all.assert_called_once_with(team_id="team-123")
 
@@ -326,8 +340,9 @@ def test_get_project_success(client: LinearClient) -> None:
     assert project.id == "proj-123"
     assert project.name == "Sprint 1"
     assert project.state == "started"
-    # team_id is not populated by from_linear (LinearProject has no single team_id)
-    assert project.team_id is None
+    # team is read from linear_project.teams[0] inside from_linear.
+    assert project.team is not None
+    assert project.team.id == "team-9"
 
 
 def test_get_project_not_found(client: LinearClient) -> None:
@@ -2080,8 +2095,12 @@ def test_execute_raw_uses_execute_graphql_first(client: LinearClient) -> None:
 
 
 def test_execute_raw_falls_back_to_private_execute(client: LinearClient) -> None:
-    """_execute_raw should fall back to _execute when execute_graphql is absent."""
+    """_execute_raw should fall back to _execute when execute_graphql and execute are absent."""
     del client._client.execute_graphql
+    # Also remove the public `execute` fallback so the private `_execute`
+    # path is exercised. MagicMock auto-creates attributes, so we must
+    # explicitly suppress `execute` to reach the older-SDK branch.
+    client._client.execute = None
 
     expected_result = {"data": {"test": "value"}}
     client._client._execute.return_value = expected_result
@@ -2098,8 +2117,9 @@ def test_execute_raw_no_method_available(client: LinearClient) -> None:
         delattr(client._client, "execute_graphql")
     if hasattr(client._client, "_execute"):
         delattr(client._client, "_execute")
-    # MagicMock auto-creates 'execute' on access; spec it away so getattr returns None.
-    client._client.configure_mock(**{"execute": None})
+    # MagicMock auto-creates `execute` — set it falsy so the public-method
+    # fallback is skipped and the RuntimeError branch is reached.
+    client._client.execute = None
 
     with pytest.raises(RuntimeError, match="Raw GraphQL execution not supported"):
         client._execute_raw("query { test }")
