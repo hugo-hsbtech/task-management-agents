@@ -56,6 +56,15 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/
 
+      - name: Safety check (dependencies)
+        run: uv run safety check
+
+      - name: Bandit security check
+        run: uv run bandit -r src/ -f json -o /tmp/bandit-report.json && cat /tmp/bandit-report.json || exit 0
+
+      - name: Pylint check
+        run: uv run pylint src/
+
       - name: Mypy typecheck
         run: uv run mypy src/
 
