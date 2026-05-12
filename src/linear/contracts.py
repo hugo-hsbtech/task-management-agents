@@ -7,11 +7,12 @@ from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 class LinearOperation(StrEnum):
-    create = "create"
-    update = "update"
-    read = "read"
-    link = "link"
-    comment = "comment"
+    CREATE = "create"
+    UPDATE = "update"
+    READ = "read"
+    LINK = "link"
+    COMMENT = "comment"
+    CREATE_SUBTASKS = "create_subtasks"
 
 
 class LinearItemType(StrEnum):
@@ -21,16 +22,14 @@ class LinearItemType(StrEnum):
     subtask = "subtask"
 
 
-class LinearItemInput(BaseModel):
-    """A pre-planned work item to be created or updated in Linear."""
+class LinearItemStatus(StrEnum):
+    """A Linear item status."""
 
-    id: str | None = Field(None, pattern=r"^LIN-\d+$")
-    type: LinearItemType
-    title: str
-    description: str | None = None
-    parent_id: str | None = Field(None, pattern=r"^LIN-\d+$")
-
-    model_config = {"extra": "forbid"}
+    BACKLOG = "Backlog"
+    PLANNED = "Planned"
+    IN_PROGRESS = "In Progress"
+    IN_REVIEW = "In Review"
+    DONE = "Done"
 
 
 class Project(BaseModel):
@@ -46,6 +45,26 @@ class Project(BaseModel):
         return values
 
 
+class LinearEntity(BaseModel):
+    """A work item — used both as input (to be persisted) and output (after persistence).
+
+    On input: id and url are absent (item does not exist yet).
+    On output: id and url are populated by the agent after creation/update.
+    """
+
+    type: LinearItemType
+    id: str | None = Field(None, pattern=r"^LIN-\d+$")
+    url: str | None = Field(None, pattern=r"^https://linear\.app/")
+
+    title: str
+    description: str | None = None
+    acceptance_criteria: str | None = None
+    priority: int | None = None
+    state: LinearItemStatus | None = None
+
+    model_config = {"extra": "forbid"}
+
+
 class LinearInput(BaseModel):
     """Input contract for the Linear System of Record Agent.
 
@@ -56,19 +75,7 @@ class LinearInput(BaseModel):
 
     operation: LinearOperation
     project: Project
-    items: list[LinearItemInput] = Field(
-        ..., min_length=1, description="Pre-planned work items to persist."
-    )
-
-    model_config = {"extra": "forbid"}
-
-
-class LinearEntity(BaseModel):
-    """A Linear entity after it has been persisted (id and url are known)."""
-
-    id: str = Field(..., pattern=r"^LIN-\d+$")
-    type: LinearItemType
-    url: str = Field(..., pattern=r"^https://linear\.app/")
+    items: list[LinearEntity] = Field(default_factory=list)
 
     model_config = {"extra": "forbid"}
 
@@ -76,9 +83,9 @@ class LinearEntity(BaseModel):
 class LinearOutput(BaseModel):
     """Output contract for the Linear System of Record Agent."""
 
-    operation: str
+    operation: LinearOperation
     result: Literal["success", "failed"]
-    linear_entities: list[LinearEntity] = Field(default_factory=list)
+    items: list[LinearEntity] = Field(default_factory=list)
     error: str | None = None
 
     @model_validator(mode="after")

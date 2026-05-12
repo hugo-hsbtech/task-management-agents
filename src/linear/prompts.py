@@ -19,8 +19,8 @@ SYSTEM_PROMPT = (
     "then tasks (with story parentId), then subtasks (with task parentId). "
     "Return your final result as a single JSON object matching this schema exactly: "
     '{ "operation": <op>, "result": "success"|"failed", '
-    '"linear_entities": [{ "id": "LIN-...", "type": "epic|user_story|task|subtask", '
-    '"url": "https://linear.app/..." }], "error": <string or null> }. '
+    '"items": [{ "id": "LIN-...", "type": "epic|user_story|task|subtask", '
+    '"url": "https://linear.app/...", "title": "..." }], "error": <string or null> }. '
     "Do not include any prose around the JSON — emit ONLY the JSON object as the final result."
 )
 
@@ -58,9 +58,10 @@ OPERATION_PROMPT = (
     "- Create epics first, then user stories (parentId = epic LIN-id), "
     "then tasks (parentId = story LIN-id), then subtasks (parentId = task LIN-id).\n"
     "- If an item already has an id (LIN-xxx), update it instead of creating a new one.\n"
-    "- If an item has no id, create it and record the assigned LIN-id in linear_entities.\n"
+    "- If an item has no id, create it and record the assigned LIN-id in items.\n"
     "- Preserve the exact title and description from the input — do not paraphrase.\n\n"
     "Return your result as a JSON object matching this schema:\n"
     '{{ "operation": "<op>", "result": "success"|"failed", '
-    '"linear_entities": [...], "error": "<string or null>" }}'
+    '"items": [{{ "id": "LIN-...", "type": "...", "url": "...", "title": "..." }}], '
+    '"error": "<string or null>" }}'
 )

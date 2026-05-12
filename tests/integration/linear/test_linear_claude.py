@@ -21,8 +21,8 @@ import pytest
 
 from linear.agent import run_validated_linear_agent
 from linear.contracts import (
+    LinearEntity,
     LinearInput,
-    LinearItemInput,
     LinearItemType,
     LinearOperation,
     Project,
@@ -42,12 +42,12 @@ pytestmark = [pytest.mark.integration]
 # ---------------------------------------------------------------------------
 
 SAMPLE_ITEMS = [
-    LinearItemInput(
+    LinearEntity(
         type=LinearItemType.epic,
         title="[Integration Test] Linear Agent Connectivity",
         description="Verify the Linear Agent can persist items via MCP.",
     ),
-    LinearItemInput(
+    LinearEntity(
         type=LinearItemType.task,
         title="Create a test task via agent",
         description="Confirm the agent creates issues visible in the test project.",
@@ -97,7 +97,7 @@ def claude_options() -> ProviderOptions:
 @pytest.fixture
 def create_input(test_project: Project) -> LinearInput:
     return LinearInput(
-        operation=LinearOperation.create,
+        operation=LinearOperation.CREATE,
         project=test_project,
         items=SAMPLE_ITEMS,
     )
@@ -120,7 +120,7 @@ async def test_create_task_returns_success(
     )
 
     assert output.result == "success", f"Agent failed: {output.error}"
-    assert len(output.linear_entities) > 0, "Expected at least one created entity"
+    assert len(output.items) > 0, "Expected at least one created entity"
 
 
 @pytest.mark.asyncio
@@ -135,7 +135,7 @@ async def test_create_task_entities_have_valid_ids(
     )
 
     assert output.result == "success", f"Agent failed: {output.error}"
-    for entity in output.linear_entities:
+    for entity in output.items:
         assert re.match(r"^LIN-\d+$", entity.id), f"Invalid entity id: {entity.id}"
         assert entity.url.startswith("https://linear.app/"), (
             f"Invalid entity url: {entity.url}"
@@ -153,4 +153,4 @@ async def test_create_task_output_matches_operation(
         create_input, claude_provider, claude_options
     )
 
-    assert output.operation == LinearOperation.create
+    assert output.operation == LinearOperation.CREATE

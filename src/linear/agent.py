@@ -78,7 +78,7 @@ async def run_validated_linear_agent(
     )
     project_ref = str(input.project.url or input.project.name)
     prompt = OPERATION_PROMPT.format(
-        operation=input.operation.value,
+        operation=input.operation,
         project=project_ref,
         item_count=len(input.items),
         items_json=items_json,
