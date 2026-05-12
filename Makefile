@@ -82,4 +82,4 @@ typecheck: ## Run type checker
 
 .PHONY: test
 test: ## Run test suite
-	uv run pytest tests/
+	uv run pytest tests/ -n auto --cov --cov-report=term-missing

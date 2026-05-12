@@ -29,6 +29,8 @@ packages = ["src/hsb", "src/llm_providers"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-xdist>=3.0",
+    "pytest-cov>=5.0",
     "hypothesis>=6.100.0",
     "ruff>=0.9",
     "mypy>=1.14",
@@ -71,6 +73,6 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 pythonpath = ["src"]
 markers = [
-    "integration: requires live Linear MCP connection and ANTHROPIC_API_KEY",
+    "integration: requires live Linear MCP connection and HSB_RUN_INTEGRATION=1",
     "live_codex: real Codex subscription smoke test (manual, opt-in via -m live_codex)",
 ]

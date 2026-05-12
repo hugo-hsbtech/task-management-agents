@@ -13,6 +13,25 @@ import os
 import pytest
 
 
+def pytest_collection_modifyitems(config, items):
+    """Skip live integration tests unless explicitly enabled.
+
+    The integration marker covers tests that can call real SDKs, Linear MCP,
+    or long-running agent loops. Running plain ``pytest`` should exercise the
+    deterministic suite and skip those live probes instead of hanging while
+    waiting on external credentials.
+    """
+    if os.environ.get("HSB_RUN_INTEGRATION") == "1":
+        return
+
+    skip_integration = pytest.mark.skip(
+        reason="integration test skipped; set HSB_RUN_INTEGRATION=1 to run live"
+    )
+    for item in items:
+        if item.get_closest_marker("integration"):
+            item.add_marker(skip_integration)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _gsd_clear_api_key():
     """G1 defensive: unset ``ANTHROPIC_API_KEY`` and ``OPENAI_API_KEY`` at test session start."""
