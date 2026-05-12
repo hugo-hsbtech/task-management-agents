@@ -184,6 +184,28 @@ async def test_handle_create_issue_default_priority(
     assert call_args.priority == 2  # MEDIUM
 
 
+@pytest.mark.asyncio
+async def test_handle_create_issue_missing_team(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_create_issue should return structured error, not raise, when
+    the client reports a missing team or project."""
+    mock_linear_client.create_issue.side_effect = RuntimeError(
+        "Team 'team-missing' not found."
+    )
+
+    result = await linear_tools._handle_create_issue(
+        {
+            "title": "Test",
+            "team_id": "team-missing",
+            "project_id": "proj-1",
+        }
+    )
+
+    assert "error" in result
+    assert "team-missing" in result["error"]
+
+
 # -----------------------------------------------------------------------------
 # Update Issue Handler Tests
 # -----------------------------------------------------------------------------
@@ -238,6 +260,24 @@ async def test_handle_update_issue_partial(
     )
 
     assert result["id"] == "issue-123"
+
+
+@pytest.mark.asyncio
+async def test_handle_update_issue_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_update_issue should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.update_issue.side_effect = RuntimeError(
+        "Failed to update issue 'MISSING-1': not found"
+    )
+
+    result = await linear_tools._handle_update_issue(
+        {"issue_id": "MISSING-1", "title": "Whatever"}
+    )
+
+    assert "error" in result
+    assert "MISSING-1" in result["error"]
 
 
 # -----------------------------------------------------------------------------
@@ -304,6 +344,24 @@ async def test_handle_add_label(
     mock_linear_client.add_label_to_issue.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_handle_add_label_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_add_label should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.add_label_to_issue.side_effect = RuntimeError(
+        "Failed to add label to issue: boom"
+    )
+
+    result = await linear_tools._handle_add_label(
+        {"issue_id": "issue-123", "label_name": "bug"}
+    )
+
+    assert "error" in result
+    assert "Failed to add label" in result["error"]
+
+
 # -----------------------------------------------------------------------------
 # Team Handler Tests
 # -----------------------------------------------------------------------------
@@ -345,6 +403,22 @@ async def test_handle_list_teams_empty(
     result = await linear_tools._handle_list_teams({})
 
     assert result["teams"] == []
+
+
+@pytest.mark.asyncio
+async def test_handle_list_teams_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_teams should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.list_teams.side_effect = RuntimeError(
+        "Failed to list teams: API boom"
+    )
+
+    result = await linear_tools._handle_list_teams({})
+
+    assert "error" in result
+    assert "Failed to list teams" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -414,6 +488,22 @@ async def test_handle_list_projects(
     assert "projects" in result
     assert len(result["projects"]) == 1
     assert result["projects"][0]["id"] == "proj-1"
+
+
+@pytest.mark.asyncio
+async def test_handle_list_projects_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_projects should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.list_projects.side_effect = RuntimeError(
+        "Failed to list projects for team 'team-1': API boom"
+    )
+
+    result = await linear_tools._handle_list_projects({"team_id": "team-1"})
+
+    assert "error" in result
+    assert "team-1" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -508,6 +598,24 @@ async def test_handle_update_project_with_message(
     assert result["id"] == "proj-123"
 
 
+@pytest.mark.asyncio
+async def test_handle_update_project_not_found(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_update_project should return structured error matching the
+    pattern used by _handle_get_project, not propagate RuntimeError."""
+    mock_linear_client.update_project.side_effect = RuntimeError(
+        "Failed to update project: Project 'missing' not found."
+    )
+
+    result = await linear_tools._handle_update_project(
+        {"project_id": "missing", "name": "Whatever"}
+    )
+
+    assert "error" in result
+    assert "missing" in result["error"]
+
+
 # -----------------------------------------------------------------------------
 # Issue Handler Tests
 # -----------------------------------------------------------------------------
@@ -545,6 +653,22 @@ async def test_handle_list_issues(
     assert "issues" in result
     assert len(result["issues"]) == 1
     assert result["issues"][0]["id"] == "issue-1"
+
+
+@pytest.mark.asyncio
+async def test_handle_list_issues_client_error(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_issues should return structured error, not raise, on
+    client RuntimeError."""
+    mock_linear_client.list_issues.side_effect = RuntimeError(
+        "Failed to list issues for project 'proj-1': API boom"
+    )
+
+    result = await linear_tools._handle_list_issues({"project_id": "proj-1"})
+
+    assert "error" in result
+    assert "proj-1" in result["error"]
 
 
 @pytest.mark.asyncio

@@ -8,8 +8,62 @@ from enum import Enum
 from typing import Any, Self
 
 from linear_api import LinearTeam
-from linear_api.domain import LinearIssue, LinearLabel, LinearProject
+from linear_api.domain import LinearLabel, LinearProject
 from pydantic import BaseModel, Field
+
+_MISSING = object()
+
+
+def _field(source: Any, *names: str, default: Any = None) -> Any:
+    """Read the first available field from a linear-api model or a raw dict.
+
+    linear-api inconsistently returns parsed model instances (snake_case
+    attributes) or raw GraphQL dicts (camelCase keys) depending on the
+    call path — notably, projects.get_issues() returns dicts. Callers
+    pass every plausible name; this helper picks the first that exists.
+    """
+    for name in names:
+        if isinstance(source, dict):
+            if name in source:
+                return source[name]
+        else:
+            value = getattr(source, name, _MISSING)
+            if value is not _MISSING:
+                return value
+    return default
+
+
+def _map_priority_from_api(value: Any) -> int:
+    """Map a linear-api priority (Enum or int) to our Priority int value.
+
+    linear-api's LinearPriority is a plain Enum (NOT IntEnum) with
+    URGENT=0, HIGH=1, MEDIUM=2, LOW=3, NONE=4 — the inverse ordering of
+    our Priority (NO_PRIORITY=0, LOW=1, MEDIUM=2, HIGH=3, URGENT=4).
+
+    Both `int(enum)` (fails on plain Enum) and `.value` (semantically wrong
+    because of the inverse ordering) are unsafe; we map by name. Dicts from
+    GraphQL responses carry the raw int — we invert that too.
+    """
+    if value is None:
+        return int(Priority.MEDIUM)
+
+    # Normalize to Linear's int value, however the value was carried.
+    if isinstance(value, Enum):
+        linear_value = value.value
+    else:
+        try:
+            linear_value = int(value)
+        except (TypeError, ValueError):
+            return int(Priority.MEDIUM)
+
+    linear_to_ours = {
+        0: Priority.URGENT,
+        1: Priority.HIGH,
+        2: Priority.MEDIUM,
+        3: Priority.LOW,
+        4: Priority.NO_PRIORITY,
+    }
+    return int(linear_to_ours.get(linear_value, Priority.MEDIUM))
 
 
 class Priority(int, Enum):
@@ -34,12 +88,12 @@ class IssueState(BaseModel):
 
     @classmethod
     def from_linear(cls, linear_state: Any) -> Self:
-        """Create an IssueState from a linear-api State object."""
+        """Create an IssueState from a linear-api State object or a raw dict."""
         return cls(
-            id=linear_state.id,
-            name=linear_state.name,
-            color=getattr(linear_state, "color", None),
-            type=getattr(linear_state, "type", None),
+            id=_field(linear_state, "id"),
+            name=_field(linear_state, "name"),
+            color=_field(linear_state, "color"),
+            type=_field(linear_state, "type"),
         )
 
 
@@ -91,7 +145,9 @@ class Issue(BaseModel):
     """Linear issue representation."""
 
     id: str
-    identifier: str  # Human-readable ID like "ENG-123"
+    # Human-readable ID like "ENG-123". Optional because projects.get_issues()
+    # in linear-api returns a GraphQL projection that omits this field.
+    identifier: str | None = None
     title: str
     description: str | None = None
     state: IssueState | None = None
@@ -103,26 +159,29 @@ class Issue(BaseModel):
     created_at: str | None = Field(alias="createdAt", default=None)
     updated_at: str | None = Field(alias="updatedAt", default=None)
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": True, "populate_by_name": True}
 
     @classmethod
-    def from_linear(cls, linear_issue: LinearIssue) -> Self:
-        """Create an Issue from a linear-api Issue object."""
+    def from_linear(cls, linear_issue: Any) -> Self:
+        """Create an Issue from a linear-api Issue object or a raw GraphQL dict.
+
+        linear-api's projects.get_issues() returns raw dicts; issues.get()
+        returns LinearIssue model instances. We accept both shapes.
+        """
+        state = _field(linear_issue, "state")
         return cls(
-            id=linear_issue.id,
-            identifier=linear_issue.identifier,
-            title=linear_issue.title,
-            description=linear_issue.description,
-            state=IssueState.from_linear(linear_issue.state)
-            if linear_issue.state
-            else None,
-            priority=getattr(linear_issue, "priority", Priority.MEDIUM),
-            teamId=getattr(linear_issue, "team_id", None),
-            projectId=getattr(linear_issue, "project_id", None),
-            parentId=getattr(linear_issue, "parent_id", None),
-            url=linear_issue.url,
-            createdAt=getattr(linear_issue, "created_at", None),
-            updatedAt=getattr(linear_issue, "updated_at", None),
+            id=_field(linear_issue, "id"),
+            identifier=_field(linear_issue, "identifier"),
+            title=_field(linear_issue, "title"),
+            description=_field(linear_issue, "description"),
+            state=IssueState.from_linear(state) if state else None,
+            priority=_map_priority_from_api(_field(linear_issue, "priority")),
+            team_id=_field(linear_issue, "team_id", "teamId"),
+            project_id=_field(linear_issue, "project_id", "projectId"),
+            parent_id=_field(linear_issue, "parent_id", "parentId"),
+            url=_field(linear_issue, "url"),
+            created_at=_field(linear_issue, "created_at", "createdAt"),
+            updated_at=_field(linear_issue, "updated_at", "updatedAt"),
         )
 
 

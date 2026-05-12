@@ -251,13 +251,19 @@ class LinearTools:
     async def _handle_create_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_create_issue tool."""
         issue_input = IssueInput.model_validate(obj=input_data)
-        issue = self._client.create_issue(issue_input)
+        try:
+            issue = self._client.create_issue(issue_input)
+        except RuntimeError as e:
+            return {"error": str(e)}
         return issue.model_dump(mode="json")
 
     async def _handle_update_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_update_issue tool."""
         update_input = IssueUpdateInput.model_validate(obj=input_data)
-        issue = self._client.update_issue(input_data["issue_id"], update_input)
+        try:
+            issue = self._client.update_issue(input_data["issue_id"], update_input)
+        except RuntimeError as e:
+            return {"error": str(e)}
         return issue.model_dump(mode="json")
 
     async def _handle_delete_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -268,12 +274,18 @@ class LinearTools:
     async def _handle_add_label(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_add_label tool."""
         label_input = IssueLabelInput.model_validate(obj=input_data)
-        issue = self._client.add_label_to_issue(label_input)
+        try:
+            issue = self._client.add_label_to_issue(label_input)
+        except RuntimeError as e:
+            return {"error": str(e)}
         return issue.model_dump(mode="json")
 
     async def _handle_list_teams(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_teams tool."""
-        teams = self._client.list_teams()
+        try:
+            teams = self._client.list_teams()
+        except RuntimeError as e:
+            return {"error": str(e)}
         return {"teams": [t.model_dump(mode="json") for t in teams]}
 
     async def _handle_get_team(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -286,7 +298,10 @@ class LinearTools:
 
     async def _handle_list_projects(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_projects tool."""
-        projects = self._client.list_projects(input_data["team_id"])
+        try:
+            projects = self._client.list_projects(input_data["team_id"])
+        except RuntimeError as e:
+            return {"error": str(e)}
         return {"projects": [p.model_dump(mode="json") for p in projects]}
 
     async def _handle_get_project(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -303,12 +318,20 @@ class LinearTools:
     ) -> dict[str, Any]:
         """Handler for linear_update_project tool."""
         update_input = ProjectUpdateInput.model_validate(obj=input_data)
-        project = self._client.update_project(input_data["project_id"], update_input)
+        try:
+            project = self._client.update_project(
+                input_data["project_id"], update_input
+            )
+        except RuntimeError as e:
+            return {"error": str(e)}
         return project.model_dump(mode="json")
 
     async def _handle_list_issues(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_issues tool."""
-        issues = self._client.list_issues(input_data["project_id"])
+        try:
+            issues = self._client.list_issues(input_data["project_id"])
+        except RuntimeError as e:
+            return {"error": str(e)}
         return {"issues": [i.model_dump(mode="json") for i in issues]}
 
     async def _handle_get_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -415,16 +438,4 @@ class LinearTools:
             Dict mapping tool name to handler function.
             Useful for providers that need explicit handler registration.
         """
-        return {
-            "linear_create_issue": self._handle_create_issue,
-            "linear_update_issue": self._handle_update_issue,
-            "linear_delete_issue": self._handle_delete_issue,
-            "linear_add_label": self._handle_add_label,
-            "linear_list_teams": self._handle_list_teams,
-            "linear_get_team": self._handle_get_team,
-            "linear_list_projects": self._handle_list_projects,
-            "linear_get_project": self._handle_get_project,
-            "linear_update_project": self._handle_update_project,
-            "linear_list_issues": self._handle_list_issues,
-            "linear_get_issue": self._handle_get_issue,
-        }
+        return {spec.name: spec.handler for spec in self.get_tool_specs()}

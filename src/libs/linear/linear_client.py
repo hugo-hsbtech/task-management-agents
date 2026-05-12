@@ -4,6 +4,7 @@ Uses internal mapping to convert between linear_api types and our own schemas.
 Consumers should import from libs.linear.schemas, not from linear_api.
 """
 
+import logging
 from typing import Any
 
 from linear_api import LinearClient as BaseLinearClient
@@ -21,16 +22,15 @@ from libs.linear.schemas import (
     _map_priority_to_api,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class LinearClient:
-    """Wrapper around linear-api package with typed responses.
-
-    This is a low-level client. For high-level operations, use LinearService.
-    """
+    """Wrapper around linear-api package with typed responses."""
 
     def __init__(self, api_key: str) -> None:
         if not api_key:
-            raise RuntimeError(
+            raise ValueError(
                 "Linear API key required. Get API key from: https://linear.app/settings/api"
             )
         self._client = BaseLinearClient(api_key=api_key)
@@ -41,7 +41,10 @@ class LinearClient:
 
     def list_teams(self) -> list[Team]:
         """List all teams accessible to the API key."""
-        linear_teams = self._client.teams.get_all()
+        try:
+            linear_teams = self._client.teams.get_all()
+        except Exception as e:
+            raise RuntimeError(f"Failed to list teams: {e}") from e
         return [Team.from_linear(team) for team in linear_teams.values()]
 
     def get_team(self, team_id: str) -> Team | None:
@@ -51,8 +54,12 @@ class LinearClient:
             if linear_team:
                 return Team.from_linear(linear_team)
             return None
-        except (ValueError, Exception):
-            # Fallback: search in list
+        except Exception:
+            logger.warning(
+                "teams.get(%r) failed; falling back to list-and-match",
+                team_id,
+                exc_info=True,
+            )
             try:
                 teams = self._client.teams.get_all()
                 for team in teams.values():
@@ -60,6 +67,7 @@ class LinearClient:
                         return Team.from_linear(team)
                 return None
             except Exception:
+                logger.exception("teams.get_all() fallback failed for %r", team_id)
                 return None
 
     # -----------------------------------------------------------------------
@@ -71,7 +79,12 @@ class LinearClient:
         if not team_id:
             return []
 
-        linear_projects = self._client.projects.get_all(team_id=team_id)
+        try:
+            linear_projects = self._client.projects.get_all(team_id=team_id)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to list projects for team {team_id!r}: {e}"
+            ) from e
         return [Project.from_linear(proj) for proj in linear_projects.values()]
 
     def get_project(self, project_id: str) -> Project | None:
@@ -82,15 +95,22 @@ class LinearClient:
                 return Project.from_linear(linear_project)
             return None
         except Exception:
+            logger.exception("projects.get(%r) failed", project_id)
             return None
 
     def update_project(
         self, project_id: str, input_data: ProjectUpdateInput
     ) -> Project:
         """Update a project (name, description, state) and optionally post an update."""
+        # `is not None` (not truthy) so empty-string clears (description="")
+        # still hit the update endpoint instead of falling through to get().
+        has_field_update = (
+            input_data.name is not None
+            or input_data.description is not None
+            or input_data.state is not None
+        )
         try:
-            # First update project fields if provided
-            if input_data.name or input_data.description or input_data.state:
+            if has_field_update:
                 linear_project = self._client.projects.update(
                     project_id=project_id,
                     name=input_data.name,
@@ -99,14 +119,16 @@ class LinearClient:
                 )
             else:
                 linear_project = self._client.projects.get(project_id)
-
-            # Post project update if message provided
-            if input_data.update_message and linear_project:
-                self._post_project_update(project_id, input_data.update_message)
-
-            return Project.from_linear(linear_project)
         except Exception as e:
-            raise RuntimeError(f"Failed to update project: {e}") from e
+            raise RuntimeError(f"Failed to update project {project_id!r}: {e}") from e
+
+        if linear_project is None:
+            raise RuntimeError(f"Project {project_id!r} not found.")
+
+        if input_data.update_message:
+            self._post_project_update(project_id, input_data.update_message)
+
+        return Project.from_linear(linear_project)
 
     def _post_project_update(self, project_id: str, message: str) -> None:
         """Post an update/message to a project (progress report)."""
@@ -131,8 +153,11 @@ class LinearClient:
             }
             self._execute_raw(query, variables)
         except Exception:
-            # Best effort - don't fail the whole update if posting fails
-            pass
+            # Best effort — don't fail the whole update if posting fails,
+            # but surface the cause so callers can see it in traces.
+            logger.exception(
+                "projectUpdateCreate mutation failed for project %r", project_id
+            )
 
     def _execute_raw(
         self, query: str, variables: dict[str, Any] | None = None
@@ -164,7 +189,12 @@ class LinearClient:
 
     def list_issues(self, project_id: str) -> list[Issue]:
         """List all issues within a specific project."""
-        linear_issues = self._client.projects.get_issues(project_id=project_id)
+        try:
+            linear_issues = self._client.projects.get_issues(project_id=project_id)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to list issues for project {project_id!r}: {e}"
+            ) from e
         return [Issue.from_linear(issue) for issue in linear_issues]
 
     def get_issue(self, issue_id: str) -> Issue | None:
@@ -175,34 +205,53 @@ class LinearClient:
                 return Issue.from_linear(linear_issue)
             return None
         except Exception:
+            logger.exception("issues.get(%r) failed", issue_id)
             return None
 
     def create_issue(self, input_data: IssueInput) -> Issue:
         """Create a new Linear issue."""
-        # Map our schema to linear_api input
-        # LinearIssueInput uses teamName and projectName
+        # LinearIssueInput expects human-readable teamName / projectName, not
+        # IDs — the linear-api package resolves names → IDs internally. Our
+        # IssueInput schema carries IDs, so we resolve them here.
+        team = self.get_team(input_data.team_id)
+        if team is None:
+            raise RuntimeError(f"Team {input_data.team_id!r} not found.")
+
+        project = self.get_project(input_data.project_id)
+        if project is None:
+            raise RuntimeError(f"Project {input_data.project_id!r} not found.")
+
         issue_input = LinearIssueInput(
             title=input_data.title,
             description=input_data.description,
-            teamName=input_data.team_id,
-            projectName=input_data.project_id,
+            teamName=team.name,
+            projectName=project.name,
             priority=_map_priority_to_api(input_data.priority),
             parentId=input_data.parent_id,
         )
 
-        linear_issue = self._client.issues.create(issue=issue_input)
-        return Issue.from_linear(linear_issue)
+        try:
+            linear_issue = self._client.issues.create(issue=issue_input)
+            return Issue.from_linear(linear_issue)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create issue: {e}") from e
 
     def update_issue(self, issue_id: str, input_data: IssueUpdateInput) -> Issue:
         """Update an existing Linear issue."""
+        # linear-api exposes the workflow state field as `stateName` and
+        # resolves it to a state ID internally via the issue's team.
         update = LinearIssueUpdateInput(
             title=input_data.title,
             description=input_data.description,
+            stateName=input_data.state,
             priority=_map_priority_to_api(input_data.priority),
         )
 
-        linear_issue = self._client.issues.update(issue_id, update)
-        return Issue.from_linear(linear_issue)
+        try:
+            linear_issue = self._client.issues.update(issue_id, update)
+            return Issue.from_linear(linear_issue)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update issue {issue_id!r}: {e}") from e
 
     def delete_issue(self, issue_id: str) -> bool:
         """Delete a Linear issue. Returns True if successful."""
@@ -210,6 +259,7 @@ class LinearClient:
             self._client.issues.delete(issue_id)
             return True
         except Exception:
+            logger.exception("issues.delete(%r) failed", issue_id)
             return False
 
     def add_label_to_issue(self, input_data: IssueLabelInput) -> Issue:
@@ -232,4 +282,5 @@ class LinearClient:
                 return [Label.from_linear(label) for label in linear_issue.labels]
             return []
         except Exception:
+            logger.exception("issues.get(%r) failed while listing labels", issue_id)
             return []

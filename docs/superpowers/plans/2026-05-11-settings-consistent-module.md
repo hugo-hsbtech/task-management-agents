@@ -1275,56 +1275,56 @@ Write `tests/unit/settings/test_init_reexports.py`:
 
 def test_orchestrator_settings_reexported():
     from settings import OrchestratorSettings as Reexport
-    from settings import OrchestratorSettings as Original
+    from settings.orchestrator import OrchestratorSettings as Original
 
     assert Reexport is Original
 
 
 def test_codex_settings_reexported():
     from settings import CodexSettings as Reexport
-    from settings import CodexSettings as Original
+    from settings.codex import CodexSettings as Original
 
     assert Reexport is Original
 
 
 def test_linear_settings_reexported():
     from settings import LinearSettings as Reexport
-    from settings import LinearSettings as Original
+    from settings.linear import LinearSettings as Original
 
     assert Reexport is Original
 
 
 def test_github_settings_reexported():
     from settings import GitHubSettings as Reexport
-    from settings import GitHubSettings as Original
+    from settings.github import GitHubSettings as Original
 
     assert Reexport is Original
 
 
 def test_wio_ipc_settings_reexported():
     from settings import WIOIPCSettings as Reexport
-    from settings import WIOIPCSettings as Original
+    from settings.wio_ipc import WIOIPCSettings as Original
 
     assert Reexport is Original
 
 
 def test_test_fixture_settings_reexported():
     from settings import TestFixtureSettings as Reexport
-    from settings import TestFixtureSettings as Original
+    from settings.test_fixture import TestFixtureSettings as Original
 
     assert Reexport is Original
 
 
 def test_runtime_settings_reexported():
     from settings import RuntimeSettings as Reexport
-    from settings import RuntimeSettings as Original
+    from settings.runtime import RuntimeSettings as Original
 
     assert Reexport is Original
 
 
 def test_g1_helpers_reexported():
     from settings import FORBIDDEN_API_KEY_VARS, assert_oauth2_only
-    from settings import (
+    from settings.runtime import (
         FORBIDDEN_API_KEY_VARS as Original_Const,
         assert_oauth2_only as Original_Fn,
     )
