@@ -207,9 +207,12 @@ class LinearClient:
 
     def update_issue(self, issue_id: str, input_data: IssueUpdateInput) -> Issue:
         """Update an existing Linear issue."""
+        # linear-api exposes the workflow state field as `stateName` and
+        # resolves it to a state ID internally via the issue's team.
         update = LinearIssueUpdateInput(
             title=input_data.title,
             description=input_data.description,
+            stateName=input_data.state,
             priority=_map_priority_to_api(input_data.priority),
         )
 

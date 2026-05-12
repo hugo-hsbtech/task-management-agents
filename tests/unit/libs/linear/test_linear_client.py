@@ -455,6 +455,10 @@ def test_update_issue(client: LinearClient) -> None:
     assert issue.priority == 4
     assert issue.state.name == "completed"
     client._client.issues.update.assert_called_once()
+    # IssueUpdateInput.state must be forwarded as stateName (linear-api
+    # resolves the workflow state name to an ID internally).
+    sent_update = client._client.issues.update.call_args.args[1]
+    assert sent_update.stateName == "completed"
 
 
 def test_delete_issue_success(client: LinearClient) -> None:
