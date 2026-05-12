@@ -9,7 +9,7 @@ from llm_providers.errors import AuthDetectionFailed
 
 
 def test_kind_classvar():
-    assert OAuth2CliToken.kind == "oauth2_cli"
+    assert OAuth2CliToken.kind == "oauth2_cli_token"
 
 
 def test_detect_env_var_present(monkeypatch):

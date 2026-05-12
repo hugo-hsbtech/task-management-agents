@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 class OAuth2CliToken(AuthStrategy):
     """OAuth2 bearer token loaded from explicit settings configuration."""
 
-    kind: ClassVar[str] = "oauth2_cli"
+    kind: ClassVar[str] = "oauth2_cli_token"
 
     def __init__(
         self,
