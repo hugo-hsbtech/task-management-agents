@@ -391,10 +391,23 @@ class LinearTools:
         self, input_data: dict[str, Any]
     ) -> dict[str, Any]:
         """Handler for linear_create_issue_relation tool."""
+        tool_type = input_data["type"]
+        issue_id = input_data["issue_id"]
+        related_issue_id = input_data["related_issue_id"]
+
+        # Map tool-schema names → Linear API names. "blocked_by" is the inverse
+        # of "blocks": swap the IDs so that "B blocks A" expresses "A blocked_by B".
+        _type_map = {
+            "blocks": ("blocks", issue_id, related_issue_id),
+            "blocked_by": ("blocks", related_issue_id, issue_id),
+            "relates_to": ("related", issue_id, related_issue_id),
+            "duplicate_of": ("duplicate", issue_id, related_issue_id),
+        }
+        api_type, src_id, tgt_id = _type_map[tool_type]
         return self._client.create_issue_relation(
-            issue_id=input_data["issue_id"],
-            related_issue_id=input_data["related_issue_id"],
-            relation_type=input_data["type"],
+            issue_id=src_id,
+            related_issue_id=tgt_id,
+            relation_type=api_type,
         )
 
     async def _handle_get_issue_relations(

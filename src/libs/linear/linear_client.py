@@ -140,12 +140,11 @@ class LinearClient:
         self, team_id: str, name: str, description: str | None = None
     ) -> Project:
         """Create a new Linear project."""
-        try:
-            # Get team name for project creation
-            team = self.get_team(team_id)
-            if team is None:
-                raise ValueError(f"Team not found: {team_id}")
+        team = self.get_team(team_id)
+        if team is None:
+            raise ValueError(f"Team not found: {team_id}")
 
+        try:
             linear_project = self._client.projects.create(
                 name=name, team_name=team.name, description=description
             )
@@ -556,15 +555,16 @@ class LinearClient:
         its Comment model omits the `user` field.
         """
         query = """
-        query($projectId: String!) {
+        query($projectId: String!, $cursor: String) {
           project(id: $projectId) {
-            comments {
+            comments(after: $cursor) {
               nodes {
                 id
                 body
                 createdAt
-                user { id name }
+                user { id name displayName email }
               }
+              pageInfo { hasNextPage endCursor }
             }
           }
         }
@@ -633,6 +633,8 @@ class LinearClient:
                         user {
                             id
                             name
+                            displayName
+                            email
                         }
                         createdAt
                     }

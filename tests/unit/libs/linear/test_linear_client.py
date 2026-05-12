@@ -1284,10 +1284,10 @@ def test_create_project(client: LinearClient) -> None:
 
 
 def test_create_project_team_not_found(client: LinearClient) -> None:
-    """create_project should raise RuntimeError when team not found."""
+    """create_project should raise ValueError when team not found."""
     with (
         unittest.mock.patch.object(client, "get_team", return_value=None),
-        pytest.raises(RuntimeError, match="Failed to create project"),
+        pytest.raises(ValueError, match="Team not found"),
     ):
         client.create_project("non-existent-team", "Test Project", "Test Description")
 

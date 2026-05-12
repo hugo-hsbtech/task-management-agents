@@ -176,10 +176,9 @@ class Team(BaseModel):
 class Project(BaseModel):
     """Linear project representation.
 
-    `team_id` is NOT populated automatically. linear_api.LinearProject has no
-    teamId field, and accessing `.teams` would issue a network call. Callers
-    that already know the team (e.g. list_projects(team_id=...)) should pass
-    `team_id` explicitly to `from_linear`.
+    `team` is populated automatically by `from_linear` by accessing
+    `linear_project.teams`. If the teams list is unavailable (e.g. partial
+    payloads), `team` is left as `None`.
     """
 
     id: str
