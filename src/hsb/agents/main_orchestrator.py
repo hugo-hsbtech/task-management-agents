@@ -30,7 +30,7 @@ from hsb.agents.linear_agent import run_validated_linear_agent
 from hsb.contracts.main_orchestrator import (
     DispatchedItem,
 )
-from hsb.settings import settings
+from settings import settings
 
 load_dotenv()
 
