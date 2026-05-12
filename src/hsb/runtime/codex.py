@@ -68,7 +68,7 @@ def _build_codex_options() -> CodexOptions | None:
     """
     override = os.environ.get("CODEX_PATH_OVERRIDE")
     if override:
-        return CodexOptions(codexPathOverride=override)
+        return CodexOptions(codex_path_override=override)
     return None
 
 

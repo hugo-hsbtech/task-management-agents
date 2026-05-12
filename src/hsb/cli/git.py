@@ -26,7 +26,7 @@ def git_create_pr(
     impl_output: str = typer.Option(
         ..., "--impl-output", help="Path to BuilderOutput JSON"
     ),
-):
+) -> None:
     """Create branch + PR for a Linear work item (GITA-01..03)."""
     impl_data = _json.loads(Path(impl_output).read_text())
     input = GitInput(
@@ -46,7 +46,7 @@ def git_rebase_stack(
     just_merged: str = typer.Option(
         ..., "--just-merged", help="Branch just merged (excluded)"
     ),
-):
+) -> None:
     """Rebase all open sibling task PRs after a merge (GITA-04, D-08).
 
     Uses gh pr list --limit 100 (Pitfall 4) and git rebase --onto with

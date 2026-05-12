@@ -80,6 +80,20 @@ fmt-check: ## Check formatting without writing
 typecheck: ## Run type checker
 	uv run mypy src/
 
+.PHONY: typecheck-fix
+typecheck-fix: ## Auto-install missing type stubs, then run type checker
+	uv run mypy --install-types --non-interactive src/
+
+.PHONY: lint-fix
+lint-fix: ## Auto-fix lint issues (ruff --fix)
+	uv run ruff check --fix src/ tests/
+
+.PHONY: fix
+fix: lint-fix fmt typecheck-fix ## Run all auto-fixers (ruff --fix, ruff format, mypy --install-types)
+
+.PHONY: check
+check: lint fmt-check typecheck ## Run all CI checks locally (lint, format, typecheck)
+
 .PHONY: test
 test: ## Run test suite
 	uv run pytest tests/ -n auto --cov --cov-report=term-missing

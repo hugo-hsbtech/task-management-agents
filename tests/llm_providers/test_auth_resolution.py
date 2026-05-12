@@ -55,7 +55,7 @@ def test_walks_preferred_first_returns_first_detected(monkeypatch):
 
     _register_provider("foo", (_PreferredOAuth, ApiKey))
     result = auto_resolve_auth("foo")
-    assert result.kind == "oauth2_cli"
+    assert result.kind == "oauth2_cli_token"
 
 
 def test_falls_through_to_second_when_first_not_detected(monkeypatch):

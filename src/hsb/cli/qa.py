@@ -31,7 +31,7 @@ def qa_review(
         "--qa-cycle",
         help="Current QA cycle count (0-indexed: 0=first review, 1=second, 2=third)",
     ),
-):
+) -> None:
     """Review a PR diff against a Linear work item (QAAG-01..05).
 
     Pitfall 6 mitigation: fetches Linear issue and PR diff IMMEDIATELY before invoking

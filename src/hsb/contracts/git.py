@@ -22,7 +22,7 @@ class GitInput(BaseModel):
     """Input contract for the Git Agent. Mirrors AGENT-CONTRACTS.md §5 Input."""
 
     work_item_id: str
-    implementation_output: dict  # serialized BuilderOutput.model_dump()
+    implementation_output: dict[str, object]  # serialized BuilderOutput.model_dump()
     epic_id: str
     dependencies: list[str] = Field(default_factory=list)
     existing_pr_context: ExistingPRContext = Field(default_factory=ExistingPRContext)

@@ -9,7 +9,7 @@ from llm_providers.errors import AuthDetectionFailed
 
 
 def test_kind_classvar():
-    assert OAuth2CliToken.kind == "oauth2_cli"
+    assert OAuth2CliToken.kind == "oauth2_cli_token"
 
 
 def test_detect_env_var_present(monkeypatch):
@@ -21,7 +21,7 @@ def test_detect_env_var_present(monkeypatch):
 def test_detect_env_var_empty(monkeypatch):
     monkeypatch.setenv("MY_OAUTH", "")
     s = OAuth2CliToken(env_var="MY_OAUTH")
-    assert s.detect() is True
+    assert s.detect() is False
 
 
 def test_detect_token_file_present(tmp_path, monkeypatch):
@@ -35,7 +35,7 @@ def test_detect_token_file_present(tmp_path, monkeypatch):
 def test_detect_token_file_absent(tmp_path, monkeypatch):
     monkeypatch.delenv("MY_OAUTH", raising=False)
     s = OAuth2CliToken(token_path=tmp_path / "missing.json")
-    assert s.detect() is True
+    assert s.detect() is False
 
 
 def test_resolve_env_var_returns_token(monkeypatch):
@@ -75,9 +75,14 @@ def test_resolve_raises_when_nothing_available(tmp_path, monkeypatch):
 
 
 def test_default_constructs_without_args():
+    # Base OAuth2CliToken.default() has no env_var / token_path wired up;
+    # subclasses (e.g. _ClaudeOAuth2CliToken) override default() to point at
+    # a concrete source. So the base default must not advertise itself as
+    # detectable — otherwise auto_resolve_auth would short-circuit on it
+    # and then fail in resolve().
     s = OAuth2CliToken.default()
     assert isinstance(s, OAuth2CliToken)
-    assert s.detect() is True
+    assert s.detect() is False
 
 
 def test_from_settings_creates_token(tmp_path, monkeypatch):

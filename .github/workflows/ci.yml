@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same PR/branch; keep main runs intact.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.5.11"
+  # Keep uv quiet and reproducible in CI.
+  UV_NO_PROGRESS: "1"
+  # Make sure integration / live tests are never picked up implicitly.
+  HSB_RUN_INTEGRATION: "0"
+
+jobs:
+  quality:
+    name: Lint, format & typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies (frozen)
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check src/ tests/
+
+      - name: Ruff format check
+        run: uv run ruff format --check src/ tests/
+
+      - name: Mypy typecheck
+        run: uv run mypy src/
+
+  tests:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: quality
+    permissions:
+      # `contents: write` lets py-cov-action push the coverage badge/report
+      # to its data branch on `main`. On PRs it falls back to a comment.
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies (frozen)
+        run: uv sync --frozen
+
+      - name: Run pytest
+        # Exclude markers that require live external services or paid APIs.
+        # `--cov` writes a `.coverage` data file that the coverage-comment
+        # action reads in the next step.
+        run: |
+          uv run pytest tests/ \
+            -n auto \
+            -m "not integration and not live_codex" \
+            --cov \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --junitxml=pytest-report.xml
+
+      - name: Post coverage comment on PR
+        id: coverage_comment
+        uses: py-cov-action/python-coverage-comment-action@53ff7553078bad69030786e486677315346c2dd2  # v3
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 60
+          ANNOTATE_MISSING_LINES: true
+          ANNOTATION_TYPE: warning
+
+      # If the action couldn't post (e.g. fork PR with read-only token),
+      # it stashes the rendered comment so a follow-up workflow can post it.
+      - name: Save coverage comment for later posting
+        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage-comment-action
+          path: python-coverage-comment-action.txt
+          retention-days: 7
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Single required status check for branch protection. Keep this name stable
+  # ("CI / ci") so the GitHub branch protection rule keeps matching even if
+  # individual jobs are renamed.
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    needs: [quality, tests]
+    if: always()
+    steps:
+      - name: Verify all required jobs passed
+        run: |
+          if [[ "${{ needs.quality.result }}" != "success" ]]; then
+            echo "quality job failed: ${{ needs.quality.result }}"
+            exit 1
+          fi
+          if [[ "${{ needs.tests.result }}" != "success" ]]; then
+            echo "tests job failed: ${{ needs.tests.result }}"
+            exit 1
+          fi
+          echo "All required jobs passed."

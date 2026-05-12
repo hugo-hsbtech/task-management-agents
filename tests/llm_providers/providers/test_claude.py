@@ -24,14 +24,24 @@ def _isolate_claude_registration():
     stubbed claude_agent_sdk. patch.dict("sys.modules", ...) evicts the
     re-imported module on exit, so the decorator re-runs the next time —
     which would collide with the prior registration. Pop the entry around
-    each test so re-registration is clean."""
+    each test so re-registration is clean, then restore BOTH the registry
+    entry and sys.modules afterwards. sys.modules must be restored together
+    with the registry: if a later test re-imports the provider module while
+    the registry already has it, the @register decorator raises 'already
+    registered'."""
     import sys
 
+    original_module = sys.modules.get("llm_providers.providers.claude")
+    original_provider = ProviderRegistry._providers.get("claude")
     sys.modules.pop("llm_providers.providers.claude", None)
     ProviderRegistry._providers.pop("claude", None)
     yield
     sys.modules.pop("llm_providers.providers.claude", None)
     ProviderRegistry._providers.pop("claude", None)
+    if original_module is not None:
+        sys.modules["llm_providers.providers.claude"] = original_module
+    if original_provider is not None:
+        ProviderRegistry._providers["claude"] = original_provider
 
 
 @pytest.fixture

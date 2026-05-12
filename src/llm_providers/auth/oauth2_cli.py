@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 class OAuth2CliToken(AuthStrategy):
     """OAuth2 bearer token loaded from explicit settings configuration."""
 
-    kind: ClassVar[str] = "oauth2_cli"
+    kind: ClassVar[str] = "oauth2_cli_token"
 
     def __init__(
         self,
@@ -34,8 +34,16 @@ class OAuth2CliToken(AuthStrategy):
         self._token_path = token_path
 
     def detect(self) -> bool:
-        """Check if token source is configured. Always True when constructed from settings."""
-        return True
+        """True iff the configured token source is actually present.
+
+        env_var → the env var is set and non-empty.
+        token_path → the file exists.
+        Otherwise (no source configured, or source empty) → False, so
+        auto_resolve_auth moves to the next strategy.
+        """
+        if self._env_var and os.environ.get(self._env_var):
+            return True
+        return bool(self._token_path and self._token_path.exists())
 
     def resolve(self) -> Credential:
         """Resolve token from configured source."""

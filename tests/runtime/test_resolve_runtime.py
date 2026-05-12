@@ -1,4 +1,5 @@
 """Per-agent runtime selection via env var."""
+
 from __future__ import annotations
 
 import pytest
@@ -20,6 +21,7 @@ def _patch_codex_home(monkeypatch, tmp_path):
 def test_default_returns_claude(monkeypatch):
     monkeypatch.delenv("HSB_RUNTIME_BACKLOG", raising=False)
     from hsb.agents._sdk_options import resolve_runtime
+
     rt = resolve_runtime("backlog")
     assert isinstance(rt, ClaudeRuntime)
 
@@ -29,6 +31,7 @@ def test_codex_value_returns_codex_runtime(monkeypatch, tmp_path):
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "codex")
     from hsb.agents._sdk_options import resolve_runtime
     from hsb.runtime.codex import CodexRuntime
+
     rt = resolve_runtime("backlog")
     assert isinstance(rt, CodexRuntime)
 
@@ -36,6 +39,7 @@ def test_codex_value_returns_codex_runtime(monkeypatch, tmp_path):
 def test_unknown_value_raises(monkeypatch):
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "gpt-3")
     from hsb.agents._sdk_options import resolve_runtime
+
     with pytest.raises(ValueError, match=r"HSB_RUNTIME_BACKLOG"):
         resolve_runtime("backlog")
 
@@ -43,6 +47,7 @@ def test_unknown_value_raises(monkeypatch):
 def test_wio_codex_raises(monkeypatch):
     monkeypatch.setenv("HSB_RUNTIME_WIO", "codex")
     from hsb.agents._sdk_options import resolve_runtime
+
     with pytest.raises(ValueError, match=r"WIO"):
         resolve_runtime("wio")
 
@@ -51,5 +56,6 @@ def test_agent_name_normalized_to_upper(monkeypatch):
     """resolve_runtime("backlog") reads HSB_RUNTIME_BACKLOG."""
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "claude")
     from hsb.agents._sdk_options import resolve_runtime
+
     rt = resolve_runtime("backlog")
     assert rt.name == "claude"

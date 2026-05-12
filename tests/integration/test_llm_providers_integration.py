@@ -89,22 +89,35 @@ def _fake_async_openai_client(chunks: list[Any]) -> Any:
 def _isolate_provider_registration() -> Any:
     """Each test re-imports the provider modules under a fresh stubbed SDK,
     so we evict cached modules and registry entries around every test (same
-    pattern as the per-provider unit tests)."""
-    for mod in (
+    pattern as the per-provider unit tests). Originals (both sys.modules
+    AND registry entries) are restored after each test so subsequent tests
+    on the same xdist worker see a consistent (module + registry) pair —
+    otherwise a later test re-importing the provider would re-run the
+    @register decorator against an already-populated registry and raise
+    'already registered'."""
+    mod_names = (
         "llm_providers.providers.claude",
         "llm_providers.providers.openai",
-    ):
+    )
+    original_modules = {name: sys.modules.get(name) for name in mod_names}
+    original_providers = {
+        name: ProviderRegistry._providers.get(name) for name in ("claude", "openai")
+    }
+    for mod in mod_names:
         sys.modules.pop(mod, None)
     ProviderRegistry._providers.pop("claude", None)
     ProviderRegistry._providers.pop("openai", None)
     yield
-    for mod in (
-        "llm_providers.providers.claude",
-        "llm_providers.providers.openai",
-    ):
+    for mod in mod_names:
         sys.modules.pop(mod, None)
     ProviderRegistry._providers.pop("claude", None)
     ProviderRegistry._providers.pop("openai", None)
+    for name, original_mod in original_modules.items():
+        if original_mod is not None:
+            sys.modules[name] = original_mod
+    for name, original_provider in original_providers.items():
+        if original_provider is not None:
+            ProviderRegistry._providers[name] = original_provider
 
 
 # ---------------------------------------------------------------------------

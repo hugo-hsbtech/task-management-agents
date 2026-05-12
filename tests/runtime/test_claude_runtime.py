@@ -1,7 +1,8 @@
 """ClaudeRuntime: thin wrapper around claude_agent_sdk.query."""
+
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage
@@ -38,7 +39,9 @@ async def test_query_translates_options_and_yields_messages(opts):
         yield fake_assistant
         yield fake_result
 
-    with patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query_iter) as q:
+    with patch(
+        "hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_query_iter
+    ) as q:
         rt = ClaudeRuntime()
         msgs = []
         async for m in rt.query("hello", opts):
@@ -89,7 +92,7 @@ def test_client_raises_not_implemented(opts):
 @pytest.mark.asyncio
 async def test_translate_sets_cwd_when_provided(opts):
     """Line 48: _translate includes cwd in kwargs when options.cwd is not None."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import patch
 
     opts_with_cwd = AgentOptions(**{**opts.__dict__, "cwd": "/some/path"})
 
@@ -97,9 +100,7 @@ async def test_translate_sets_cwd_when_provided(opts):
         if False:
             yield
 
-    with patch(
-        "hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_iter
-    ) as q:
+    with patch("hsb.runtime.claude.claude_agent_sdk.query", side_effect=fake_iter) as q:
         rt = ClaudeRuntime()
         async for _ in rt.query("p", opts_with_cwd):
             pass

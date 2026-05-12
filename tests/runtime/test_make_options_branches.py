@@ -9,6 +9,7 @@ Covers lines 104, 108, 110, 112 of src/hsb/agents/_sdk_options.py:
 Note: lines 137-241 (G3 backstop + G5 linear_write_guard) are pre-existing
 Phase 5 code and are NOT tested here.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -34,7 +35,12 @@ def _base_kwargs():
 
 def test_make_options_passes_mcp_servers():
     """Line 104: mcp_servers is included in ClaudeAgentOptions when provided."""
-    mcp = {"linear": {"command": "npx", "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"]}}
+    mcp = {
+        "linear": {
+            "command": "npx",
+            "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"],
+        }
+    }
     opt = make_options(**_base_kwargs(), mcp_servers=mcp)
     assert opt.mcp_servers == mcp
 
