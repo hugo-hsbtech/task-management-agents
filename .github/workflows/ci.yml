@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-  pull_request:
 
 # Cancel superseded runs on the same PR/branch; keep main runs intact.
 concurrency:
