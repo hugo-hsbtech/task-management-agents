@@ -119,24 +119,34 @@ class Team(BaseModel):
 
 
 class Project(BaseModel):
-    """Linear project representation."""
+    """Linear project representation.
+
+    Note: ``team_id`` is intentionally optional and not populated by
+    :meth:`from_linear`. The upstream ``LinearProject`` model has no
+    ``team_id`` field — a Linear project can belong to multiple teams,
+    exposed only via the ``teams`` property which triggers a separate API
+    call. Callers that need the team(s) should fetch them explicitly.
+    """
 
     id: str
     name: str
     description: str | None = None
-    team_id: str = Field(alias="teamId")
+    team_id: str | None = Field(alias="teamId", default=None)
     state: str | None = None  # planned, started, paused, completed, canceled
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": True, "populate_by_name": True}
 
     @classmethod
     def from_linear(cls, linear_project: LinearProject) -> Self:
-        """Create a Project from a linear-api Project object."""
+        """Create a Project from a linear-api Project object.
+
+        ``team_id`` is left unset: ``LinearProject`` does not expose a
+        single team_id (see class docstring).
+        """
         return cls(
             id=linear_project.id,
             name=linear_project.name,
             description=getattr(linear_project, "description", None),
-            teamId=getattr(linear_project, "team_id", ""),
             state=getattr(linear_project, "state", None),
         )
 

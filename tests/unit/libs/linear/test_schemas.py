@@ -123,18 +123,21 @@ def test_project_with_optional_fields() -> None:
 
 
 def test_project_from_linear() -> None:
-    """Project.from_linear should convert linear_api Project object."""
+    """Project.from_linear should convert linear_api Project object.
+
+    team_id is left unset: LinearProject doesn't expose a single team_id
+    (a project can belong to multiple teams; see Project.team_id docs).
+    """
 
     class MockLinearProject:
         id = "proj-789"
         name = "Sprint 2"
-        team_id = "team-123"
         state = "completed"
 
     project = Project.from_linear(MockLinearProject())
     assert project.id == "proj-789"
     assert project.name == "Sprint 2"
-    assert project.team_id == "team-123"
+    assert project.team_id is None
     assert project.state == "completed"
 
 

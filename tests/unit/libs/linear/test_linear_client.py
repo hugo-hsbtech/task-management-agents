@@ -187,7 +187,8 @@ def test_list_projects(client: LinearClient) -> None:
 
     assert len(projects) == 2
     assert projects[0].id == "proj-1"
-    assert projects[0].team_id == "team-123"
+    # LinearProject has no team_id field, so from_linear leaves it unset.
+    assert projects[0].team_id is None
     client._client.projects.get_all.assert_called_once_with(team_id="team-123")
 
 
