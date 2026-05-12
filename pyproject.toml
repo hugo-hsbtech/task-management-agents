@@ -80,3 +80,13 @@ markers = [
     "integration: requires live Linear MCP connection and HSB_RUN_INTEGRATION=1",
     "live_codex: real Codex subscription smoke test (manual, opt-in via -m live_codex)",
 ]
+
+[tool.coverage.run]
+# Write relative paths into .coverage so consumers running in a different
+# working directory (e.g. py-cov-action's Docker container reading the
+# uploaded coverage file from /workdir) can resolve source files. Without
+# this, the file records absolute paths like /home/runner/work/... which
+# don't exist inside the action's container — the comment step fails with
+# "No source for code: <absolute path>".
+relative_files = true
+source = ["src"]
