@@ -396,6 +396,48 @@ def test_list_issues_api_failure_wraps_as_runtime_error(
         client.list_issues("proj-1")
 
 
+def test_list_issues_handles_dict_response_from_linear_api(
+    client: LinearClient,
+) -> None:
+    """projects.get_issues() returns raw GraphQL dicts, not LinearIssue
+    objects. Issue.from_linear must handle that shape — otherwise listing
+    a project's issues blows up with AttributeError: 'dict' object has no
+    attribute 'id'."""
+    client._client.projects.get_issues.return_value = [
+        {
+            "id": "i-1",
+            "title": "First",
+            "description": None,
+            "state": {"id": "s-1", "name": "Todo", "type": "unstarted"},
+            "priority": 2,
+            "priorityLabel": "Medium",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-01-02T00:00:00Z",
+        },
+        {
+            "id": "i-2",
+            "title": "Second",
+            "description": "Body",
+            "state": None,
+            "priority": 3,
+            "createdAt": None,
+            "updatedAt": None,
+        },
+    ]
+
+    issues = client.list_issues("proj-1")
+
+    assert [i.id for i in issues] == ["i-1", "i-2"]
+    assert issues[0].title == "First"
+    assert issues[0].state is not None
+    assert issues[0].state.name == "Todo"
+    assert issues[0].created_at == "2024-01-01T00:00:00Z"
+    assert issues[1].state is None
+    # identifier is absent from the GraphQL projection — must be None,
+    # not a validation failure.
+    assert issues[0].identifier is None
+
+
 def test_get_issue_success(client: LinearClient) -> None:
     """get_issue should return Issue when found."""
     mock_issue = MagicMock()
