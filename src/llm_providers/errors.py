@@ -87,9 +87,35 @@ class ProviderRuntimeError(LLMProvidersError):
 
     The original SDK exception is on __cause__."""
 
-    def __init__(self, provider: str, phase: str) -> None:
+    def __init__(self, provider: str, phase: str, message: str | None = None) -> None:
         self.provider = provider
         self.phase = phase
-        super().__init__(
-            f"Provider {provider!r} raised during {phase!r}. See __cause__ for details."
+        msg = (
+            message
+            or f"Provider {provider!r} raised during {phase!r}. See __cause__ for details."
         )
+        super().__init__(msg)
+
+
+class ClaudeRateLimitError(ProviderRuntimeError):
+    """Claude Code CLI hit rate limit (free tier or usage cap)."""
+
+    def __init__(self, reset_time: str | None = None) -> None:
+        self.reset_time = reset_time
+        msg = "Claude Code rate limit reached"
+        if reset_time:
+            msg += f" (resets at {reset_time})"
+        msg += ". Use CLAUDE_CODE_OAUTH_TOKEN with a paid plan or wait for reset."
+        super().__init__("claude", "query", msg)
+
+
+class ClaudeAuthError(ProviderRuntimeError):
+    """Claude Code CLI authentication failed (missing/invalid token)."""
+
+    def __init__(self, reason: str | None = None) -> None:
+        self.reason = reason
+        msg = "Claude Code authentication failed"
+        if reason:
+            msg += f": {reason}"
+        msg += ". Set CLAUDE_CODE_OAUTH_TOKEN or run 'claude login'."
+        super().__init__("claude", "auth", msg)
