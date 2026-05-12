@@ -5,18 +5,24 @@ Consumers should import from libs.linear.schemas, not from linear_api.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from linear_api import LinearClient as BaseLinearClient
 from linear_api import LinearIssueInput, LinearIssueUpdateInput
+from linear_api.domain import LinearAttachmentInput
 
 from libs.linear.schemas import (
+    Comment,
+    CommentInput,
+    CommentUser,
     Issue,
     IssueInput,
     IssueLabelInput,
+    IssueRelation,
     IssueUpdateInput,
     Label,
     Project,
+    ProjectCommentInput,
     ProjectUpdateInput,
     Team,
     _map_priority_to_api,
@@ -80,7 +86,7 @@ class LinearClient:
     def list_projects(self, team_id: str) -> list[Project]:
         """List all projects within a team."""
         if not team_id:
-            return []
+            raise ValueError("Team ID is required to list projects")
 
         try:
             linear_projects = self._client.projects.get_all(team_id=team_id)
@@ -133,6 +139,27 @@ class LinearClient:
 
         return Project.from_linear(linear_project)
 
+    def create_project(
+        self, team_id: str, name: str, description: str | None = None
+    ) -> Project:
+        """Create a new Linear project."""
+        team = self.get_team(team_id)
+        if team is None:
+            raise ValueError(f"Team not found: {team_id}")
+
+        try:
+            linear_project = self._client.projects.create(
+                name=name, team_name=team.name, description=description
+            )
+            return Project.from_linear(linear_project)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create project: {e}") from e
+
+    def delete_project(self, project_id: str) -> bool:
+        """Delete a Linear project. Returns True if successful."""
+        result = self._client.projects.delete(project_id)
+        return bool(result)
+
     def _post_project_update(self, project_id: str, message: str) -> None:
         """Post an update/message to a project (progress report)."""
         try:
@@ -170,16 +197,21 @@ class LinearClient:
 
         vars_dict = variables or {}
 
-        # Try to access the underlying client's execute method
-        if hasattr(self._client, "_execute"):
-            result: dict[str, Any] = self._client._execute(query, vars_dict)
+        # SDK public method (linear-api >= 0.3)
+        if hasattr(self._client, "execute_graphql"):
+            result: dict[str, Any] = self._client.execute_graphql(query, vars_dict)
             return result
 
-        # Fallback: try to use any public execute method
+        # Fallback: try any public execute method
         execute_method = getattr(self._client, "execute", None)
         if execute_method:
             typed_execute = cast("Callable[..., dict[str, Any]]", execute_method)
             return typed_execute(query, vars_dict)
+
+        # Older SDK private method
+        if hasattr(self._client, "_execute"):
+            result = self._client._execute(query, vars_dict)
+            return result
 
         raise RuntimeError(
             "Raw GraphQL execution not supported by this linear-api version"
@@ -242,11 +274,13 @@ class LinearClient:
         """Update an existing Linear issue."""
         # linear-api exposes the workflow state field as `stateName` and
         # resolves it to a state ID internally via the issue's team.
+        # parent_id re-parents the issue when provided (turning it into a sub-issue).
         update = LinearIssueUpdateInput(
             title=input_data.title,
             description=input_data.description,
             stateName=input_data.state,
             priority=_map_priority_to_api(input_data.priority),
+            parentId=input_data.parent_id,
         )
 
         try:
@@ -258,8 +292,8 @@ class LinearClient:
     def delete_issue(self, issue_id: str) -> bool:
         """Delete a Linear issue. Returns True if successful."""
         try:
-            self._client.issues.delete(issue_id)
-            return True
+            result = self._client.issues.delete(issue_id)
+            return bool(result)
         except Exception:
             logger.exception("issues.delete(%r) failed", issue_id)
             return False
@@ -267,9 +301,8 @@ class LinearClient:
     def add_label_to_issue(self, input_data: IssueLabelInput) -> Issue:
         """Add a label to an issue. Creates the label if it doesn't exist."""
         try:
-            # linear-api uses label name which creates if not exists
             linear_issue = self._client.issues.add_label(
-                issue_id=input_data.issue_id,
+                input_data.issue_id,
                 label=input_data.label_name,
             )
             return Issue.from_linear(linear_issue)
@@ -277,12 +310,381 @@ class LinearClient:
             raise RuntimeError(f"Failed to add label to issue: {e}") from e
 
     def list_issue_labels(self, issue_id: str) -> list[Label]:
-        """List all labels on a specific issue."""
+        """List all labels on an issue."""
         try:
-            linear_issue = self._client.issues.get(issue_id)
-            if linear_issue and hasattr(linear_issue, "labels"):
-                return [Label.from_linear(label) for label in linear_issue.labels]
-            return []
+            linear_labels = self._client.issues.get_labels(issue_id)
+            return [Label.from_linear(label) for label in linear_labels]
         except Exception:
             logger.exception("issues.get(%r) failed while listing labels", issue_id)
             return []
+
+    def create_issue_relation(
+        self,
+        *,
+        issue_id: str,
+        related_issue_id: str,
+        relation_type: Literal["blocks", "duplicate", "related"],
+    ) -> dict[str, str]:
+        """Create a relation between two issues via GraphQL."""
+        mutation = """
+        mutation CreateRelation($input: IssueRelationCreateInput!) {
+          issueRelationCreate(input: $input) {
+            success
+            issueRelation { id type }
+          }
+        }
+        """
+        result = self._execute_raw(
+            mutation,
+            {
+                "input": {
+                    "issueId": issue_id,
+                    "relatedIssueId": related_issue_id,
+                    "type": relation_type,
+                }
+            },
+        )
+        rel = (result.get("issueRelationCreate") or {}).get("issueRelation") or {}
+        return {
+            "id": rel.get("id", ""),
+            "type": rel.get("type", relation_type),
+            "issue_id": issue_id,
+            "related_issue_id": related_issue_id,
+        }
+
+    def get_issue_relations(self, issue_id: str) -> list[IssueRelation]:
+        """Get all relations for an issue (blocks / duplicate / related).
+
+        Returns an empty list when the issue has no relations. SDK errors
+        propagate to the caller — they're meaningful (auth, not-found,
+        rate-limit) and should not be hidden behind a falsy empty list.
+        """
+        linear_relations = self._client.issues.get_relations(issue_id=issue_id)
+        return [IssueRelation.from_linear(r) for r in linear_relations]
+
+    def list_sub_issues(self, issue_id: str) -> list[Issue]:
+        """List all sub-issues (children) of a parent issue.
+
+        Wraps linear_api.IssueManager.get_children, which returns a dict of
+        {child_id: LinearIssue}. SDK errors propagate to the caller — an empty
+        list here would silently hide auth/not-found/rate-limit failures.
+        """
+        linear_children = self._client.issues.get_children(issue_id)
+        return [Issue.from_linear(child) for child in linear_children.values()]
+
+    def add_comment_to_issue(self, comment: CommentInput) -> Comment:
+        """Add a comment to an issue. Returns the created Comment.
+
+        Linear's GraphQL schema uses the same `commentCreate` mutation for
+        both issue and project comments — the difference is whether `issueId`
+        or `projectId` is supplied in the input. There is no
+        `issueCommentCreate` mutation.
+        """
+        try:
+            query = """
+            mutation CommentCreate($input: CommentCreateInput!) {
+                commentCreate(input: $input) {
+                    success
+                    comment {
+                        id
+                        body
+                        user {
+                            id
+                            name
+                        }
+                        createdAt
+                    }
+                }
+            }
+            """
+
+            variables = {
+                "input": {
+                    "issueId": comment.issue_id,
+                    "body": comment.body,
+                }
+            }
+
+            result = self._execute_raw(query, variables)
+            mutation_result = result.get("commentCreate") or {}
+            if not mutation_result.get("success"):
+                raise RuntimeError("commentCreate mutation returned success=false")
+            comment_data = mutation_result.get("comment") or {}
+            if not comment_data.get("id"):
+                raise RuntimeError("commentCreate returned no comment data")
+            user_data = comment_data.get("user") or {}
+            return Comment(
+                id=comment_data["id"],
+                body=comment_data["body"],
+                user=CommentUser(
+                    id=user_data.get("id"),
+                    name=user_data.get("name"),
+                )
+                if user_data
+                else None,
+                createdAt=comment_data.get("createdAt"),
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to add comment to issue: {e}") from e
+
+    def list_issue_comments(self, issue_id: str) -> list[Comment]:
+        """List all comments on an issue."""
+        try:
+            linear_comments = self._client.issues.get_comments(issue_id)
+            return [Comment.from_linear(comment) for comment in linear_comments]
+        except Exception:
+            return []
+
+    def list_issue_attachments(self, issue_id: str) -> list[dict[str, Any]]:
+        """List all attachments on an issue."""
+        try:
+            linear_attachments = self._client.issues.get_attachments(issue_id)
+            return [
+                {
+                    "id": attachment.id,
+                    "title": getattr(attachment, "title", None),
+                    "url": getattr(attachment, "url", None),
+                    "file_name": getattr(attachment, "file_name", None),
+                    "file_size": getattr(attachment, "file_size", None),
+                    "content_type": getattr(attachment, "content_type", None),
+                    "created_at": getattr(attachment, "created_at", None),
+                }
+                for attachment in linear_attachments
+            ]
+        except Exception:
+            return []
+
+    def create_attachment(self, issue_id: str, title: str, url: str) -> dict[str, Any]:
+        """Create an attachment on an issue.
+
+        linear_api.IssueManager.create_attachment takes a LinearAttachmentInput
+        (not kwargs) and returns the raw `attachmentCreate` GraphQL payload as
+        a dict — `{"attachmentCreate": {"success": bool, "attachment": {...}}}`.
+        We flatten that to `{"success": bool, "attachment": {...}}`.
+        """
+        try:
+            attachment_input = LinearAttachmentInput(
+                issueId=issue_id,
+                title=title,
+                url=url,
+            )
+            response = self._client.issues.create_attachment(
+                attachment=attachment_input
+            )
+            payload = response.get("attachmentCreate") or {}
+            return {
+                "success": bool(payload.get("success", False)),
+                "attachment": payload.get("attachment") or {},
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to create attachment: {e}") from e
+
+    def get_team_members(self, team_id: str) -> list[dict[str, Any]]:
+        """Get all members of a team."""
+        try:
+            linear_members = self._client.teams.get_members(team_id)
+            return [
+                {
+                    "id": member.id,
+                    "name": member.name,
+                    "email": getattr(member, "email", None),
+                    "avatar_url": getattr(member, "avatar_url", None),
+                }
+                for member in linear_members
+            ]
+        except Exception:
+            return []
+
+    def get_team_labels(self, team_id: str) -> list[dict[str, Any]]:
+        """Get all labels in a team."""
+        try:
+            linear_labels = self._client.teams.get_labels(team_id)
+            return [
+                {
+                    "id": label.id,
+                    "name": label.name,
+                    "color": getattr(label, "color", None),
+                    "description": getattr(label, "description", None),
+                }
+                for label in linear_labels
+            ]
+        except Exception:
+            return []
+
+    def get_team_issues(self, team_id: str) -> list[Issue]:
+        """Get all issues in a team."""
+        try:
+            linear_issues = self._client.teams.get_issues(team_id)
+            return [Issue.from_linear(issue) for issue in linear_issues.values()]
+        except Exception:
+            return []
+
+    def get_team_projects(self, team_id: str) -> list[Project]:
+        """Get all projects in a team."""
+        try:
+            linear_projects = self._client.teams.get_projects(team_id)
+            return [
+                Project.from_linear(project) for project in linear_projects.values()
+            ]
+        except Exception:
+            return []
+
+    def get_project_members(self, project_id: str) -> list[dict[str, Any]]:
+        """Get all members of a project."""
+        try:
+            linear_members = self._client.projects.get_members(project_id)
+            return [
+                {
+                    "id": member.id,
+                    "name": member.name,
+                    "email": getattr(member, "email", None),
+                    "avatar_url": getattr(member, "avatar_url", None),
+                }
+                for member in linear_members
+            ]
+        except Exception:
+            return []
+
+    def get_project_labels(self, project_id: str) -> list[dict[str, Any]]:
+        """Get all labels in a project."""
+        try:
+            linear_labels = self._client.projects.get_labels(project_id)
+            return [
+                {
+                    "id": label.id,
+                    "name": label.name,
+                    "color": getattr(label, "color", None),
+                    "description": getattr(label, "description", None),
+                }
+                for label in linear_labels
+            ]
+        except Exception:
+            return []
+
+    def get_project_comments(self, project_id: str) -> list[Comment]:
+        """Get all comments on a project via direct GraphQL.
+
+        Bypasses linear_api.projects.get_comments, which silently returns an
+        empty list for projects that have comments (pagination/cache bug). We
+        page through `project.comments` ourselves and return Comment objects
+        populated with user info — something the library's flow loses, because
+        its Comment model omits the `user` field.
+        """
+        query = """
+        query($projectId: String!, $cursor: String) {
+          project(id: $projectId) {
+            comments(after: $cursor) {
+              nodes {
+                id
+                body
+                createdAt
+                user { id name displayName email }
+              }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }
+        """
+
+        comments: list[Comment] = []
+        cursor: str | None = None
+
+        while True:
+            try:
+                response = self._execute_raw(
+                    query, {"projectId": project_id, "cursor": cursor}
+                )
+            except Exception:
+                break
+
+            # _execute_raw may return either unwrapped data ({"project": ...})
+            # or the full envelope ({"data": {"project": ...}}); accept both.
+            payload: Any = response
+            if isinstance(response, dict) and isinstance(response.get("data"), dict):
+                payload = response["data"]
+            if not isinstance(payload, dict):
+                break
+
+            project = payload.get("project")
+            if not isinstance(project, dict):
+                break
+
+            comments_conn = project.get("comments") or {}
+            for node in comments_conn.get("nodes") or []:
+                user_data = node.get("user") or {}
+                comments.append(
+                    Comment(
+                        id=node["id"],
+                        body=node["body"],
+                        user=CommentUser(
+                            id=user_data.get("id"),
+                            name=user_data.get("name"),
+                        )
+                        if user_data
+                        else None,
+                        createdAt=node.get("createdAt"),
+                    )
+                )
+
+            page_info = comments_conn.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            next_cursor = page_info.get("endCursor")
+            if not next_cursor:
+                break
+            cursor = next_cursor
+
+        return comments
+
+    def add_comment_to_project(self, comment: ProjectCommentInput) -> Comment:
+        """Add a comment to a project. Returns the created Comment."""
+        try:
+            query = """
+            mutation CommentCreate($input: CommentCreateInput!) {
+                commentCreate(input: $input) {
+                    success
+                    comment {
+                        id
+                        body
+                        user {
+                            id
+                            name
+                            displayName
+                            email
+                        }
+                        createdAt
+                    }
+                }
+            }
+            """
+
+            variables = {
+                "input": {
+                    "projectId": comment.project_id,
+                    "body": comment.body,
+                }
+            }
+
+            result = self._execute_raw(query, variables)
+            mutation_result = result.get("commentCreate") or {}
+            if not mutation_result.get("success"):
+                raise RuntimeError("commentCreate mutation returned success=false")
+            comment_data = mutation_result.get("comment") or {}
+            if not comment_data.get("id"):
+                raise RuntimeError("commentCreate returned no comment data")
+            user_data = comment_data.get("user") or {}
+            return Comment(
+                id=comment_data["id"],
+                body=comment_data["body"],
+                user=CommentUser(
+                    id=user_data.get("id"),
+                    name=user_data.get("name"),
+                    displayName=user_data.get("displayName"),
+                    email=user_data.get("email"),
+                )
+                if user_data
+                else None,
+                createdAt=comment_data.get("createdAt"),
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to add comment to project: {e}") from e

@@ -11,12 +11,13 @@ from pydantic import ValidationError
 from libs.linear.schemas import (
     Issue,
     IssueInput,
-    IssueLabelInput,
+    IssueRelation,
     IssueUpdateInput,
     Label,
     Priority,
     Project,
     ProjectUpdateInput,
+    RelatedIssueRef,
     Team,
     _map_priority_to_api,
 )
@@ -101,20 +102,23 @@ def test_team_from_linear_no_description() -> None:
 
 def test_project_creation() -> None:
     """Project model should be created with required fields."""
-    project = Project(id="proj-123", name="Sprint 1", teamId="team-456")
+    team = Team(id="team-456", name="Engineering", key="ENG")
+    project = Project(id="proj-123", name="Sprint 1", team=team)
     assert project.id == "proj-123"
     assert project.name == "Sprint 1"
-    assert project.team_id == "team-456"
+    assert project.team is not None
+    assert project.team.id == "team-456"
     assert project.state is None
     assert project.description is None
 
 
 def test_project_with_optional_fields() -> None:
     """Project model should accept optional fields."""
+    team = Team(id="team-456", name="Engineering", key="ENG")
     project = Project(
         id="proj-123",
         name="Sprint 1",
-        teamId="team-456",
+        team=team,
         description="Q1 sprint",
         state="started",
     )
@@ -123,22 +127,77 @@ def test_project_with_optional_fields() -> None:
 
 
 def test_project_from_linear() -> None:
-    """Project.from_linear should convert linear_api Project object.
+    """Project.from_linear should convert a linear_api LinearProject.
 
-    team_id is left unset: LinearProject doesn't expose a single team_id
-    (a project can belong to multiple teams; see Project.team_id docs).
+    State is derived from status.type (a ProjectStatusType StrEnum, where str(t)
+    returns its value). team is read from linear_project.teams[0].
     """
+
+    class _StatusType(str):
+        value = "completed"
+
+    class MockStatus:
+        type = _StatusType("completed")
+
+    class MockTeam:
+        id = "team-123"
+        name = "Engineering"
+        key = "ENG"
+        description = None
 
     class MockLinearProject:
         id = "proj-789"
         name = "Sprint 2"
-        state = "completed"
+        description = None
+        status = MockStatus()
+        url = "https://linear.app/p/proj-789"
+        teams = [MockTeam()]
 
     project = Project.from_linear(MockLinearProject())
     assert project.id == "proj-789"
     assert project.name == "Sprint 2"
-    assert project.team_id is None
+    assert project.team is not None
+    assert project.team.id == "team-123"
     assert project.state == "completed"
+    assert project.url == "https://linear.app/p/proj-789"
+
+
+def test_project_from_linear_without_teams() -> None:
+    """Project.from_linear leaves team as None when teams list is empty."""
+
+    class _StatusType(str):
+        value = "started"
+
+    class MockStatus:
+        type = _StatusType("started")
+
+    class MockLinearProject:
+        id = "proj-1"
+        name = "P"
+        description = "d"
+        status = MockStatus()
+        url = None
+        teams: list = []
+
+    project = Project.from_linear(MockLinearProject())
+    assert project.team is None
+    assert project.state == "started"
+
+
+def test_project_from_linear_no_status() -> None:
+    """Project.from_linear tolerates a missing status payload."""
+
+    class MockLinearProject:
+        id = "proj-x"
+        name = "X"
+        description = None
+        status = None
+        url = None
+        teams: list = []
+
+    project = Project.from_linear(MockLinearProject())
+    assert project.state is None
+    assert project.team is None
 
 
 # -----------------------------------------------------------------------------
@@ -199,13 +258,25 @@ def test_issue_frozen() -> None:
 
 
 def test_issue_from_linear() -> None:
-    """Issue.from_linear should convert linear_api Issue object."""
+    """Issue.from_linear should convert a linear_api LinearIssue.
+
+    LinearIssue uses camelCase attributes (createdAt, updatedAt, parentId),
+    a required LinearTeam, an optional LinearProject, and a LinearPriority
+    enum for priority. Datetimes are real datetime instances.
+    """
+    from datetime import datetime
 
     class MockState:
         id = "state-review"
         name = "in_review"
         color = "#ff0"
         type = "started"
+
+    class MockTeam:
+        id = "team-789"
+
+    class MockProject:
+        id = "proj-000"
 
     class MockLinearIssue:
         id = "issue-456"
@@ -219,21 +290,26 @@ def test_issue_from_linear() -> None:
         project_id = "proj-000"
         parent_id = "issue-parent"
         url = "https://linear.app/issue/PROD-123"
-        created_at = "2024-01-01"
-        updated_at = "2024-01-02"
+        createdAt = datetime(2024, 1, 1, 12, 0, 0)
+        updatedAt = datetime(2024, 1, 2, 12, 0, 0)
 
     issue = Issue.from_linear(MockLinearIssue())
     assert issue.id == "issue-456"
     assert issue.identifier == "PROD-123"
     assert issue.title == "Feature request"
+    assert issue.state is not None
     assert issue.state.name == "in_review"
     assert issue.state.id == "state-review"
     # Linear NONE (4) maps to our NO_PRIORITY (0).
     assert issue.priority == 0
+    assert issue.team_id == "team-789"
+    assert issue.project_id == "proj-000"
+    assert issue.parent_id == "issue-parent"
 
 
 def test_issue_from_linear_no_state() -> None:
-    """Issue.from_linear should handle issue with no state."""
+    """Issue.from_linear handles missing state, team, and project."""
+    from linear_api import LinearPriority
 
     class MockLinearIssue:
         id = "issue-789"
@@ -241,16 +317,56 @@ def test_issue_from_linear_no_state() -> None:
         title = "Task"
         description = None
         state = None
-        priority = 2
+        priority = LinearPriority.MEDIUM
+        team = None
+        project = None
+        parentId = None
         url = "https://linear.app/issue/ENG-1"
-        team_id = None
-        project_id = None
-        parent_id = None
-        created_at = None
-        updated_at = None
+        createdAt = None
+        updatedAt = None
 
     issue = Issue.from_linear(MockLinearIssue())
     assert issue.state is None
+    assert issue.team_id is None
+    assert issue.project_id is None
+    assert issue.created_at is None
+    assert issue.updated_at is None
+
+
+def test_issue_from_linear_maps_priority_by_name() -> None:
+    """Issue.from_linear maps every LinearPriority to the Priority of the same name.
+
+    Catches the historical bug where LinearPriority's inverted integer values
+    silently produced wrong Priority values.
+    """
+    from linear_api import LinearPriority
+
+    cases = [
+        (LinearPriority.URGENT, Priority.URGENT),
+        (LinearPriority.HIGH, Priority.HIGH),
+        (LinearPriority.MEDIUM, Priority.MEDIUM),
+        (LinearPriority.LOW, Priority.LOW),
+        (LinearPriority.NONE, Priority.NO_PRIORITY),
+    ]
+    for linear_p, expected in cases:
+
+        class _M:
+            id = "i"
+            identifier = None
+            title = "t"
+            description = None
+            state = None
+            priority = linear_p
+            team = None
+            project = None
+            parentId = None
+            url = None
+            createdAt = None
+            updatedAt = None
+
+        assert Issue.from_linear(_M()).priority == expected, (
+            f"{linear_p!r} should map to {expected!r}"
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -319,6 +435,7 @@ def test_issue_update_input_empty() -> None:
     assert update.description is None
     assert update.state is None
     assert update.priority is None
+    assert update.parent_id is None
 
 
 def test_issue_update_input_partial() -> None:
@@ -335,9 +452,23 @@ def test_issue_update_input_all_fields() -> None:
         description="New Desc",
         state="completed",
         priority=Priority.URGENT,
+        parentId="issue-parent",
     )
     assert update.state == "completed"
     assert update.priority == 4
+    assert update.parent_id == "issue-parent"
+
+
+def test_issue_update_input_with_parent_id_snake_case() -> None:
+    """IssueUpdateInput accepts parent_id via snake_case."""
+    update = IssueUpdateInput(parent_id="issue-parent")
+    assert update.parent_id == "issue-parent"
+
+
+def test_issue_update_input_with_parent_id_camel_alias() -> None:
+    """IssueUpdateInput accepts parent_id via the camelCase alias."""
+    update = IssueUpdateInput(parentId="issue-parent")
+    assert update.parent_id == "issue-parent"
 
 
 # -----------------------------------------------------------------------------
@@ -379,25 +510,6 @@ def test_label_from_linear() -> None:
     assert label.id == "label-789"
     assert label.name == "urgent"
     assert label.color == "#ff0000"
-
-
-# -----------------------------------------------------------------------------
-# IssueLabelInput Model Tests
-# -----------------------------------------------------------------------------
-
-
-def test_issue_label_input_creation() -> None:
-    """IssueLabelInput should be created with required fields."""
-    input_data = IssueLabelInput(issueId="issue-123", labelName="bug")
-    assert input_data.issue_id == "issue-123"
-    assert input_data.label_name == "bug"
-
-
-def test_issue_label_input_aliases() -> None:
-    """IssueLabelInput should accept both snake_case and camelCase."""
-    input1 = IssueLabelInput(issueId="issue-1", labelName="bug")
-    input2 = IssueLabelInput(issue_id="issue-1", label_name="bug")
-    assert input1.issue_id == input2.issue_id
 
 
 # -----------------------------------------------------------------------------
@@ -476,3 +588,118 @@ def test_map_priority_to_api_invalid() -> None:
 
     assert _map_priority_to_api(999) == LinearPriority.MEDIUM
     assert _map_priority_to_api("invalid") == LinearPriority.MEDIUM
+
+
+# -----------------------------------------------------------------------------
+# IssueRelation Model Tests
+# -----------------------------------------------------------------------------
+
+
+def test_related_issue_ref_creation() -> None:
+    """RelatedIssueRef requires id and accepts optional title."""
+    ref = RelatedIssueRef(id="issue-1", title="Fix bug")
+    assert ref.id == "issue-1"
+    assert ref.title == "Fix bug"
+
+
+def test_related_issue_ref_optional_title() -> None:
+    """RelatedIssueRef should accept None title."""
+    ref = RelatedIssueRef(id="issue-1")
+    assert ref.title is None
+
+
+def test_issue_relation_creation_with_alias() -> None:
+    """IssueRelation should accept both snake_case and camelCase."""
+    rel = IssueRelation(
+        id="rel-1",
+        type="blocks",
+        relatedIssue=RelatedIssueRef(id="issue-2", title="Other"),
+        createdAt="2026-01-01T00:00:00",
+    )
+    assert rel.id == "rel-1"
+    assert rel.type == "blocks"
+    assert rel.related_issue is not None
+    assert rel.related_issue.id == "issue-2"
+    assert rel.created_at == "2026-01-01T00:00:00"
+
+
+def test_issue_relation_optional_fields_default_none() -> None:
+    """IssueRelation defaults related_issue and created_at to None."""
+    rel = IssueRelation(id="rel-1", type="related")
+    assert rel.related_issue is None
+    assert rel.created_at is None
+
+
+def test_issue_relation_from_linear_full() -> None:
+    """IssueRelation.from_linear converts a linear_api IssueRelation."""
+    from datetime import datetime
+
+    class MockLinearRelation:
+        id = "rel-123"
+        type = "blocks"
+        relatedIssue = {"id": "issue-9", "title": "Downstream task"}
+        createdAt = datetime(2026, 1, 2, 3, 4, 5)
+
+    rel = IssueRelation.from_linear(MockLinearRelation())
+    assert rel.id == "rel-123"
+    assert rel.type == "blocks"
+    assert rel.related_issue is not None
+    assert rel.related_issue.id == "issue-9"
+    assert rel.related_issue.title == "Downstream task"
+    assert rel.created_at == "2026-01-02T03:04:05"
+
+
+def test_issue_relation_from_linear_missing_related_issue() -> None:
+    """from_linear leaves related_issue as None when source dict is None."""
+
+    class MockLinearRelation:
+        id = "rel-2"
+        type = "related"
+        relatedIssue = None
+        createdAt = None
+
+    rel = IssueRelation.from_linear(MockLinearRelation())
+    assert rel.related_issue is None
+    assert rel.created_at is None
+
+
+def test_issue_relation_from_linear_related_issue_without_id() -> None:
+    """from_linear ignores a relatedIssue dict that has no id."""
+
+    class MockLinearRelation:
+        id = "rel-3"
+        type = "duplicate"
+        relatedIssue = {"title": "orphan"}
+        createdAt = None
+
+    rel = IssueRelation.from_linear(MockLinearRelation())
+    assert rel.related_issue is None
+
+
+def test_issue_relation_from_linear_related_issue_without_title() -> None:
+    """from_linear preserves an id-only relatedIssue dict (title optional)."""
+
+    class MockLinearRelation:
+        id = "rel-4"
+        type = "blocks"
+        relatedIssue = {"id": "issue-x"}
+        createdAt = None
+
+    rel = IssueRelation.from_linear(MockLinearRelation())
+    assert rel.related_issue is not None
+    assert rel.related_issue.id == "issue-x"
+    assert rel.related_issue.title is None
+
+
+def test_map_priority_from_api_unknown_types() -> None:
+    """_map_priority_from_api defaults to MEDIUM for unrecognised inputs.
+
+    Real LinearIssue.priority is always a LinearPriority enum, but the helper
+    must still be safe against partial GraphQL responses (None, raw ints, junk).
+    """
+    from libs.linear.schemas import _map_priority_from_api
+
+    assert _map_priority_from_api(None) == Priority.MEDIUM
+    assert _map_priority_from_api("medium") == Priority.MEDIUM  # not int/enum
+    assert _map_priority_from_api(99) == Priority.MEDIUM  # out of range
+    assert _map_priority_from_api(object()) == Priority.MEDIUM

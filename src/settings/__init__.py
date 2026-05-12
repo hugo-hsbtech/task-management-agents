@@ -77,6 +77,10 @@ class _Settings:
         return OrchestratorSettings()
 
     @property
+    def provider(self) -> ProviderSettings:
+        return ProviderSettings()
+
+    @property
     def runtime(self) -> RuntimeSettings:
         return RuntimeSettings()
 

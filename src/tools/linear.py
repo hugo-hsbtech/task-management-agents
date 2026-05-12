@@ -17,7 +17,7 @@ Example:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -96,6 +96,10 @@ UPDATE_ISSUE_SCHEMA: dict[str, Any] = {
             "minimum": 0,
             "maximum": 4,
         },
+        "parent_id": {
+            "type": "string",
+            "description": "New parent issue ID — re-parents the issue under this parent (optional)",
+        },
     },
     "required": ["issue_id"],
 }
@@ -109,21 +113,6 @@ DELETE_ISSUE_SCHEMA: dict[str, Any] = {
         },
     },
     "required": ["issue_id"],
-}
-
-ADD_LABEL_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "issue_id": {
-            "type": "string",
-            "description": "Issue ID or identifier to add label to (required)",
-        },
-        "label_name": {
-            "type": "string",
-            "description": "Label name to add (creates if doesn't exist) (required)",
-        },
-    },
-    "required": ["issue_id", "label_name"],
 }
 
 LIST_TEAMS_SCHEMA: dict[str, Any] = {
@@ -208,6 +197,63 @@ GET_ISSUE_SCHEMA: dict[str, Any] = {
         "issue_id": {
             "type": "string",
             "description": "Issue ID or identifier to retrieve (e.g., 'ENG-123') (required)",
+        },
+    },
+    "required": ["issue_id"],
+}
+
+CREATE_ISSUE_RELATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "description": "Source issue ID (required)",
+        },
+        "related_issue_id": {
+            "type": "string",
+            "description": "Target issue ID (required)",
+        },
+        "type": {
+            "type": "string",
+            "description": "Relation type: blocks, blocked_by, relates_to, duplicate_of (required)",
+            "enum": ["blocks", "blocked_by", "relates_to", "duplicate_of"],
+        },
+    },
+    "required": ["issue_id", "related_issue_id", "type"],
+}
+
+GET_ISSUE_RELATIONS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "description": "Issue ID or identifier whose relations to fetch (e.g., 'ENG-123') (required)",
+        },
+    },
+    "required": ["issue_id"],
+}
+
+ADD_LABEL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "description": "Issue ID or identifier to add label to (required)",
+        },
+        "label_name": {
+            "type": "string",
+            "description": "Label name to add (created if it doesn't exist) (required)",
+        },
+    },
+    "required": ["issue_id", "label_name"],
+}
+
+LIST_SUB_ISSUES_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "description": "Parent issue ID or identifier whose sub-issues to list (e.g., 'ENG-123') (required)",
         },
     },
     "required": ["issue_id"],
@@ -341,6 +387,43 @@ class LinearTools:
             return {"error": f"Issue '{input_data['issue_id']}' not found"}
         return issue.model_dump(mode="json")
 
+    async def _handle_create_issue_relation(
+        self, input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handler for linear_create_issue_relation tool."""
+        tool_type = input_data["type"]
+        issue_id = input_data["issue_id"]
+        related_issue_id = input_data["related_issue_id"]
+
+        # Map tool-schema names → Linear API names. "blocked_by" is the inverse
+        # of "blocks": swap the IDs so that "B blocks A" expresses "A blocked_by B".
+        _type_map = {
+            "blocks": ("blocks", issue_id, related_issue_id),
+            "blocked_by": ("blocks", related_issue_id, issue_id),
+            "relates_to": ("related", issue_id, related_issue_id),
+            "duplicate_of": ("duplicate", issue_id, related_issue_id),
+        }
+        api_type, src_id, tgt_id = _type_map[tool_type]
+        return self._client.create_issue_relation(
+            issue_id=src_id,
+            related_issue_id=tgt_id,
+            relation_type=cast('Literal["blocks", "duplicate", "related"]', api_type),
+        )
+
+    async def _handle_get_issue_relations(
+        self, input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handler for linear_get_issue_relations tool."""
+        relations = self._client.get_issue_relations(input_data["issue_id"])
+        return {"relations": [r.model_dump(mode="json") for r in relations]}
+
+    async def _handle_list_sub_issues(
+        self, input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handler for linear_list_sub_issues tool."""
+        sub_issues = self._client.list_sub_issues(input_data["issue_id"])
+        return {"sub_issues": [i.model_dump(mode="json") for i in sub_issues]}
+
     # -------------------------------------------------------------------------
     # Tool Specs
     # -------------------------------------------------------------------------
@@ -378,7 +461,7 @@ class LinearTools:
             ),
             "linear_add_label": ToolSpec(
                 name="linear_add_label",
-                description="Add a label to a Linear issue (creates label if doesn't exist)",
+                description="Add a label to a Linear issue (creates label if it doesn't exist)",
                 input_schema=ADD_LABEL_SCHEMA,
                 handler=self._handle_add_label,
             ),
@@ -423,6 +506,24 @@ class LinearTools:
                 description="Get a specific Linear issue by ID or identifier (e.g., 'ENG-123')",
                 input_schema=GET_ISSUE_SCHEMA,
                 handler=self._handle_get_issue,
+            ),
+            "linear_create_issue_relation": ToolSpec(
+                name="linear_create_issue_relation",
+                description="Create a relation between two Linear issues (blocks, blocked_by, relates_to, duplicate_of)",
+                input_schema=CREATE_ISSUE_RELATION_SCHEMA,
+                handler=self._handle_create_issue_relation,
+            ),
+            "linear_get_issue_relations": ToolSpec(
+                name="linear_get_issue_relations",
+                description="Get all relations for a Linear issue (blocks, duplicate, related)",
+                input_schema=GET_ISSUE_RELATIONS_SCHEMA,
+                handler=self._handle_get_issue_relations,
+            ),
+            "linear_list_sub_issues": ToolSpec(
+                name="linear_list_sub_issues",
+                description="List all sub-issues (children) of a Linear parent issue",
+                input_schema=LIST_SUB_ISSUES_SCHEMA,
+                handler=self._handle_list_sub_issues,
             ),
         }
 

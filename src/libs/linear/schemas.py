@@ -2,13 +2,42 @@
 
 These are our own types that abstract away the underlying linear-api library.
 Consumers should only import from this module, not from linear_api directly.
+
+Mapping rules (verified against linear_api>=0.3 domain models):
+
+* Priority is mapped by enum NAME, not numeric value. linear_api.LinearPriority
+  uses URGENT=0..NONE=4 (inverted from Linear's public REST/GraphQL scheme),
+  while our Priority follows the public scheme (NO_PRIORITY=0..URGENT=4). We
+  must never compare or pass raw integer values across the boundary.
+* LinearIssue.priority and .team are required on the source model.
+  LinearIssue.project, .description, .identifier, .parentId, .createdAt,
+  .updatedAt are optional and use camelCase attribute names.
+* LinearProject does NOT expose teamId/team_id; .teams is a property that
+  performs network I/O. Conversion never touches it. Pass team_id explicitly
+  if known (e.g. from list_projects(team_id=...)).
+* LinearProject exposes status: ProjectStatus (with .type: ProjectStatusType),
+  not a flat .state string.
 """
 
+from datetime import datetime
 from enum import Enum
 from typing import Any, Self
 
-from linear_api import LinearTeam
-from linear_api.domain import LinearLabel, LinearProject
+from linear_api import LinearPriority, LinearTeam
+from linear_api.domain import (
+    Comment as LinearComment,
+)
+from linear_api.domain import (
+    IssueRelation as LinearIssueRelation,
+)
+from linear_api.domain import (
+    LinearLabel,
+    LinearProject,
+    LinearUser,
+)
+from linear_api.domain import (
+    ProjectStatus as LinearProjectStatus,
+)
 from pydantic import BaseModel, Field
 
 _MISSING = object()
@@ -67,7 +96,7 @@ def _map_priority_from_api(value: Any) -> int:
 
 
 class Priority(int, Enum):
-    """Linear priority levels."""
+    """Wrapper priority levels (Linear public-API numeric scheme)."""
 
     NO_PRIORITY = 0
     LOW = 1
@@ -76,8 +105,35 @@ class Priority(int, Enum):
     URGENT = 4
 
 
+# Bidirectional name maps between our Priority and linear_api.LinearPriority.
+_OUR_BY_LINEAR_NAME: dict[str, Priority] = {
+    "URGENT": Priority.URGENT,
+    "HIGH": Priority.HIGH,
+    "MEDIUM": Priority.MEDIUM,
+    "LOW": Priority.LOW,
+    "NONE": Priority.NO_PRIORITY,
+}
+
+_LINEAR_NAME_BY_OURS: dict[Priority, str] = {
+    Priority.URGENT: "URGENT",
+    Priority.HIGH: "HIGH",
+    Priority.MEDIUM: "MEDIUM",
+    Priority.LOW: "LOW",
+    Priority.NO_PRIORITY: "NONE",
+}
+
+
+def _coerce_iso(value: Any) -> str | None:
+    """Coerce a datetime/str/None into an ISO-formatted string or None."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
 class IssueState(BaseModel):
-    """Linear issue state representation."""
+    """Linear issue state representation (maps from WorkflowState)."""
 
     id: str
     name: str
@@ -109,7 +165,6 @@ class Team(BaseModel):
 
     @classmethod
     def from_linear(cls, linear_team: LinearTeam) -> Self:
-        """Create a Team from a linear-api Team object."""
         return cls(
             id=linear_team.id,
             name=linear_team.name,
@@ -121,33 +176,55 @@ class Team(BaseModel):
 class Project(BaseModel):
     """Linear project representation.
 
-    Note: ``team_id`` is intentionally optional and not populated by
-    :meth:`from_linear`. The upstream ``LinearProject`` model has no
-    ``team_id`` field — a Linear project can belong to multiple teams,
-    exposed only via the ``teams`` property which triggers a separate API
-    call. Callers that need the team(s) should fetch them explicitly.
+    Note: the upstream ``LinearProject`` model has no ``team_id`` field —
+    a Linear project can belong to multiple teams, exposed only via the
+    ``teams`` property. ``from_linear`` defensively reads ``teams[0]``
+    when available and stores it as ``team``; if the teams list is
+    unavailable (partial payloads), ``team`` is left as ``None``.
     """
 
     id: str
     name: str
     description: str | None = None
-    team_id: str | None = Field(alias="teamId", default=None)
-    state: str | None = None  # planned, started, paused, completed, canceled
+    team: Team | None = None
+    state: str | None = (
+        None  # ProjectStatusType value (planned, started, paused, completed, canceled)
+    )
+    url: str | None = None
 
     model_config = {"frozen": True, "populate_by_name": True}
 
     @classmethod
     def from_linear(cls, linear_project: LinearProject) -> Self:
-        """Create a Project from a linear-api Project object.
+        """Create a Project from a linear-api LinearProject object.
 
-        ``team_id`` is left unset: ``LinearProject`` does not expose a
-        single team_id (see class docstring).
+        ``state`` is derived from ``status.type`` (a ``ProjectStatusType``
+        StrEnum). ``team`` is read from ``linear_project.teams[0]`` when
+        available; partial payloads leave it as ``None``.
         """
+        # status is a required ProjectStatus on LinearProject; .type is a
+        # ProjectStatusType (StrEnum). Be defensive against partial payloads.
+        status: LinearProjectStatus | None = getattr(linear_project, "status", None)
+        status_value: str | None = str(status.type) if status else None
+
+        try:
+            linear_teams = linear_project.teams or []
+        except Exception:
+            linear_teams = []
+        team = None
+        if linear_teams and isinstance(linear_teams, list):
+            try:
+                team = Team.from_linear(linear_team=linear_teams[0])
+            except Exception:
+                team = None
+
         return cls(
             id=linear_project.id,
             name=linear_project.name,
             description=getattr(linear_project, "description", None),
-            state=getattr(linear_project, "state", None),
+            team=team,
+            state=status_value,
+            url=getattr(linear_project, "url", None),
         )
 
 
@@ -190,8 +267,8 @@ class Issue(BaseModel):
             project_id=_field(linear_issue, "project_id", "projectId"),
             parent_id=_field(linear_issue, "parent_id", "parentId"),
             url=_field(linear_issue, "url"),
-            created_at=_field(linear_issue, "created_at", "createdAt"),
-            updated_at=_field(linear_issue, "updated_at", "updatedAt"),
+            created_at=_coerce_iso(_field(linear_issue, "created_at", "createdAt")),
+            updated_at=_coerce_iso(_field(linear_issue, "updated_at", "updatedAt")),
         )
 
 
@@ -209,12 +286,19 @@ class IssueInput(BaseModel):
 
 
 class IssueUpdateInput(BaseModel):
-    """Input for updating a Linear issue."""
+    """Input for updating a Linear issue.
+
+    `parent_id` re-parents the issue under a different parent (making it a
+    sub-issue). Consistent with the other update fields, leaving it as the
+    default (`None`/unset) means "no change". Detaching an issue from its
+    parent is not currently supported through this input.
+    """
 
     title: str | None = Field(default=None, min_length=1, max_length=256)
     description: str | None = None
     state: str | None = None
     priority: int | None = None
+    parent_id: str | None = Field(alias="parentId", default=None)
 
     model_config = {"populate_by_name": True}
 
@@ -231,7 +315,7 @@ class Label(BaseModel):
 
     @classmethod
     def from_linear(cls, linear_label: LinearLabel) -> Self:
-        """Create a Label from a linear-api Label object."""
+        # color is required on LinearLabel; description is optional.
         return cls(
             id=linear_label.id,
             name=linear_label.name,
@@ -240,11 +324,117 @@ class Label(BaseModel):
         )
 
 
+class RelatedIssueRef(BaseModel):
+    """Minimal issue reference embedded inside an IssueRelation."""
+
+    id: str
+    title: str | None = None
+
+    model_config = {"frozen": True}
+
+
+class IssueRelation(BaseModel):
+    """Linear issue relation (blocks / duplicate / related).
+
+    Mirrors the shape returned by linear_api.IssueRelation. Relations are
+    directional: `related_issue` is the *target* of the relation from the
+    perspective of the issue the relation was fetched for.
+    """
+
+    id: str
+    type: str  # 'blocks' | 'duplicate' | 'related'
+    related_issue: RelatedIssueRef | None = Field(alias="relatedIssue", default=None)
+    created_at: str | None = Field(alias="createdAt", default=None)
+
+    model_config = {"frozen": True, "populate_by_name": True}
+
+    @classmethod
+    def from_linear(cls, linear_relation: LinearIssueRelation) -> Self:
+        """Convert a linear_api IssueRelation to our IssueRelation.
+
+        `relatedIssue` arrives as a raw dict ({"id", "title"}) per the
+        linear_api domain model — flatten it into a typed RelatedIssueRef.
+        """
+        related = getattr(linear_relation, "relatedIssue", None)
+        related_ref: RelatedIssueRef | None = None
+        if isinstance(related, dict) and related.get("id"):
+            related_ref = RelatedIssueRef(
+                id=related["id"],
+                title=related.get("title"),
+            )
+        return cls(
+            id=linear_relation.id,
+            type=linear_relation.type,
+            relatedIssue=related_ref,
+            createdAt=_coerce_iso(getattr(linear_relation, "createdAt", None)),
+        )
+
+
+class CommentUser(BaseModel):
+    """Minimal user representation within a comment."""
+
+    id: str | None = None
+    name: str | None = None
+    displayName: str | None = None
+    email: str | None = None
+
+    model_config = {"frozen": True}
+
+    @classmethod
+    def from_linear(cls, linear_user: LinearUser) -> Self:
+        return cls(
+            id=linear_user.id,
+            name=linear_user.name,
+            displayName=linear_user.displayName,
+            email=linear_user.email,
+        )
+
+
+class Comment(BaseModel):
+    """Linear comment representation."""
+
+    id: str
+    body: str
+    user: CommentUser | None = (
+        None  # populated only on create (raw GraphQL); None when listed via linear_api
+    )
+    created_at: str | None = Field(alias="createdAt", default=None)
+
+    model_config = {"frozen": True}
+
+    @classmethod
+    def from_linear(cls, linear_comment: LinearComment) -> Self:
+        # LinearComment.createdAt is a required datetime.
+        return cls(
+            id=linear_comment.id,
+            body=linear_comment.body,
+            createdAt=_coerce_iso(getattr(linear_comment, "createdAt", None)),
+        )
+
+
+class CommentInput(BaseModel):
+    """Input for creating a comment on a Linear issue."""
+
+    issue_id: str = Field(alias="issueId")
+    body: str = Field(min_length=1)
+
+    model_config = {"populate_by_name": True}
+
+
+class ProjectCommentInput(BaseModel):
+    """Input for creating a comment on a Linear project."""
+
+    project_id: str
+    body: str = Field(min_length=1)
+
+    model_config = {"populate_by_name": True}
+
+
 class IssueLabelInput(BaseModel):
     """Input for adding a label to an issue."""
 
     issue_id: str = Field(alias="issueId")
-    label_name: str = Field(alias="labelName")  # Linear creates label if not exists
+    label_name: str = Field(alias="labelName")
 
     model_config = {"populate_by_name": True}
 
@@ -261,36 +451,29 @@ class ProjectUpdateInput(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-# -----------------------------------------------------------------------------
-# Helper functions for converting collections
-# -----------------------------------------------------------------------------
-
-
 def _map_priority_to_api(priority: int | str | None) -> Any:
-    """Map our priority to linear_api LinearPriority enum."""
-    from linear_api import LinearPriority
+    """Map our priority (int or string label) to a linear_api LinearPriority.
 
+    Maps by NAME, not numeric value, because the two enums have inverted
+    underlying values.
+    """
     if priority is None:
         return None
 
-    mapping = {
-        0: LinearPriority.NONE,
-        1: LinearPriority.LOW,
-        2: LinearPriority.MEDIUM,
-        3: LinearPriority.HIGH,
-        4: LinearPriority.URGENT,
-    }
-
     if isinstance(priority, int):
-        return mapping.get(priority, LinearPriority.MEDIUM)
+        try:
+            ours = Priority(priority)
+        except ValueError:
+            return LinearPriority.MEDIUM
+        return LinearPriority[_LINEAR_NAME_BY_OURS[ours]]
 
-    priority_map = {
-        "low": LinearPriority.LOW,
-        "medium": LinearPriority.MEDIUM,
-        "high": LinearPriority.HIGH,
-        "urgent": LinearPriority.URGENT,
-        "no_priority": LinearPriority.NONE,
-        "no priority": LinearPriority.NONE,
-        "none": LinearPriority.NONE,
+    aliases = {
+        "low": "LOW",
+        "medium": "MEDIUM",
+        "high": "HIGH",
+        "urgent": "URGENT",
+        "no_priority": "NONE",
+        "no priority": "NONE",
+        "none": "NONE",
     }
-    return priority_map.get(str(priority).lower(), LinearPriority.MEDIUM)
+    return LinearPriority[aliases.get(str(priority).lower(), "MEDIUM")]

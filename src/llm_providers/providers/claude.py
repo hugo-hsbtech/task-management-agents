@@ -1,5 +1,6 @@
 """ClaudeProvider — wraps claude_agent_sdk."""
 
+import json
 from collections.abc import AsyncIterator, Callable
 from typing import Any, ClassVar
 
@@ -229,7 +230,10 @@ class ClaudeProvider(BaseProvider):
         if options.cwd is not None:
             kwargs["cwd"] = options.cwd
         if options.output_schema is not None:
-            kwargs["output_schema"] = options.output_schema
+            kwargs["output_format"] = {
+                "type": "json_schema",
+                "schema": options.output_schema,
+            }
         extras = options.extras.get(self.name, {}) if options.extras else {}
         if "hooks" in extras:
             kwargs["hooks"] = extras["hooks"]
@@ -240,7 +244,11 @@ class ClaudeProvider(BaseProvider):
             subtype = getattr(sdk_msg, "subtype", None)
             if subtype not in (None, "success"):
                 raise RuntimeError(f"Claude agent failed: {subtype}")
-            text = getattr(sdk_msg, "result", None) or ""
+            structured_output = getattr(sdk_msg, "structured_output", None)
+            if structured_output is not None:
+                text = json.dumps(structured_output)
+            else:
+                text = getattr(sdk_msg, "result", None) or ""
             return Message(text=text, is_final=True, raw=sdk_msg)
         if isinstance(sdk_msg, self._sdk.AssistantMessage):
             text = "".join(getattr(b, "text", "") for b in (sdk_msg.content or []))

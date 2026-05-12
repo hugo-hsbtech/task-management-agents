@@ -48,7 +48,7 @@ def test_linear_tools_initialization() -> None:
 def test_get_tool_specs_all(linear_tools: LinearTools) -> None:
     """get_tool_specs should return all tools when no filter."""
     specs = linear_tools.get_tool_specs()
-    assert len(specs) == 11
+    assert len(specs) == 14
 
     tool_names = {s.name for s in specs}
     expected = {
@@ -63,6 +63,9 @@ def test_get_tool_specs_all(linear_tools: LinearTools) -> None:
         "linear_update_project",
         "linear_list_issues",
         "linear_get_issue",
+        "linear_create_issue_relation",
+        "linear_get_issue_relations",
+        "linear_list_sub_issues",
     }
     assert tool_names == expected
 
@@ -96,7 +99,7 @@ def test_get_policy_tools(linear_tools: LinearTools) -> None:
     """get_policy_tools should return dict of handlers."""
     handlers = linear_tools.get_policy_tools()
 
-    assert len(handlers) == 11
+    assert len(handlers) == 14
     assert "linear_create_issue" in handlers
     assert callable(handlers["linear_create_issue"])
 
@@ -745,19 +748,23 @@ def test_update_issue_schema_structure() -> None:
     assert "title" in UPDATE_ISSUE_SCHEMA["properties"]
     assert "state" in UPDATE_ISSUE_SCHEMA["properties"]
     assert "priority" in UPDATE_ISSUE_SCHEMA["properties"]
+    # Re-parenting support.
+    assert "parent_id" in UPDATE_ISSUE_SCHEMA["properties"]
+    assert UPDATE_ISSUE_SCHEMA["properties"]["parent_id"]["type"] == "string"
 
 
 def test_schemas_have_descriptions() -> None:
     """All tool schemas should have descriptions."""
     from tools.linear import (
-        ADD_LABEL_SCHEMA,
         CREATE_ISSUE_SCHEMA,
         DELETE_ISSUE_SCHEMA,
+        GET_ISSUE_RELATIONS_SCHEMA,
         GET_ISSUE_SCHEMA,
         GET_PROJECT_SCHEMA,
         GET_TEAM_SCHEMA,
         LIST_ISSUES_SCHEMA,
         LIST_PROJECTS_SCHEMA,
+        LIST_SUB_ISSUES_SCHEMA,
         LIST_TEAMS_SCHEMA,
         UPDATE_ISSUE_SCHEMA,
         UPDATE_PROJECT_SCHEMA,
@@ -767,7 +774,6 @@ def test_schemas_have_descriptions() -> None:
         CREATE_ISSUE_SCHEMA,
         UPDATE_ISSUE_SCHEMA,
         DELETE_ISSUE_SCHEMA,
-        ADD_LABEL_SCHEMA,
         LIST_TEAMS_SCHEMA,
         GET_TEAM_SCHEMA,
         LIST_PROJECTS_SCHEMA,
@@ -775,8 +781,167 @@ def test_schemas_have_descriptions() -> None:
         UPDATE_PROJECT_SCHEMA,
         LIST_ISSUES_SCHEMA,
         GET_ISSUE_SCHEMA,
+        GET_ISSUE_RELATIONS_SCHEMA,
+        LIST_SUB_ISSUES_SCHEMA,
     ]
 
     for schema in schemas:
         for prop_name, prop in schema["properties"].items():
             assert "description" in prop, f"Property {prop_name} missing description"
+
+
+def test_get_issue_relations_schema_structure() -> None:
+    """GET_ISSUE_RELATIONS_SCHEMA should require issue_id only."""
+    from tools.linear import GET_ISSUE_RELATIONS_SCHEMA
+
+    assert GET_ISSUE_RELATIONS_SCHEMA["type"] == "object"
+    assert GET_ISSUE_RELATIONS_SCHEMA["required"] == ["issue_id"]
+    assert "issue_id" in GET_ISSUE_RELATIONS_SCHEMA["properties"]
+
+
+# -----------------------------------------------------------------------------
+# _handle_get_issue_relations Tests
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_get_issue_relations_returns_list(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_get_issue_relations should serialize relations to JSON dicts."""
+    from libs.linear.schemas import IssueRelation, RelatedIssueRef
+
+    mock_linear_client.get_issue_relations.return_value = [
+        IssueRelation(
+            id="rel-1",
+            type="blocks",
+            relatedIssue=RelatedIssueRef(id="issue-2", title="Other"),
+            createdAt="2026-01-02T03:04:05",
+        )
+    ]
+
+    result = await linear_tools._handle_get_issue_relations({"issue_id": "ENG-42"})
+
+    mock_linear_client.get_issue_relations.assert_called_once_with("ENG-42")
+    assert result == {
+        "relations": [
+            {
+                "id": "rel-1",
+                "type": "blocks",
+                "related_issue": {"id": "issue-2", "title": "Other"},
+                "created_at": "2026-01-02T03:04:05",
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_handle_get_issue_relations_empty(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_get_issue_relations should return empty list when no relations exist."""
+    mock_linear_client.get_issue_relations.return_value = []
+
+    result = await linear_tools._handle_get_issue_relations({"issue_id": "ENG-42"})
+
+    assert result == {"relations": []}
+
+
+def test_get_policy_tools_includes_get_issue_relations(
+    linear_tools: LinearTools,
+) -> None:
+    """get_policy_tools should include the new linear_get_issue_relations handler."""
+    tools = linear_tools.get_policy_tools()
+    assert "linear_get_issue_relations" in tools
+
+
+# -----------------------------------------------------------------------------
+# Sub-issue Support
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_update_issue_with_parent_id(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_update_issue should forward parent_id when re-parenting."""
+    mock_issue = MagicMock()
+    mock_issue.model_dump.return_value = {
+        "id": "issue-child",
+        "parent_id": "issue-new-parent",
+    }
+    mock_linear_client.update_issue.return_value = mock_issue
+
+    result = await linear_tools._handle_update_issue(
+        {
+            "issue_id": "issue-child",
+            "parent_id": "issue-new-parent",
+        }
+    )
+
+    assert result["parent_id"] == "issue-new-parent"
+    mock_linear_client.update_issue.assert_called_once()
+    # The IssueUpdateInput passed to the client must carry parent_id.
+    _, update_input = mock_linear_client.update_issue.call_args[0]
+    assert update_input.parent_id == "issue-new-parent"
+
+
+def test_list_sub_issues_schema_structure() -> None:
+    """LIST_SUB_ISSUES_SCHEMA should require issue_id only."""
+    from tools.linear import LIST_SUB_ISSUES_SCHEMA
+
+    assert LIST_SUB_ISSUES_SCHEMA["type"] == "object"
+    assert LIST_SUB_ISSUES_SCHEMA["required"] == ["issue_id"]
+    assert "issue_id" in LIST_SUB_ISSUES_SCHEMA["properties"]
+
+
+@pytest.mark.asyncio
+async def test_handle_list_sub_issues_returns_list(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_sub_issues should serialize sub-issues to JSON dicts."""
+    child_a = MagicMock()
+    child_a.model_dump.return_value = {
+        "id": "issue-child-1",
+        "identifier": "ENG-101",
+        "title": "Child A",
+        "parent_id": "issue-parent",
+    }
+    child_b = MagicMock()
+    child_b.model_dump.return_value = {
+        "id": "issue-child-2",
+        "identifier": "ENG-102",
+        "title": "Child B",
+        "parent_id": "issue-parent",
+    }
+    mock_linear_client.list_sub_issues.return_value = [child_a, child_b]
+
+    result = await linear_tools._handle_list_sub_issues({"issue_id": "issue-parent"})
+
+    mock_linear_client.list_sub_issues.assert_called_once_with("issue-parent")
+    assert "sub_issues" in result
+    assert len(result["sub_issues"]) == 2
+    assert result["sub_issues"][0]["id"] == "issue-child-1"
+    assert result["sub_issues"][1]["id"] == "issue-child-2"
+
+
+@pytest.mark.asyncio
+async def test_handle_list_sub_issues_empty(
+    linear_tools: LinearTools, mock_linear_client: MagicMock
+) -> None:
+    """_handle_list_sub_issues returns empty list when no sub-issues exist."""
+    mock_linear_client.list_sub_issues.return_value = []
+
+    result = await linear_tools._handle_list_sub_issues({"issue_id": "issue-parent"})
+
+    assert result == {"sub_issues": []}
+
+
+def test_get_policy_tools_includes_list_sub_issues(
+    linear_tools: LinearTools,
+) -> None:
+    """get_policy_tools should include the new linear_list_sub_issues handler."""
+    tools = linear_tools.get_policy_tools()
+    assert "linear_list_sub_issues" in tools
+    assert callable(tools["linear_list_sub_issues"])
+    assert callable(tools["linear_get_issue_relations"])

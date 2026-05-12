@@ -22,5 +22,5 @@ build/
 # Jupyter notebook checkpoints — local-only, never commit
 .ipynb_checkpoints/
 
-.coverage/
+.coverage
 .hypothesis/

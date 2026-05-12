@@ -26,3 +26,13 @@ def test_api_key_does_not_leak_in_repr(monkeypatch):
     settings = LinearSettings()
     assert "lin_api_test_token" not in repr(settings)
     assert "lin_api_test_token" not in str(settings)
+
+
+def test_linear_target_ids_read_from_settings(monkeypatch):
+    monkeypatch.setenv("LINEAR_TEAM_ID", "SAND")
+    monkeypatch.setenv("LINEAR_PROJECT_ID", "project-id")
+    from settings import LinearSettings
+
+    settings = LinearSettings()
+    assert settings.team_id == "SAND"
+    assert settings.project_id == "project-id"
