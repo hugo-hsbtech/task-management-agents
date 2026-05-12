@@ -1,5 +1,6 @@
 """ClaudeProvider — translation hooks + auth wiring with mocked SDK."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -118,6 +119,25 @@ def test_translate_tools_uses_allowed_list(provider):
     assert out["allowed_tools"] == ["Read", "Bash"]
 
 
+def test_build_native_options_translates_output_schema_to_output_format(provider):
+    opts = ProviderOptions(
+        system_prompt=TextSystemPrompt(text="be helpful"),
+        model="claude-sonnet-4-6",
+        max_turns=5,
+        tool_policy=ToolPolicy(),
+        output_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
+    )
+
+    provider._build_native_options(opts)
+
+    kwargs = provider._sdk.ClaudeAgentOptions.call_args.kwargs
+    assert "output_schema" not in kwargs
+    assert kwargs["output_format"] == {
+        "type": "json_schema",
+        "schema": opts.output_schema,
+    }
+
+
 def test_translate_mcp_returns_dict(provider):
     spec = McpServerSpec(
         name="linear",
@@ -190,6 +210,19 @@ def test_query_yields_messages(provider):
     msgs = asyncio.run(_run())
     assert any(isinstance(m, Message) for m in msgs)
     assert any(m.is_final for m in msgs)
+
+
+def test_result_message_prefers_structured_output(provider):
+    sdk = pytest.importorskip("claude_agent_sdk")
+    msg_result = MagicMock(spec=sdk.ResultMessage)
+    msg_result.subtype = "success"
+    msg_result.structured_output = {"ok": True}
+    msg_result.result = None
+
+    message = provider._to_message(msg_result)
+
+    assert message.is_final is True
+    assert json.loads(message.text) == {"ok": True}
 
 
 def test_stateful_client_query_converts_messages(provider):
