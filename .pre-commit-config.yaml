@@ -11,9 +11,9 @@ repos:
   # install into isolated pre-commit envs and would miss them, producing false positives.
   - repo: local
     hooks:
-      - id: safety
-        name: safety (check dependencies)
-        entry: uv run safety check
+      - id: pip-audit
+        name: pip-audit (check dependencies)
+        entry: uv run pip-audit
         language: system
         pass_filenames: false
         require_serial: true

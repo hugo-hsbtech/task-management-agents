@@ -278,9 +278,9 @@ class _CodexBackend(_Backend):
         # All three pipes are PIPE-configured above, so they are never None
         # in practice; the asserts narrow the StreamReader/Writer | None types
         # for mypy.
-        assert proc.stdin is not None
-        assert proc.stdout is not None
-        assert proc.stderr is not None
+        assert proc.stdin is not None  # nosec B101
+        assert proc.stdout is not None  # nosec B101
+        assert proc.stderr is not None  # nosec B101
 
         proc.stdin.write(prompt.encode())
         proc.stdin.close()
