@@ -187,9 +187,7 @@ class Project(BaseModel):
     name: str
     description: str | None = None
     team: Team | None = None
-    state: str | None = (
-        None  # ProjectStatusType value (planned, started, paused, completed, canceled)
-    )
+    state: str | None = None
     url: str | None = None
 
     model_config = {"frozen": True, "populate_by_name": True}
@@ -202,8 +200,6 @@ class Project(BaseModel):
         StrEnum). ``team`` is read from ``linear_project.teams[0]`` when
         available; partial payloads leave it as ``None``.
         """
-        # status is a required ProjectStatus on LinearProject; .type is a
-        # ProjectStatusType (StrEnum). Be defensive against partial payloads.
         status: LinearProjectStatus | None = getattr(linear_project, "status", None)
         status_value: str | None = str(status.type) if status else None
 

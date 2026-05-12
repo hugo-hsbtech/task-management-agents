@@ -407,7 +407,7 @@ class LinearTools:
         return self._client.create_issue_relation(
             issue_id=src_id,
             related_issue_id=tgt_id,
-            relation_type=cast('Literal["blocks", "duplicate", "related"]', api_type),
+            relation_type=cast("Literal['blocks', 'duplicate', 'related']", api_type),
         )
 
     async def _handle_get_issue_relations(

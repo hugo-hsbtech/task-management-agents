@@ -83,36 +83,32 @@ def _make_project_mock(
 ) -> MagicMock:
     """Build a MagicMock matching linear_api.LinearProject's read surface.
 
-    Project.from_linear reads `linear_project.teams[0]` for the nested team;
-    we populate that here. Real LinearProject exposes .teams as a property
-    that issues a network call, but on a MagicMock it's just a plain list.
+    from_linear reads `status.type` for state and `teams[0]` for team.
     """
     m = MagicMock()
     m.id = id
     m.name = name
     m.description = description
-    if state is None:
-        m.status = None
-    else:
-        # ProjectStatusType is a StrEnum on the real model; str(t) returns its
-        # value. Use a tiny class so str() works deterministically.
-        class _StatusType(str):
-            value = state
-
-        status_type = _StatusType(state)
-        status = MagicMock()
-        status.type = status_type
-        m.status = status
     m.url = url
-    if team_id is None:
-        m.teams = []
+
+    # status.type drives state mapping
+    if state is not None:
+        status_mock = MagicMock()
+        status_mock.type = state
+        m.status = status_mock
     else:
+        m.status = None
+
+    # teams[0] drives team mapping
+    if team_id is not None:
         team_mock = MagicMock()
         team_mock.id = team_id
         team_mock.name = team_name
         team_mock.key = team_key
         team_mock.description = None
         m.teams = [team_mock]
+    else:
+        m.teams = []
     return m
 
 
@@ -344,6 +340,7 @@ def test_get_project_success(client: LinearClient) -> None:
     assert project.id == "proj-123"
     assert project.name == "Sprint 1"
     assert project.state == "started"
+    # team is read from linear_project.teams[0] inside from_linear.
     assert project.team is not None
     assert project.team.id == "team-9"
 

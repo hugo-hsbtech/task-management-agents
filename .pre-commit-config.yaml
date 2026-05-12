@@ -6,12 +6,18 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  # mypy runs as a `local` hook via `uv run` so it picks up the project's
-  # actual dependencies (claude-agent-sdk, pydantic, linear-api, ...) — the
-  # upstream `mirrors-mypy` hook installs into an isolated pre-commit env
-  # and would miss them, producing false positives.
+  # safety and mypy run as `local` hooks via `uv run` so they pick up the project's
+  # actual dependencies (claude-agent-sdk, pydantic, linear-api, ...) — upstream hooks
+  # install into isolated pre-commit envs and would miss them, producing false positives.
   - repo: local
     hooks:
+      - id: pip-audit
+        name: pip-audit (check dependencies)
+        entry: uv run pip-audit --skip-editable
+        language: system
+        pass_filenames: false
+        require_serial: true
+
       - id: mypy
         name: mypy (strict, src only)
         entry: uv run mypy src/

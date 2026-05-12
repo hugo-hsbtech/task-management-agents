@@ -102,12 +102,10 @@ def test_team_from_linear_no_description() -> None:
 
 def test_project_creation() -> None:
     """Project model should be created with required fields."""
-    team = Team(id="team-456", name="Engineering", key="ENG")
-    project = Project(id="proj-123", name="Sprint 1", team=team)
+    project = Project(id="proj-123", name="Sprint 1")
     assert project.id == "proj-123"
     assert project.name == "Sprint 1"
-    assert project.team is not None
-    assert project.team.id == "team-456"
+    assert project.team is None
     assert project.state is None
     assert project.description is None
 
@@ -124,6 +122,8 @@ def test_project_with_optional_fields() -> None:
     )
     assert project.description == "Q1 sprint"
     assert project.state == "started"
+    assert project.team is not None
+    assert project.team.id == "team-456"
 
 
 def test_project_from_linear() -> None:
@@ -162,38 +162,16 @@ def test_project_from_linear() -> None:
     assert project.url == "https://linear.app/p/proj-789"
 
 
-def test_project_from_linear_without_teams() -> None:
-    """Project.from_linear leaves team as None when teams list is empty."""
-
-    class _StatusType(str):
-        value = "started"
-
-    class MockStatus:
-        type = _StatusType("started")
-
-    class MockLinearProject:
-        id = "proj-1"
-        name = "P"
-        description = "d"
-        status = MockStatus()
-        url = None
-        teams: list = []
-
-    project = Project.from_linear(MockLinearProject())
-    assert project.team is None
-    assert project.state == "started"
-
-
-def test_project_from_linear_no_status() -> None:
-    """Project.from_linear tolerates a missing status payload."""
+def test_project_from_linear_no_state() -> None:
+    """Project.from_linear tolerates a missing status and empty teams."""
 
     class MockLinearProject:
         id = "proj-x"
         name = "X"
         description = None
-        status = None
         url = None
-        teams: list = []
+        status = None
+        teams: list[object] = []
 
     project = Project.from_linear(MockLinearProject())
     assert project.state is None

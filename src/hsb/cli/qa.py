@@ -1,7 +1,7 @@
 """QA Agent CLI subcommands (populated by Phase 2 Plan 05)."""
 
 import asyncio
-import subprocess
+import subprocess  # nosec B404
 
 import typer
 from rich.pretty import pprint
@@ -48,8 +48,8 @@ def qa_review(
         )
 
     # Fresh fetch — Pitfall 6
-    diff = subprocess.check_output(["gh", "pr", "diff", str(pr_number)], text=True)
-    pr_url = subprocess.check_output(
+    diff = subprocess.check_output(["gh", "pr", "diff", str(pr_number)], text=True)  # nosec B603 B607
+    pr_url = subprocess.check_output(  # nosec B603 B607
         ["gh", "pr", "view", str(pr_number), "--json", "url", "--jq", ".url"],
         text=True,
     ).strip()

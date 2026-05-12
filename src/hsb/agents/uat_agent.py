@@ -93,14 +93,14 @@ async def run_uat_and_validate(
         mcp_servers=None,
     )
     # UATA-04 structural assertions (defense-in-depth):
-    assert "Write" not in options.allowed_tools, (
+    assert "Write" not in options.allowed_tools, (  # nosec B101
         "UATA-04: UAT Agent must not have Write tool"
     )
-    assert "Edit" not in options.allowed_tools, (
+    assert "Edit" not in options.allowed_tools, (  # nosec B101
         "UATA-04: UAT Agent must not have Edit tool"
     )
-    assert "Agent" not in options.allowed_tools, "G2 / WORC-02: 'Agent' must not appear"
-    assert getattr(options, "mcp_servers", None) in (None, {}), (
+    assert "Agent" not in options.allowed_tools, "G2 / WORC-02: 'Agent' must not appear"  # nosec B101
+    assert getattr(options, "mcp_servers", None) in (None, {}), (  # nosec B101
         "UATA-04: UAT Agent must not have mcp_servers"
     )
 

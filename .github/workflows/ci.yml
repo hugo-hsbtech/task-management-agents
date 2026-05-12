@@ -2,9 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
 
 # Cancel superseded runs on the same PR/branch; keep main runs intact.
 concurrency:
@@ -55,6 +52,15 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/
+
+      - name: pip-audit (dependency vulnerabilities)
+        run: uv run pip-audit
+
+      - name: Bandit security check
+        run: uv run bandit -r src/ -ll
+
+      - name: Pylint check
+        run: uv run pylint src/ --fail-under=9.0
 
       - name: Mypy typecheck
         run: uv run mypy src/

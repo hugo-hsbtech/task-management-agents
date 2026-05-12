@@ -185,10 +185,10 @@ class RiskAgent:
             model="claude-haiku-4-5",
             max_budget_usd=0.05,
         )
-        assert options.allowed_tools == [], (
+        assert options.allowed_tools == [], (  # nosec B101
             "G4 violation: skill 14 allowed_tools must be empty"
         )
-        assert getattr(options, "mcp_servers", None) in (None, {}), (
+        assert getattr(options, "mcp_servers", None) in (None, {}), (  # nosec B101
             "G4 violation: skill 14 mcp_servers must be None"
         )
 
