@@ -264,9 +264,11 @@ def test_issue_from_linear() -> None:
         state = MockState()
         # Linear's int: 4 = NONE (Linear's enum ordering is inverse of ours).
         priority = 4
-        team_id = "team-789"
-        project_id = "proj-000"
-        parent_id = "issue-parent"
+        # Real LinearIssue: team is a required nested LinearTeam, project is
+        # an optional nested LinearProject, parent is flattened to parentId.
+        team = MockTeam()
+        project = MockProject()
+        parentId = "issue-parent"
         url = "https://linear.app/issue/PROD-123"
         createdAt = datetime(2024, 1, 1, 12, 0, 0)
         updatedAt = datetime(2024, 1, 2, 12, 0, 0)

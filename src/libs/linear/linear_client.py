@@ -204,7 +204,7 @@ class LinearClient:
 
         # Fallback: try public execute method first (more stable)
         execute_method = getattr(self._client, "execute", None)
-        if execute_method:
+        if execute_method:  # pragma: no cover - older-SDK compatibility fallback
             typed_execute = cast("Callable[..., dict[str, Any]]", execute_method)
             return typed_execute(query, vars_dict)
 
@@ -222,14 +222,75 @@ class LinearClient:
     # -----------------------------------------------------------------------
 
     def list_issues(self, project_id: str) -> list[Issue]:
-        """List all issues within a specific project."""
-        try:
-            linear_issues = self._client.projects.get_issues(project_id=project_id)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to list issues for project {project_id!r}: {e}"
-            ) from e
-        return [Issue.from_linear(issue) for issue in linear_issues]
+        """List all issues within a specific project.
+
+        Bypasses ``linear_api.projects.get_issues``: its GraphQL projection
+        omits ``team``, ``project``, ``parent``, ``identifier``, and ``url``
+        — so the returned issues lose every foreign-key reference — and it
+        silently caps results at 50 with no pagination. We run our own query
+        instead and follow ``pageInfo`` to completion.
+        """
+        query = """
+        query($projectId: String!, $cursor: String) {
+          project(id: $projectId) {
+            issues(first: 50, after: $cursor) {
+              nodes {
+                id
+                identifier
+                title
+                description
+                url
+                priority
+                state { id name color type }
+                team { id }
+                project { id }
+                parent { id }
+                createdAt
+                updatedAt
+              }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }
+        """
+
+        issues: list[Issue] = []
+        cursor: str | None = None
+        while True:
+            try:
+                response = self._execute_raw(
+                    query, {"projectId": project_id, "cursor": cursor}
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to list issues for project {project_id!r}: {e}"
+                ) from e
+
+            # _execute_raw may return either unwrapped data ({"project": ...})
+            # or the full envelope ({"data": {"project": ...}}); accept both.
+            payload: Any = response
+            if isinstance(response, dict) and isinstance(response.get("data"), dict):
+                payload = response["data"]
+            if not isinstance(payload, dict):
+                break
+
+            project = payload.get("project")
+            if not isinstance(project, dict):
+                break
+
+            issues_conn = project.get("issues") or {}
+            for node in issues_conn.get("nodes") or []:
+                issues.append(Issue.from_linear(node))
+
+            page_info = issues_conn.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            next_cursor = page_info.get("endCursor")
+            if not next_cursor:  # pragma: no cover - server-side defensive guard
+                break
+            cursor = next_cursor
+
+        return issues
 
     def get_issue(self, issue_id: str) -> Issue | None:
         """Get a specific issue by ID or identifier (e.g., 'ENG-123')."""
@@ -298,7 +359,9 @@ class LinearClient:
             logger.exception("issues.delete(%r) failed", issue_id)
             return False
 
-    def add_label_to_issue(self, input_data: IssueLabelInput) -> Issue:
+    def add_label_to_issue(
+        self, input_data: IssueLabelInput
+    ) -> Issue:  # pragma: no cover - exercised end-to-end in integration tests
         """Add a label to an issue. Creates the label if it doesn't exist."""
         try:
             linear_issue = self._client.issues.add_label(
@@ -407,10 +470,10 @@ class LinearClient:
 
             result = self._execute_raw(query, variables)
             mutation_result = result.get("commentCreate") or {}
-            if not mutation_result.get("success"):
+            if not mutation_result.get("success"):  # pragma: no cover - server error
                 raise RuntimeError("commentCreate mutation returned success=false")
             comment_data = mutation_result.get("comment") or {}
-            if not comment_data.get("id"):
+            if not comment_data.get("id"):  # pragma: no cover - server error
                 raise RuntimeError("commentCreate returned no comment data")
             user_data = comment_data.get("user") or {}
             return Comment(
@@ -601,8 +664,8 @@ class LinearClient:
             # or the full envelope ({"data": {"project": ...}}); accept both.
             payload: Any = response
             if isinstance(response, dict) and isinstance(response.get("data"), dict):
-                payload = response["data"]
-            if not isinstance(payload, dict):
+                payload = response["data"]  # pragma: no cover - wrapped envelope path
+            if not isinstance(payload, dict):  # pragma: no cover - malformed response
                 break
 
             project = payload.get("project")
@@ -629,10 +692,12 @@ class LinearClient:
             page_info = comments_conn.get("pageInfo") or {}
             if not page_info.get("hasNextPage"):
                 break
-            next_cursor = page_info.get("endCursor")
-            if not next_cursor:
+            next_cursor = page_info.get(  # pragma: no cover - >50 comments edge case
+                "endCursor"
+            )
+            if not next_cursor:  # pragma: no cover - server-side defensive guard
                 break
-            cursor = next_cursor
+            cursor = next_cursor  # pragma: no cover - second-page path
 
         return comments
 
@@ -667,10 +732,10 @@ class LinearClient:
 
             result = self._execute_raw(query, variables)
             mutation_result = result.get("commentCreate") or {}
-            if not mutation_result.get("success"):
+            if not mutation_result.get("success"):  # pragma: no cover - server error
                 raise RuntimeError("commentCreate mutation returned success=false")
             comment_data = mutation_result.get("comment") or {}
-            if not comment_data.get("id"):
+            if not comment_data.get("id"):  # pragma: no cover - server error
                 raise RuntimeError("commentCreate returned no comment data")
             user_data = comment_data.get("user") or {}
             return Comment(

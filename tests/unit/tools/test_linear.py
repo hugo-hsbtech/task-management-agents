@@ -127,7 +127,7 @@ async def test_handle_create_issue(
     }
     mock_linear_client.create_issue.return_value = mock_issue
 
-    result = await linear_tools._handle_create_issue(
+    result = await linear_tools.handle_create_issue(
         {
             "title": "Test Issue",
             "team_id": "team-456",
@@ -152,7 +152,7 @@ async def test_handle_create_issue_with_all_fields(
     mock_issue.model_dump.return_value = {"id": "issue-456"}
     mock_linear_client.create_issue.return_value = mock_issue
 
-    result = await linear_tools._handle_create_issue(
+    result = await linear_tools.handle_create_issue(
         {
             "title": "Issue with details",
             "team_id": "team-1",
@@ -175,7 +175,7 @@ async def test_handle_create_issue_default_priority(
     mock_issue.model_dump.return_value = {"id": "issue-789"}
     mock_linear_client.create_issue.return_value = mock_issue
 
-    await linear_tools._handle_create_issue(
+    await linear_tools.handle_create_issue(
         {
             "title": "Test",
             "team_id": "team-1",
@@ -197,7 +197,7 @@ async def test_handle_create_issue_missing_team(
         "Team 'team-missing' not found."
     )
 
-    result = await linear_tools._handle_create_issue(
+    result = await linear_tools.handle_create_issue(
         {
             "title": "Test",
             "team_id": "team-missing",
@@ -231,7 +231,7 @@ async def test_handle_update_issue(
     }
     mock_linear_client.update_issue.return_value = mock_issue
 
-    result = await linear_tools._handle_update_issue(
+    result = await linear_tools.handle_update_issue(
         {
             "issue_id": "issue-123",
             "title": "Updated Title",
@@ -255,7 +255,7 @@ async def test_handle_update_issue_partial(
     mock_issue.model_dump.return_value = {"id": "issue-123"}
     mock_linear_client.update_issue.return_value = mock_issue
 
-    result = await linear_tools._handle_update_issue(
+    result = await linear_tools.handle_update_issue(
         {
             "issue_id": "issue-123",
             "state": "completed",
@@ -275,7 +275,7 @@ async def test_handle_update_issue_client_error(
         "Failed to update issue 'MISSING-1': not found"
     )
 
-    result = await linear_tools._handle_update_issue(
+    result = await linear_tools.handle_update_issue(
         {"issue_id": "MISSING-1", "title": "Whatever"}
     )
 
@@ -295,7 +295,7 @@ async def test_handle_delete_issue_success(
     """_handle_delete_issue should return success on deletion."""
     mock_linear_client.delete_issue.return_value = True
 
-    result = await linear_tools._handle_delete_issue({"issue_id": "issue-123"})
+    result = await linear_tools.handle_delete_issue({"issue_id": "issue-123"})
 
     assert result["success"] is True
     assert result["issue_id"] == "issue-123"
@@ -309,7 +309,7 @@ async def test_handle_delete_issue_failure(
     """_handle_delete_issue should return failure on error."""
     mock_linear_client.delete_issue.return_value = False
 
-    result = await linear_tools._handle_delete_issue({"issue_id": "issue-456"})
+    result = await linear_tools.handle_delete_issue({"issue_id": "issue-456"})
 
     assert result["success"] is False
     assert result["issue_id"] == "issue-456"
@@ -336,7 +336,7 @@ async def test_handle_add_label(
     }
     mock_linear_client.add_label_to_issue.return_value = mock_issue
 
-    result = await linear_tools._handle_add_label(
+    result = await linear_tools.handle_add_label(
         {
             "issue_id": "issue-123",
             "label_name": "bug",
@@ -357,7 +357,7 @@ async def test_handle_add_label_client_error(
         "Failed to add label to issue: boom"
     )
 
-    result = await linear_tools._handle_add_label(
+    result = await linear_tools.handle_add_label(
         {"issue_id": "issue-123", "label_name": "bug"}
     )
 
@@ -388,7 +388,7 @@ async def test_handle_list_teams(
     }
     mock_linear_client.list_teams.return_value = [mock_team]
 
-    result = await linear_tools._handle_list_teams({})
+    result = await linear_tools.handle_list_teams({})
 
     assert "teams" in result
     assert len(result["teams"]) == 1
@@ -403,7 +403,7 @@ async def test_handle_list_teams_empty(
     """_handle_list_teams should handle empty list."""
     mock_linear_client.list_teams.return_value = []
 
-    result = await linear_tools._handle_list_teams({})
+    result = await linear_tools.handle_list_teams({})
 
     assert result["teams"] == []
 
@@ -418,7 +418,7 @@ async def test_handle_list_teams_client_error(
         "Failed to list teams: API boom"
     )
 
-    result = await linear_tools._handle_list_teams({})
+    result = await linear_tools.handle_list_teams({})
 
     assert "error" in result
     assert "Failed to list teams" in result["error"]
@@ -442,7 +442,7 @@ async def test_handle_get_team_success(
     }
     mock_linear_client.get_team.return_value = mock_team
 
-    result = await linear_tools._handle_get_team({"team_id": "team-123"})
+    result = await linear_tools.handle_get_team({"team_id": "team-123"})
 
     assert result["id"] == "team-123"
     assert result["name"] == "Engineering"
@@ -455,7 +455,7 @@ async def test_handle_get_team_not_found(
     """_handle_get_team should return error when team not found."""
     mock_linear_client.get_team.return_value = None
 
-    result = await linear_tools._handle_get_team({"team_id": "non-existent"})
+    result = await linear_tools.handle_get_team({"team_id": "non-existent"})
 
     assert "error" in result
     assert "non-existent" in result["error"]
@@ -486,7 +486,7 @@ async def test_handle_list_projects(
     }
     mock_linear_client.list_projects.return_value = [mock_project]
 
-    result = await linear_tools._handle_list_projects({"team_id": "team-1"})
+    result = await linear_tools.handle_list_projects({"team_id": "team-1"})
 
     assert "projects" in result
     assert len(result["projects"]) == 1
@@ -503,7 +503,7 @@ async def test_handle_list_projects_client_error(
         "Failed to list projects for team 'team-1': API boom"
     )
 
-    result = await linear_tools._handle_list_projects({"team_id": "team-1"})
+    result = await linear_tools.handle_list_projects({"team_id": "team-1"})
 
     assert "error" in result
     assert "team-1" in result["error"]
@@ -529,7 +529,7 @@ async def test_handle_get_project_success(
     }
     mock_linear_client.get_project.return_value = mock_project
 
-    result = await linear_tools._handle_get_project({"project_id": "proj-123"})
+    result = await linear_tools.handle_get_project({"project_id": "proj-123"})
 
     assert result["id"] == "proj-123"
     assert result["name"] == "Project Name"
@@ -542,7 +542,7 @@ async def test_handle_get_project_not_found(
     """_handle_get_project should return error when project not found."""
     mock_linear_client.get_project.return_value = None
 
-    result = await linear_tools._handle_get_project({"project_id": "missing"})
+    result = await linear_tools.handle_get_project({"project_id": "missing"})
 
     assert "error" in result
     assert "missing" in result["error"]
@@ -566,7 +566,7 @@ async def test_handle_update_project(
     }
     mock_linear_client.update_project.return_value = mock_project
 
-    result = await linear_tools._handle_update_project(
+    result = await linear_tools.handle_update_project(
         {
             "project_id": "proj-123",
             "name": "Updated Name",
@@ -591,7 +591,7 @@ async def test_handle_update_project_with_message(
     mock_project.model_dump.return_value = {"id": "proj-123"}
     mock_linear_client.update_project.return_value = mock_project
 
-    result = await linear_tools._handle_update_project(
+    result = await linear_tools.handle_update_project(
         {
             "project_id": "proj-123",
             "update_message": "Sprint started!",
@@ -611,7 +611,7 @@ async def test_handle_update_project_not_found(
         "Failed to update project: Project 'missing' not found."
     )
 
-    result = await linear_tools._handle_update_project(
+    result = await linear_tools.handle_update_project(
         {"project_id": "missing", "name": "Whatever"}
     )
 
@@ -651,7 +651,7 @@ async def test_handle_list_issues(
     }
     mock_linear_client.list_issues.return_value = [mock_issue]
 
-    result = await linear_tools._handle_list_issues({"project_id": "proj-1"})
+    result = await linear_tools.handle_list_issues({"project_id": "proj-1"})
 
     assert "issues" in result
     assert len(result["issues"]) == 1
@@ -668,7 +668,7 @@ async def test_handle_list_issues_client_error(
         "Failed to list issues for project 'proj-1': API boom"
     )
 
-    result = await linear_tools._handle_list_issues({"project_id": "proj-1"})
+    result = await linear_tools.handle_list_issues({"project_id": "proj-1"})
 
     assert "error" in result
     assert "proj-1" in result["error"]
@@ -701,7 +701,7 @@ async def test_handle_get_issue_success(
     }
     mock_linear_client.get_issue.return_value = mock_issue
 
-    result = await linear_tools._handle_get_issue({"issue_id": "ENG-42"})
+    result = await linear_tools.handle_get_issue({"issue_id": "ENG-42"})
 
     assert result["id"] == "issue-123"
     assert result["identifier"] == "ENG-42"
@@ -714,7 +714,7 @@ async def test_handle_get_issue_not_found(
     """_handle_get_issue should return error when issue not found."""
     mock_linear_client.get_issue.return_value = None
 
-    result = await linear_tools._handle_get_issue({"issue_id": "MISSING-1"})
+    result = await linear_tools.handle_get_issue({"issue_id": "MISSING-1"})
 
     assert "error" in result
     assert "MISSING-1" in result["error"]
@@ -820,7 +820,7 @@ async def test_handle_get_issue_relations_returns_list(
         )
     ]
 
-    result = await linear_tools._handle_get_issue_relations({"issue_id": "ENG-42"})
+    result = await linear_tools.handle_get_issue_relations({"issue_id": "ENG-42"})
 
     mock_linear_client.get_issue_relations.assert_called_once_with("ENG-42")
     assert result == {
@@ -842,7 +842,7 @@ async def test_handle_get_issue_relations_empty(
     """_handle_get_issue_relations should return empty list when no relations exist."""
     mock_linear_client.get_issue_relations.return_value = []
 
-    result = await linear_tools._handle_get_issue_relations({"issue_id": "ENG-42"})
+    result = await linear_tools.handle_get_issue_relations({"issue_id": "ENG-42"})
 
     assert result == {"relations": []}
 
@@ -872,7 +872,7 @@ async def test_handle_update_issue_with_parent_id(
     }
     mock_linear_client.update_issue.return_value = mock_issue
 
-    result = await linear_tools._handle_update_issue(
+    result = await linear_tools.handle_update_issue(
         {
             "issue_id": "issue-child",
             "parent_id": "issue-new-parent",
@@ -916,7 +916,7 @@ async def test_handle_list_sub_issues_returns_list(
     }
     mock_linear_client.list_sub_issues.return_value = [child_a, child_b]
 
-    result = await linear_tools._handle_list_sub_issues({"issue_id": "issue-parent"})
+    result = await linear_tools.handle_list_sub_issues({"issue_id": "issue-parent"})
 
     mock_linear_client.list_sub_issues.assert_called_once_with("issue-parent")
     assert "sub_issues" in result
@@ -932,7 +932,7 @@ async def test_handle_list_sub_issues_empty(
     """_handle_list_sub_issues returns empty list when no sub-issues exist."""
     mock_linear_client.list_sub_issues.return_value = []
 
-    result = await linear_tools._handle_list_sub_issues({"issue_id": "issue-parent"})
+    result = await linear_tools.handle_list_sub_issues({"issue_id": "issue-parent"})
 
     assert result == {"sub_issues": []}
 
@@ -945,3 +945,53 @@ def test_get_policy_tools_includes_list_sub_issues(
     assert "linear_list_sub_issues" in tools
     assert callable(tools["linear_list_sub_issues"])
     assert callable(tools["linear_get_issue_relations"])
+
+
+# -----------------------------------------------------------------------------
+# handle_create_issue_relation — type mapping + ID swap for blocked_by
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_type", "expected_api_type", "expected_src", "expected_tgt"),
+    [
+        ("blocks", "blocks", "src-id", "tgt-id"),
+        ("blocked_by", "blocks", "tgt-id", "src-id"),
+        ("relates_to", "related", "src-id", "tgt-id"),
+        ("duplicate_of", "duplicate", "src-id", "tgt-id"),
+    ],
+)
+async def test_handle_create_issue_relation_maps_each_type(
+    linear_tools: LinearTools,
+    mock_linear_client: MagicMock,
+    tool_type: str,
+    expected_api_type: str,
+    expected_src: str,
+    expected_tgt: str,
+) -> None:
+    """handle_create_issue_relation must translate tool-level types to Linear API types.
+
+    ``blocked_by`` swaps the two IDs because Linear only models ``blocks``; the inverse
+    is expressed by reversing the direction of the relation.
+    """
+    mock_linear_client.create_issue_relation.return_value = {
+        "issue_id": expected_src,
+        "related_issue_id": expected_tgt,
+        "type": expected_api_type,
+    }
+
+    result = await linear_tools.handle_create_issue_relation(
+        {
+            "issue_id": "src-id",
+            "related_issue_id": "tgt-id",
+            "type": tool_type,
+        }
+    )
+
+    mock_linear_client.create_issue_relation.assert_called_once_with(
+        issue_id=expected_src,
+        related_issue_id=expected_tgt,
+        relation_type=expected_api_type,
+    )
+    assert result["type"] == expected_api_type

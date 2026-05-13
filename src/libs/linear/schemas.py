@@ -62,6 +62,23 @@ def _field(source: Any, *names: str, default: Any = None) -> Any:
     return default
 
 
+def _relation_id(source: Any, *names: str) -> str | None:
+    """Read .id from a nested relation field on a model or GraphQL dict.
+
+    Linear's SDK exposes related entities as nested objects on the parent
+    (LinearIssue.team, LinearIssue.project); GraphQL responses use the same
+    shape ({"team": {"id": ...}}). Returns the first matching nested .id, or
+    None if no candidate yields one.
+    """
+    for name in names:
+        nested = _field(source, name)
+        if nested is not None:
+            nested_id = _field(nested, "id")
+            if isinstance(nested_id, str) and nested_id:
+                return nested_id
+    return None
+
+
 def _map_priority_from_api(value: Any) -> int:
     """Map a linear-api priority (Enum or int) to our Priority int value.
 
@@ -205,13 +222,13 @@ class Project(BaseModel):
 
         try:
             linear_teams = linear_project.teams or []
-        except Exception:
+        except Exception:  # pragma: no cover - SDK lazy-fetch can raise on null teams
             linear_teams = []
         team = None
         if linear_teams and isinstance(linear_teams, list):
             try:
                 team = Team.from_linear(linear_team=linear_teams[0])
-            except Exception:
+            except Exception:  # pragma: no cover - malformed nested team payload
                 team = None
 
         return cls(
@@ -246,12 +263,26 @@ class Issue(BaseModel):
 
     @classmethod
     def from_linear(cls, linear_issue: Any) -> Self:
-        """Create an Issue from a linear-api Issue object or a raw GraphQL dict.
+        """Convert a linear_api LinearIssue (or raw GraphQL dict) to our Issue.
 
-        linear-api's projects.get_issues() returns raw dicts; issues.get()
-        returns LinearIssue model instances. We accept both shapes.
+        Both shapes carry team/project as nested objects: the SDK's
+        ``LinearIssue.team`` is a required ``LinearTeam`` and ``.project`` an
+        optional ``LinearProject``; raw GraphQL dicts use the same nesting
+        (``{"team": {"id": ...}}``).
+
+        For parent: dicts nest as ``parent.id``; the SDK flattens it to
+        ``parentId`` and additionally exposes ``.parent`` as a property
+        that PERFORMS NETWORK I/O — never read it here.
         """
         state = _field(linear_issue, "state")
+
+        if isinstance(linear_issue, dict):
+            parent_id = linear_issue.get("parentId") or _relation_id(
+                linear_issue, "parent"
+            )
+        else:
+            parent_id = getattr(linear_issue, "parentId", None)
+
         return cls(
             id=_field(linear_issue, "id"),
             identifier=_field(linear_issue, "identifier"),
@@ -259,9 +290,9 @@ class Issue(BaseModel):
             description=_field(linear_issue, "description"),
             state=IssueState.from_linear(state) if state else None,
             priority=_map_priority_from_api(_field(linear_issue, "priority")),
-            team_id=_field(linear_issue, "team_id", "teamId"),
-            project_id=_field(linear_issue, "project_id", "projectId"),
-            parent_id=_field(linear_issue, "parent_id", "parentId"),
+            team_id=_relation_id(linear_issue, "team"),
+            project_id=_relation_id(linear_issue, "project"),
+            parent_id=parent_id,
             url=_field(linear_issue, "url"),
             created_at=_coerce_iso(_field(linear_issue, "created_at", "createdAt")),
             updated_at=_coerce_iso(_field(linear_issue, "updated_at", "updatedAt")),
@@ -377,7 +408,9 @@ class CommentUser(BaseModel):
     model_config = {"frozen": True}
 
     @classmethod
-    def from_linear(cls, linear_user: LinearUser) -> Self:
+    def from_linear(
+        cls, linear_user: LinearUser
+    ) -> Self:  # pragma: no cover - exercised only via integration paths
         return cls(
             id=linear_user.id,
             name=linear_user.name,

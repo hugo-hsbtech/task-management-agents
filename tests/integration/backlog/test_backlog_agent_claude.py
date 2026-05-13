@@ -2,11 +2,12 @@
 
 Run with:
     HSB_RUN_INTEGRATION=1 CLAUDE_CODE_OAUTH_TOKEN=... \
-        .venv/bin/python -m pytest tests/integration/backlog/test_claude_agent.py -q
+        .venv/bin/python -m pytest tests/integration/backlog/test_backlog_agent_claude.py -q
 """
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -14,41 +15,14 @@ from backlog.agent import BacklogAgent
 from backlog.contracts import BacklogInput, IssueType
 from backlog.platforms import LinearPlatform
 from settings import settings
-from settings.provider import OAuth2CliAuth, ProviderName, ProviderSettings
+from settings.provider import ClaudeModel, OAuth2CliAuth, ProviderName, ProviderSettings
 
 pytestmark = [pytest.mark.integration]
 
 
-REAL_WORLD_PLAN = """# Plan: Team Knowledge Base Search
-
-Build a searchable internal knowledge base for engineering teams.
-
-## Goal
-Let engineers search approved implementation notes, QA findings, and release
-decisions from one place before starting new work.
-
-## Users
-- Backend engineer looking for previous API decisions.
-- QA engineer checking known regression patterns.
-- Engineering manager reviewing delivery risk.
-
-## Acceptance Criteria
-- Users can search by keyword and filter by source type.
-- Results show title, source, summary, and a link back to the original record.
-- Empty searches return a helpful empty state.
-- Search requests complete in under 500 ms for 10,000 indexed records.
-
-## Initial Tasks
-- Define the indexed document schema.
-- Build the search API endpoint.
-- Add result ranking by source recency and keyword match.
-- Add tests for empty, partial, and exact-match searches.
-
-## Tech stacks
-- Python 3.12
-- FastAPI
-- PostgreSQL
-"""
+REAL_WORLD_PLAN = (Path(__file__).parent / "planning-poker-prd.md").read_text(
+    encoding="utf-8"
+)
 
 
 def test_claude_generates_realistic_backlog_for_product_plan(capsys) -> None:
@@ -78,7 +52,7 @@ def test_claude_generates_realistic_backlog_for_product_plan(capsys) -> None:
 
     input_contract = BacklogInput(
         plan_content=REAL_WORLD_PLAN,
-        stacks=["python", "fastapi", "postgres"],
+        stacks=["nextjs", "react", "typescript", "golang", "postgres", "redis"],
         platform=platform,
         context={
             "repository": "https://github.com/hugo-hsbtech/hsb-test-fixture",
@@ -88,7 +62,7 @@ def test_claude_generates_realistic_backlog_for_product_plan(capsys) -> None:
 
     provider_settings = ProviderSettings(
         name=ProviderName.claude,
-        model="claude-haiku-4-5",
+        model=ClaudeModel.opus_4_7,
         auth=OAuth2CliAuth(env_var="CLAUDE_CODE_OAUTH_TOKEN"),
     )
     agent = BacklogAgent(
@@ -100,7 +74,12 @@ def test_claude_generates_realistic_backlog_for_product_plan(capsys) -> None:
         print("\nBacklogOutput:")
         print(json.dumps(output.model_dump(mode="json"), indent=2))
         print("\nLinear write results:")
-        print(json.dumps(results, indent=2))
+        print(
+            json.dumps(
+                [r.model_dump(mode="json") for r in results],
+                indent=2,
+            )
+        )
 
     assert output.is_linear()
     assert output.issues

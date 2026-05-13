@@ -6,7 +6,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from backlog.platforms import SupportedPlatform
+from backlog.platforms import LinearPlatform, SupportedPlatform
 
 
 class BacklogInput(BaseModel):
@@ -59,7 +59,14 @@ class IssueFields(BaseModel):
     title: str = Field(min_length=1, max_length=256)
     description: str = Field(min_length=1)
     priority: int = Field(default=2, ge=0, le=4)
-    parent_id: str | None = None
+    parent_id: str | None = Field(
+        default=None,
+        description=(
+            "Plan-local temp id of the parent issue (matches IssuePlan.id of "
+            "another issue in the same BacklogOutput). Resolved to a real "
+            "platform issue id at execution time."
+        ),
+    )
     labels: list[str] = Field(default_factory=list)
     platform_fields: dict[str, str] = Field(default_factory=dict)
 
@@ -69,10 +76,26 @@ class IssueFields(BaseModel):
 class IssuePlan(BaseModel):
     """One write-ready backlog issue."""
 
+    id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Plan-local temp id (e.g. '1', '2'). Required by the prompt for "
+            "referential integrity; other issues reference it via parent_id "
+            "and depends_on. Optional here so callers building outputs "
+            "programmatically aren't forced to assign one."
+        ),
+    )
     action: IssueAction = IssueAction.create
     issue_type: IssueType
     fields: IssueFields
-    depends_on: list[str] = Field(default_factory=list)
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Plan-local temp ids of issues this one depends on. Informational "
+            "for the LLM; formal blocking relationships must use relations."
+        ),
+    )
     relations: list[IssueRelation] = Field(default_factory=list)
 
     model_config = {"extra": "forbid"}
@@ -85,3 +108,6 @@ class BacklogOutput(BaseModel):
     issues: list[IssuePlan] = Field(min_length=1)
 
     model_config = {"extra": "forbid"}
+
+    def is_linear(self) -> bool:
+        return isinstance(self.platform, LinearPlatform)
