@@ -53,28 +53,17 @@ _AUTH_EXC_NAMES = frozenset(
 )
 
 
-class _ClaudeOAuth2CliToken(OAuth2CliToken):
-    """OAuth2 token pre-wired to CLAUDE_CODE_OAUTH_TOKEN for auto-detection."""
-
-    @classmethod
-    def default(cls) -> _ClaudeOAuth2CliToken:
-        return cls(env_var="CLAUDE_CODE_OAUTH_TOKEN")
-
-
-class _ClaudeApiKey(ApiKey):
-    """ApiKey pre-wired to ANTHROPIC_API_KEY for auto-detection."""
-
-    @classmethod
-    def default(cls) -> _ClaudeApiKey:
-        return cls(env_var="ANTHROPIC_API_KEY")
-
-
 @ProviderRegistry.register("claude")
 class ClaudeProvider(BaseProvider):
     """Native Claude provider using claude_agent_sdk.
 
     Recognized ProviderOptions.extras["claude"] keys:
       - "hooks": list of HookMatcher instances (Claude-only).
+
+    Supported auth kinds (resolved by
+    :func:`llm_providers.auth.factory.resolve_auth`):
+      - ``oauth2_cli_token`` from ``CLAUDE_CODE_OAUTH_TOKEN``
+      - ``api_key`` from ``ANTHROPIC_API_KEY`` (gated by G1 escape hatch)
     """
 
     name: ClassVar[str] = "claude"
@@ -87,14 +76,7 @@ class ClaudeProvider(BaseProvider):
         supports_system_prompt_file=True,
         supports_streaming=True,
     )
-    # _ClaudeOAuth2CliToken / _ClaudeApiKey appear first so auto_resolve_auth
-    # walks their pre-wired default() (which knows the canonical env vars).
-    # OAuth2CliToken / ApiKey remain in the tuple so callers constructing
-    # them directly (e.g. tests, explicit wiring) still satisfy
-    # _validate_auth's isinstance check.
     supported_auth: ClassVar[tuple[type[AuthStrategy], ...]] = (
-        _ClaudeOAuth2CliToken,
-        _ClaudeApiKey,
         OAuth2CliToken,
         ApiKey,
     )

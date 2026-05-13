@@ -60,7 +60,7 @@ def test_public_surface_re_exports():
         "ProviderOptions",
         "ProviderRegistry",
         "AuthRegistry",
-        "auto_resolve_auth",
+        "resolve_auth",
         "ApiKey",
         "OAuth2CliToken",
         "TextSystemPrompt",

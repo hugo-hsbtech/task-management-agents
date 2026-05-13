@@ -23,6 +23,13 @@ _HARD_BLOCKED: dict[str, tuple[str, ...]] = {
     "wio": ("openai", "gemini"),
 }
 
+# Strict-direct: callers used to pass a set of accepted auth kinds and the
+# registry would walk-and-detect. With the factory-based resolver each
+# (provider, auth_kind) pair has exactly one credential source, so we pick
+# in priority order — OAuth2 first (matches G1), API-key only when the
+# escape hatch is present in ``allowed_auth_kinds``.
+_AUTH_KIND_PRIORITY: tuple[str, ...] = ("oauth2_cli_token", "api_key")
+
 
 def resolve_runtime(agent_name: str) -> HsbProviderHandle:
     """Read HSB_RUNTIME_<AGENT_NAME>; default 'claude'. Return a handle with
@@ -47,11 +54,16 @@ def resolve_runtime(agent_name: str) -> HsbProviderHandle:
             f"Blocked providers: {blocked}. See AGENT-CONTRACTS.md."
         )
 
-    try:
-        provider = ProviderRegistry.build_auto(
-            raw,
-            accepted_kinds=allowed_auth_kinds(agent_name),
+    allowed = allowed_auth_kinds(agent_name)
+    auth_kind = next((k for k in _AUTH_KIND_PRIORITY if k in allowed), None)
+    if auth_kind is None:
+        raise ValueError(
+            f"No auth kind available for agent {agent_name!r}: "
+            f"allowed={sorted(allowed)} ∩ supported={_AUTH_KIND_PRIORITY} is empty."
         )
+
+    try:
+        provider = ProviderRegistry.build_from_settings(raw, auth_kind=auth_kind)
     except ProviderNotFoundError as e:
         raise ValueError(
             f"{env_var}={raw!r}: provider {raw!r} is not registered. "

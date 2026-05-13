@@ -275,10 +275,13 @@ def test_build_provider_accepts_oauth2_cli_auth(monkeypatch) -> None:
         return object()
 
     monkeypatch.setattr(ProviderRegistry, "build", fake_build)
+    # OAuth2CliAuth is now a marker — the factory reads the token from
+    # CLAUDE_CODE_OAUTH_TOKEN for the (claude, oauth2_cli_token) combo.
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok-test")
     configured = ProviderSettings(
         name=ProviderName.claude,
         model="claude-haiku-4-5",
-        auth=OAuth2CliAuth(env_var="TOKEN"),
+        auth=OAuth2CliAuth(),
     )
 
     build_provider(configured)
@@ -437,10 +440,10 @@ def test_create_issues_sync_wraps_create_issues_in_asyncio_run(monkeypatch) -> N
     assert agent.create_issues_sync(output) == ["sync-result"]
 
 
-def test_build_provider_maps_codex_name_to_openai_registry(monkeypatch) -> None:
+def test_build_provider_maps_codex_name_to_openai_registry(
+    monkeypatch, tmp_path
+) -> None:
     """build_provider(codex settings) must call ProviderRegistry.build("openai", ...)."""
-    from pathlib import Path
-
     from settings.provider import (
         CodexModel,
         OAuth2CliAuth,
@@ -460,10 +463,17 @@ def test_build_provider_maps_codex_name_to_openai_registry(monkeypatch) -> None:
 
     monkeypatch.setattr(ProviderRegistry, "build", fake_build)
 
+    # Codex auth resolves via ``<codex_home>/auth.json`` — fake it in tmp.
+    codex_home = tmp_path / "codex_home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text('forced_login_method = "chatgpt"')
+    (codex_home / "auth.json").write_text('{"access_token": "tok"}')
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
     codex_settings = ProviderSettings(
         name=ProviderName.codex,
         model=CodexModel.codex_mini_latest,
-        auth=OAuth2CliAuth(token_path=Path("/tmp/auth.json")),
+        auth=OAuth2CliAuth(),
     )
 
     build_provider(codex_settings)

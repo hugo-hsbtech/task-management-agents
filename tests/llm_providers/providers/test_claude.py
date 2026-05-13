@@ -46,9 +46,8 @@ def _isolate_claude_registration():
 
 
 @pytest.fixture
-def provider(monkeypatch):
+def provider():
     """Construct ClaudeProvider with a stubbed Claude SDK."""
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok-abc")
     fake_sdk = SimpleNamespace(
         query=MagicMock(),
         ClaudeAgentOptions=MagicMock(),
@@ -59,7 +58,7 @@ def provider(monkeypatch):
     with patch.dict("sys.modules", {"claude_agent_sdk": fake_sdk}):
         from llm_providers.providers.claude import ClaudeProvider
 
-        yield ClaudeProvider(auth=OAuth2CliToken(env_var="CLAUDE_CODE_OAUTH_TOKEN"))
+        yield ClaudeProvider(auth=OAuth2CliToken(token="tok-abc"))
 
 
 def test_capabilities_declared():

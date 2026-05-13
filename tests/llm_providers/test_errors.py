@@ -51,18 +51,11 @@ def test_unsupported_capability_error_attrs():
     assert "gemini" in str(err) and "mcp" in str(err)
 
 
-def test_auth_resolution_error_attrs():
+def test_auth_resolution_error_carries_message():
     err = AuthResolutionError(
-        provider="gemini",
-        skipped=[
-            ("OAuth2CliToken", "not_detected"),
-            ("ApiKey", "filtered_by_accepted_kinds"),
-        ],
-        accepted={"oauth2_adc"},
+        "Claude OAuth2 requires CLAUDE_CODE_OAUTH_TOKEN to be set."
     )
-    assert err.provider == "gemini"
-    assert len(err.skipped) == 2
-    assert err.accepted == {"oauth2_adc"}
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in str(err)
 
 
 def test_provider_runtime_error_carries_cause():

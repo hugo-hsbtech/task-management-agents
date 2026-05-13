@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+import os
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from libs.logging import get_logger
@@ -41,34 +41,11 @@ from llm_providers.providers._codex_config import (
 )
 from llm_providers.registry import ProviderRegistry
 from llm_providers.tools import McpServerSpec, ToolPolicy
-from settings._env import read_env, snapshot_env
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 logger = get_logger(__name__)
-
-
-class _CodexOAuth2CliToken(OAuth2CliToken):
-    """OAuth2 token pre-wired to ``<CODEX_HOME>/auth.json`` for auto-detection.
-
-    ``CODEX_HOME`` is read via the settings chokepoint (``settings._env``);
-    falls back to ``~/.codex`` when unset.
-    """
-
-    @classmethod
-    def default(cls) -> _CodexOAuth2CliToken:
-        codex_home = read_env("CODEX_HOME")
-        base = Path(codex_home) if codex_home else Path.home() / ".codex"
-        return cls(token_path=base / "auth.json")
-
-
-class _OpenAIApiKey(ApiKey):
-    """ApiKey pre-wired to OPENAI_API_KEY for auto-detection."""
-
-    @classmethod
-    def default(cls) -> _OpenAIApiKey:
-        return cls(env_var="OPENAI_API_KEY")
 
 
 _CODEX_CAPS = Capabilities(
@@ -111,8 +88,6 @@ class OpenAIProvider(BaseProvider):
 
     name: ClassVar[str] = "openai"
     supported_auth: ClassVar[tuple[type[AuthStrategy], ...]] = (
-        _CodexOAuth2CliToken,
-        _OpenAIApiKey,
         OAuth2CliToken,
         ApiKey,
     )
@@ -176,22 +151,27 @@ class OpenAIProvider(BaseProvider):
 
 
 class _Backend:
-    """Abstract backend interface — concrete subclasses below."""
+    """Abstract backend interface — concrete subclasses below.
+
+    The bodies are stubs that exist purely to declare the interface for
+    type checkers; concrete backends always override. The raises are
+    unreachable in practice — hence ``pragma: no cover``.
+    """
 
     capabilities: Capabilities
 
-    async def query(
+    async def query(  # pragma: no cover - abstract; subclasses override
         self, prompt: str, options: ProviderOptions, provider: OpenAIProvider
     ) -> AsyncIterator[Message]:
         raise NotImplementedError
-        yield  # pragma: no cover  (makes the function a true async generator)
+        yield  # makes the function a true async generator
 
-    def client(
+    def client(  # pragma: no cover - abstract; subclasses override
         self, options: ProviderOptions, provider: OpenAIProvider
     ) -> StatefulClient:
         raise NotImplementedError
 
-    def translate_mcp(
+    def translate_mcp(  # pragma: no cover - abstract; subclasses override
         self, servers: tuple[McpServerSpec, ...], provider: OpenAIProvider
     ) -> Any:
         raise NotImplementedError
@@ -208,14 +188,15 @@ class _CodexBackend(_Backend):
     capabilities = _CODEX_CAPS
 
     def __init__(self, cred: Credential) -> None:
-        # cred.payload["source"] is "env:..." or "file:<path>". For "file:" we
-        # derive codex_home from the file's parent for the config verification.
-        source = cred.payload.get("source", "")
-        codex_home: Path | None = None
-        if source.startswith("file:"):
-            codex_home = Path(source.removeprefix("file:")).parent
-        self._cached_config = assert_codex_oauth_only(codex_home=codex_home)
-        self._codex_home = codex_home
+        # The token came pre-resolved from the factory; we only need the
+        # Codex home directory for config validation. Pull it from settings —
+        # no env-var introspection in this module.
+        from settings.codex import CodexSettings
+
+        self._codex_home = CodexSettings().home
+        self._cached_config = assert_codex_oauth_only(codex_home=self._codex_home)
+        # Token kept for completeness; callers don't need it after init.
+        del cred
 
     async def query(
         self, prompt: str, options: ProviderOptions, provider: OpenAIProvider
@@ -233,9 +214,9 @@ class _CodexBackend(_Backend):
         sp_text = provider._translate_system_prompt(options.system_prompt)
         full_text = f"<system>{sp_text}</system>\n\n{prompt}"
 
-        # Build the Codex CLI command. Subprocess inherits parent env (via
-        # snapshot_env from the settings chokepoint) and we layer CODEX_HOME on
-        # top — no os.environ mutation in this module.
+        # Build the Codex CLI command. Subprocess inherits parent env and we
+        # layer CODEX_HOME on top from settings — never mutating the parent
+        # process's ``os.environ``.
         cmd = ["codex", "--quiet", "--approval-policy", str(approval).lower()]
         if options.model:
             cmd.extend(["--model", options.model])
@@ -249,10 +230,7 @@ class _CodexBackend(_Backend):
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={
-                **snapshot_env(),
-                "CODEX_HOME": str(self._codex_home or Path.home() / ".codex"),
-            },
+            env={**os.environ, "CODEX_HOME": str(self._codex_home)},
         )
 
         # All three pipes are PIPE-configured above; the asserts narrow the

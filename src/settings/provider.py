@@ -1,7 +1,6 @@
 """Provider and model configuration."""
 
 from enum import StrEnum
-from pathlib import Path
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
@@ -66,17 +65,17 @@ class ApiKeyAuth(BaseModel):
 
 
 class OAuth2CliAuth(BaseModel):
-    """OAuth2 token from CLI-managed file or environment variable."""
+    """OAuth2 token from a CLI-managed credential source.
+
+    Strict-direct — there are no ``env_var`` / ``token_path`` parameters.
+    The source is determined by ``(provider name, "oauth2_cli_token")``:
+      - Claude → ``CLAUDE_CODE_OAUTH_TOKEN`` env var
+      - OpenAI / Codex → ``<settings.codex.home>/auth.json`` file
+
+    See :func:`llm_providers.auth.factory.resolve_auth` for the matrix.
+    """
 
     kind: Literal["oauth2_cli"] = "oauth2_cli"
-    env_var: str | None = None
-    token_path: Path | None = None
-
-    @model_validator(mode="after")
-    def at_least_one_source(self) -> "OAuth2CliAuth":
-        if self.env_var is None and self.token_path is None:
-            raise ValueError("OAuth2CliAuth: must provide env_var or token_path")
-        return self
 
 
 class OAuth2ADCAuth(BaseModel):
@@ -125,11 +124,11 @@ class ProviderSettings(BaseModel):
     """Provider configuration with discriminated auth + provider-specific configs.
 
     Examples:
-        # Claude with OAuth2 CLI
+        # Claude with OAuth2 CLI (token sourced from CLAUDE_CODE_OAUTH_TOKEN)
         ProviderSettings(
             name=ProviderName.claude,
             model="claude-opus-4-5",
-            auth=OAuth2CliAuth(env_var="CLAUDE_CODE_OAUTH_TOKEN"),
+            auth=OAuth2CliAuth(),
         )
 
         # Gemini with API key
@@ -150,9 +149,7 @@ class ProviderSettings(BaseModel):
 
     name: ProviderName = ProviderName.claude
     model: str = ClaudeModel.haiku_4_5
-    auth: AuthConfig = Field(
-        default_factory=lambda: OAuth2CliAuth(env_var="CLAUDE_CODE_OAUTH_TOKEN")
-    )
+    auth: AuthConfig = Field(default_factory=OAuth2CliAuth)
 
     # Provider-specific configs (only relevant when name matches)
     gemini: GeminiConfig | None = None

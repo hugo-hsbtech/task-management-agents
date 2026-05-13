@@ -1,9 +1,8 @@
 """AuthStrategy ABC + Credential dataclass.
 
-Each strategy resolves a credential from one source (env var, file, gcloud
-ADC, etc.). Providers declare their supported_auth as an ordered tuple of
-strategy classes; the registry's auto_resolve_auth walks the tuple in
-preferred-first order.
+Strategies are typed value holders, NOT detection/discovery objects. The
+``resolve_auth`` factory in ``llm_providers.auth.factory`` is the single
+place that maps (provider, auth_kind) → credential source → strategy.
 """
 
 from __future__ import annotations
@@ -26,23 +25,14 @@ class Credential:
 
 
 class AuthStrategy(ABC):
-    """Strategy interface — one instance == one resolved credential source.
+    """Strategy interface — one instance holds one resolved credential value.
 
-    Lifecycle:
-      1. detect()  — cheap check: is this strategy available in the environment?
-      2. resolve() — full resolution; may read files, refresh tokens.
-      3. default() — classmethod returning the conventional zero-arg form
-                     used by auto_resolve_auth.
+    Subclasses declare ``kind`` (ClassVar) and implement ``resolve()``.
+    Construction validates the held value (non-empty); ``resolve()`` simply
+    wraps it in a ``Credential``.
     """
 
     kind: ClassVar[str]
 
     @abstractmethod
-    def detect(self) -> bool: ...
-
-    @abstractmethod
     def resolve(self) -> Credential: ...
-
-    @classmethod
-    @abstractmethod
-    def default(cls) -> AuthStrategy: ...

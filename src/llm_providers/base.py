@@ -43,11 +43,19 @@ class BaseProvider(ABC):
 
     @classmethod
     def _validate_auth(cls, auth: AuthStrategy) -> AuthStrategy:
-        if not isinstance(auth, cls.supported_auth):
+        # Name-based MRO check (mirror of AuthRegistry.register): test suites
+        # that evict ``llm_providers.auth.base`` from sys.modules create a
+        # fresh ``AuthStrategy`` and a fresh ``OAuth2CliToken`` whose class
+        # identity differs from the one cached in ``cls.supported_auth``.
+        # A plain ``isinstance`` would falsely reject those. We compare by
+        # class name walked through the auth instance's MRO.
+        accepted_names = {a.__name__ for a in cls.supported_auth}
+        provided_names = {c.__name__ for c in type(auth).__mro__}
+        if accepted_names.isdisjoint(provided_names):
             raise UnsupportedAuthError(
                 provider=cls.name,
                 got=type(auth).__name__,
-                accepted=[a.__name__ for a in cls.supported_auth],
+                accepted=sorted(accepted_names),
             )
         return auth
 

@@ -1,8 +1,11 @@
-"""Per-agent runtime selection + Claude OAuth token.
+"""Per-agent runtime selection + provider credentials.
 
-Env vars: ``HSB_RUNTIME_<AGENT>`` (one per known agent — see fields below)
-and ``CLAUDE_CODE_OAUTH_TOKEN`` (sourced via validation_alias because it
-does not share the ``HSB_RUNTIME_`` prefix).
+Env vars (no HSB_RUNTIME_ prefix, sourced via validation_alias):
+  - ``CLAUDE_CODE_OAUTH_TOKEN`` — Claude OAuth2
+  - ``ANTHROPIC_API_KEY`` — Claude API key (gated by G1 escape hatch)
+  - ``OPENAI_API_KEY`` — OpenAI API key (gated by G1 escape hatch)
+
+Env vars (HSB_RUNTIME_ prefix): one per known agent — see field list.
 
 The Work Item Orchestrator is hard-frozen to ``claude`` because the
 stateful ``ClaudeSDKClient`` session has no Codex equivalent (tracked
@@ -105,12 +108,25 @@ class RuntimeSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="HSB_RUNTIME_")
 
-    # OAuth token — sourced by validation_alias because it doesn't share
-    # the HSB_RUNTIME_ prefix. In pydantic-settings v2, a field's
-    # validation_alias bypasses the class-level env_prefix.
+    # Provider credentials — sourced by validation_alias because they
+    # don't share the HSB_RUNTIME_ prefix. In pydantic-settings v2, a
+    # field's validation_alias bypasses the class-level env_prefix.
+    #
+    # All three are read unconditionally so callers can resolve any
+    # (provider, auth_kind) combo via the auth factory. The G1 policy in
+    # :func:`assert_oauth2_only` separately governs whether API-key kinds
+    # are allowed at agent dispatch time.
     claude_code_oauth_token: SecretStr | None = Field(
         default=None,
         validation_alias="CLAUDE_CODE_OAUTH_TOKEN",
+    )
+    anthropic_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="ANTHROPIC_API_KEY",
+    )
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="OPENAI_API_KEY",
     )
 
     # Per-agent runtime selection. Explicit fields, one per known agent.

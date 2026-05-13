@@ -16,28 +16,27 @@ this module never touches ``os.environ`` directly.
 from __future__ import annotations
 
 import tomllib
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-from settings._env import read_env
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from pathlib import Path
 
 
 def _resolve_codex_home(codex_home: Path | None = None) -> Path:
     """Resolve a Codex home directory.
 
-    Precedence: explicit argument > ``CODEX_HOME`` env var > ``~/.codex``.
-    Env access is routed through ``settings._env.read_env`` so this module
-    never touches ``os.environ`` directly.
+    Returns the explicit argument when given; otherwise defers to
+    ``settings.codex.home`` (which itself reads the ``CODEX_HOME`` env var
+    via pydantic-settings). This module never touches ``os.environ``.
     """
     if codex_home is not None:
         return codex_home
-    env = read_env("CODEX_HOME")
-    if env:
-        return Path(env)
-    return Path.home() / ".codex"
+    # Lazy import — keeps this module cheap for callers that pass an
+    # explicit codex_home.
+    from settings.codex import CodexSettings
+
+    return CodexSettings().home
 
 
 def assert_codex_oauth_only(codex_home: Path | None = None) -> dict[str, Any]:

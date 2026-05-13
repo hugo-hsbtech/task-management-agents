@@ -1,7 +1,5 @@
 """Tests for settings.provider — ProviderSettings validators and helpers."""
 
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
@@ -17,24 +15,14 @@ from settings.provider import (
     ProviderSettings,
 )
 
-# ── OAuth2CliAuth.at_least_one_source ─────────────────────────────────────────
+# ── OAuth2CliAuth ─────────────────────────────────────────────────────────────
 
 
-def test_oauth2_cli_auth_requires_env_var_or_token_path():
-    with pytest.raises(ValidationError, match="must provide env_var or token_path"):
-        OAuth2CliAuth()
-
-
-def test_oauth2_cli_auth_valid_with_env_var():
-    auth = OAuth2CliAuth(env_var="CLAUDE_CODE_OAUTH_TOKEN")
-    assert auth.env_var == "CLAUDE_CODE_OAUTH_TOKEN"
-    assert auth.token_path is None
-
-
-def test_oauth2_cli_auth_valid_with_token_path(tmp_path):
-    auth = OAuth2CliAuth(token_path=tmp_path / "token")
-    assert auth.token_path == tmp_path / "token"
-    assert auth.env_var is None
+def test_oauth2_cli_auth_takes_no_parameters():
+    """Strict-direct — the credential source is determined by (provider, kind),
+    so OAuth2CliAuth is a marker with no env_var / token_path fields."""
+    auth = OAuth2CliAuth()
+    assert auth.kind == "oauth2_cli"
 
 
 # ── ProviderSettings.model_matches_provider ───────────────────────────────────
@@ -89,7 +77,7 @@ def test_gemini_config_on_non_gemini_raises():
         ProviderSettings(
             name=ProviderName.claude,
             model="claude-haiku-4-5",
-            auth=OAuth2CliAuth(env_var="CLAUDE_CODE_OAUTH_TOKEN"),
+            auth=OAuth2CliAuth(),
             gemini=GeminiConfig(project_id="x"),
         )
 
@@ -113,7 +101,7 @@ def test_openai_config_on_non_openai_raises():
         ProviderSettings(
             name=ProviderName.claude,
             model="claude-haiku-4-5",
-            auth=OAuth2CliAuth(env_var="CLAUDE_CODE_OAUTH_TOKEN"),
+            auth=OAuth2CliAuth(),
             openai=OpenAIConfig(organization="org-x"),
         )
 
@@ -196,7 +184,7 @@ def test_codex_model_accepted():
     ps = ProviderSettings(
         name=ProviderName.codex,
         model=CodexModel.codex_mini_latest,
-        auth=OAuth2CliAuth(token_path=Path.home() / ".codex" / "auth.json"),
+        auth=OAuth2CliAuth(),
     )
     assert ps.model == "gpt-5.4-mini"
     assert ps.is_codex() is True
@@ -218,7 +206,7 @@ def test_codex_invalid_model_raises():
         ProviderSettings(
             name=ProviderName.codex,
             model="gpt-4o",
-            auth=OAuth2CliAuth(token_path=Path.home() / ".codex" / "auth.json"),
+            auth=OAuth2CliAuth(),
         )
 
 
