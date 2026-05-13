@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
@@ -12,6 +13,18 @@ from tools.linear import LinearTools
 
 if TYPE_CHECKING:
     from backlog.contracts import BacklogOutput, IssuePlan
+
+
+# Linear's per-user rate limit (~1500 req/hour) is enforced with burst
+# tolerance; over-bursts surface from `linear_api` as opaque GraphQL
+# "Argument Validation Error" rather than a clean HTTP 429. Pacing every
+# write keeps a typical backlog (~50 issues × create + parent + relations)
+# safely under the burst threshold without hand-coded 429 retry logic.
+LINEAR_WRITE_THROTTLE_SECONDS = 0.4
+
+
+async def _throttle() -> None:
+    await asyncio.sleep(LINEAR_WRITE_THROTTLE_SECONDS)
 
 
 class IssueResult(BaseModel):
@@ -113,12 +126,14 @@ class LinearPlatform(BaseModel):
                     }
                 )
                 _raise_if_error(raw, op="update_issue")
+                await _throttle()
                 result = IssueResult(action="update", issue=Issue.model_validate(raw))
             else:
                 raw = await tools.handle_create_issue(
                     _create_payload(issue).model_dump(mode="json", by_alias=False)
                 )
                 _raise_if_error(raw, op="create_issue")
+                await _throttle()
                 result = IssueResult(action="create", issue=Issue.model_validate(raw))
 
             if issue.id and result.issue.id:
@@ -130,7 +145,12 @@ class LinearPlatform(BaseModel):
             tools, output.issues, results, real_id_by_temp_id
         )
         await self._apply_relations(tools, output.issues, results)
-        await self._apply_labels(tools, output.issues, results)
+        # Label application disabled: the upstream Linear SDK's IssueManager
+        # no longer exposes `add_label`, so handle_add_label() bubbles up as
+        # "'IssueManager' object has no attribute 'add_label'". Re-enable
+        # once the SDK regains this method (or we switch to a GraphQL
+        # mutation in linear_client.add_label_to_issue).
+        # await self._apply_labels(tools, output.issues, results)
         return results
 
     async def _apply_parent_links(
@@ -161,6 +181,7 @@ class LinearPlatform(BaseModel):
                 {"issue_id": result.issue.id, "parent_id": parent_real_id}
             )
             _raise_if_error(raw, op="update_issue (parent link)")
+            await _throttle()
 
     async def _apply_relations(
         self,
@@ -191,6 +212,7 @@ class LinearPlatform(BaseModel):
                         "type": relation.type,
                     }
                 )
+                await _throttle()
 
     async def _apply_labels(
         self,
