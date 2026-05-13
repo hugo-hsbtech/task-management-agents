@@ -1,11 +1,14 @@
 """Tests for settings.provider — ProviderSettings validators and helpers."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from settings.provider import (
     ApiKeyAuth,
     ClaudeConfig,
+    CodexModel,
     GeminiConfig,
     OAuth2ADCAuth,
     OAuth2CliAuth,
@@ -180,8 +183,6 @@ def test_is_gemini_true():
 
 
 def test_codex_model_enum_values():
-    from settings.provider import CodexModel
-
     assert CodexModel.codex_mini_latest == "codex-mini-latest"
     assert CodexModel.o4_mini == "o4-mini"
 
@@ -191,10 +192,6 @@ def test_codex_provider_name_enum():
 
 
 def test_codex_model_accepted():
-    from pathlib import Path
-
-    from settings.provider import CodexModel
-
     ps = ProviderSettings(
         name=ProviderName.codex,
         model=CodexModel.codex_mini_latest,
@@ -207,8 +204,6 @@ def test_codex_model_accepted():
 
 
 def test_codex_rejects_api_key_auth():
-    from settings.provider import CodexModel
-
     with pytest.raises(ValidationError, match="codex requires oauth2_cli auth"):
         ProviderSettings(
             name=ProviderName.codex,
@@ -218,8 +213,6 @@ def test_codex_rejects_api_key_auth():
 
 
 def test_codex_invalid_model_raises():
-    from pathlib import Path
-
     with pytest.raises(ValidationError, match="not valid for provider"):
         ProviderSettings(
             name=ProviderName.codex,

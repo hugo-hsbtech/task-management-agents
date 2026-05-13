@@ -31,6 +31,7 @@ class GeminiModel(StrEnum):
 
 class CodexModel(StrEnum):
     codex_mini_latest = "codex-mini-latest"
+    # Intentionally mirrors OpenAIModel.o4_mini — both backends can target this model.
     o4_mini = "o4-mini"
 
 
