@@ -94,7 +94,11 @@ def _is_transient_linear_error(text: str) -> bool:
 
 def _backoff_seconds(attempt: int) -> float:
     raw: float = LINEAR_WRITE_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
-    return raw if raw < LINEAR_WRITE_BACKOFF_MAX_SECONDS else LINEAR_WRITE_BACKOFF_MAX_SECONDS
+    return (
+        raw
+        if raw < LINEAR_WRITE_BACKOFF_MAX_SECONDS
+        else LINEAR_WRITE_BACKOFF_MAX_SECONDS
+    )
 
 
 async def _linear_write_call(
