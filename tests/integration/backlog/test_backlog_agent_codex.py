@@ -32,9 +32,9 @@ from settings.provider import (
 
 pytestmark = [pytest.mark.integration]
 
-REAL_WORLD_PLAN = (
-    Path(__file__).parent / "planning-poker-prd.md"
-).read_text(encoding="utf-8")
+REAL_WORLD_PLAN = (Path(__file__).parent / "planning-poker-prd.md").read_text(
+    encoding="utf-8"
+)
 
 
 def _codex_home() -> Path:
@@ -55,7 +55,9 @@ def test_codex_generates_realistic_backlog_for_product_plan(capsys) -> None:
 
     auth_path = _codex_home() / "auth.json"
     if not auth_path.exists():
-        pytest.skip(f"Codex not authenticated: {auth_path} missing. Run: codex login --device-auth")
+        pytest.skip(
+            f"Codex not authenticated: {auth_path} missing. Run: codex login --device-auth"
+        )
 
     linear_settings = settings.linear
     if linear_settings.api_key is None:

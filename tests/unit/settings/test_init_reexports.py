@@ -65,4 +65,5 @@ def test_g1_helpers_reexported():
 
 def test_codex_model_reexported():
     from settings import CodexModel  # noqa: F401 — import check
+
     assert CodexModel.codex_mini_latest == "codex-mini-latest"

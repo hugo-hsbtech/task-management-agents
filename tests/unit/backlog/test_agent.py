@@ -441,7 +441,12 @@ def test_build_provider_maps_codex_name_to_openai_registry(monkeypatch) -> None:
     """build_provider(codex settings) must call ProviderRegistry.build("openai", ...)."""
     from pathlib import Path
 
-    from settings.provider import CodexModel, OAuth2CliAuth, ProviderName, ProviderSettings
+    from settings.provider import (
+        CodexModel,
+        OAuth2CliAuth,
+        ProviderName,
+        ProviderSettings,
+    )
 
     class TestProvider:
         def __init__(self, auth: OAuth2CliToken) -> None:
