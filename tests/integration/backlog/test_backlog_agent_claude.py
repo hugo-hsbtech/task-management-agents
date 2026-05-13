@@ -2,7 +2,7 @@
 
 Run with:
     HSB_RUN_INTEGRATION=1 CLAUDE_CODE_OAUTH_TOKEN=... \
-        .venv/bin/python -m pytest tests/integration/backlog/test_claude_agent.py -q
+        .venv/bin/python -m pytest tests/integration/backlog/test_backlog_agent_claude.py -q
 """
 
 import asyncio
