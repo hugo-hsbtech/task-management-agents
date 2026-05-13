@@ -52,7 +52,14 @@ def _make_issue_mock(
     created_at=None,
     updated_at=None,
 ) -> MagicMock:
-    """Build a MagicMock with snake_case attributes matching _field() lookup order."""
+    """Build a MagicMock matching linear_api.LinearIssue's read surface.
+
+    The real model exposes ``team`` / ``project`` as nested objects (not
+    flat ``team_id`` / ``project_id``) and flattens ``parent`` to a string
+    ``parentId`` — kwargs keep snake_case at the call site for ergonomics.
+    Datetimes are kept as-is (real model uses datetime; ``_coerce_iso``
+    handles both datetime and str).
+    """
     m = MagicMock(spec=[])
     m.id = id
     m.identifier = identifier
@@ -61,12 +68,22 @@ def _make_issue_mock(
     m.state = state
     # Real LinearIssue.priority is a LinearPriority enum, not an int.
     m.priority = _PRIORITY_INT_TO_LINEAR.get(priority, LinearPriority.MEDIUM)
-    m.team_id = team_id
-    m.project_id = project_id
-    m.parent_id = parent_id
+    if team_id is not None:
+        team_mock = MagicMock(spec=[])
+        team_mock.id = team_id
+        m.team = team_mock
+    else:
+        m.team = None
+    if project_id is not None:
+        project_mock = MagicMock(spec=[])
+        project_mock.id = project_id
+        m.project = project_mock
+    else:
+        m.project = None
+    m.parentId = parent_id
     m.url = url
-    m.created_at = created_at
-    m.updated_at = updated_at
+    m.createdAt = created_at
+    m.updatedAt = updated_at
     return m
 
 
@@ -476,44 +493,121 @@ def test_post_project_update_logs_on_failure(
 # -----------------------------------------------------------------------------
 
 
+def _list_issues_response(
+    *nodes: dict, cursor: str | None = None, has_next: bool = False
+) -> dict:
+    """Build a GraphQL envelope mirroring our list_issues query shape."""
+    return {
+        "project": {
+            "issues": {
+                "nodes": list(nodes),
+                "pageInfo": {"hasNextPage": has_next, "endCursor": cursor},
+            }
+        }
+    }
+
+
 def test_list_issues(client: LinearClient) -> None:
-    """list_issues should return list of Issue objects."""
-    mock_issue1 = _make_issue_mock(
-        id="issue-1",
-        identifier="ENG-1",
-        title="Bug fix",
-        description="Fix the bug",
-        state=_make_state_mock(
-            id="state-1", name="in_progress", color="#00f", type="started"
-        ),
-        priority=Priority.MEDIUM,
-        team_id="team-123",
-        project_id="proj-456",
-        url="https://linear.app/issue/ENG-1",
-        created_at=datetime(2024, 1, 1, tzinfo=UTC),
-        updated_at=datetime(2024, 1, 2, tzinfo=UTC),
+    """list_issues should return Issue objects with team/project resolved
+    from the nested GraphQL shape we request via _execute_raw."""
+    client._client.execute_graphql.return_value = _list_issues_response(
+        {
+            "id": "issue-1",
+            "identifier": "ENG-1",
+            "title": "Bug fix",
+            "description": "Fix the bug",
+            "url": "https://linear.app/issue/ENG-1",
+            "priority": 2,
+            "state": {
+                "id": "state-1",
+                "name": "in_progress",
+                "color": "#00f",
+                "type": "started",
+            },
+            "team": {"id": "team-123"},
+            "project": {"id": "proj-456"},
+            "parent": None,
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-01-02T00:00:00Z",
+        },
+        {
+            "id": "issue-2",
+            "identifier": "ENG-2",
+            "title": "Feature",
+            "description": None,
+            "url": "https://linear.app/issue/ENG-2",
+            "priority": 1,
+            "state": None,
+            "team": {"id": "team-123"},
+            "project": {"id": "proj-456"},
+            "parent": {"id": "issue-1"},
+            "createdAt": None,
+            "updatedAt": None,
+        },
     )
-
-    mock_issue2 = _make_issue_mock(
-        id="issue-2",
-        identifier="ENG-2",
-        title="Feature",
-        state=None,
-        priority=Priority.HIGH,
-        url="https://linear.app/issue/ENG-2",
-    )
-
-    client._client.projects.get_issues.return_value = [mock_issue1, mock_issue2]
 
     issues = client.list_issues("proj-456")
 
     assert len(issues) == 2
     assert issues[0].id == "issue-1"
     assert issues[0].identifier == "ENG-1"
-    assert issues[0].state.name == "in_progress"  # IssueState object
+    assert issues[0].team_id == "team-123"
+    assert issues[0].project_id == "proj-456"
+    assert issues[0].state is not None
+    assert issues[0].state.name == "in_progress"
     assert issues[1].id == "issue-2"
     assert issues[1].state is None
-    client._client.projects.get_issues.assert_called_once_with(project_id="proj-456")
+    assert issues[1].parent_id == "issue-1"
+
+    # The upstream get_issues path must NOT be used — its projection drops
+    # team/project. Guard the regression at the call boundary.
+    client._client.projects.get_issues.assert_not_called()
+    client._client.execute_graphql.assert_called_once()
+    _, vars_ = client._client.execute_graphql.call_args[0]
+    assert vars_ == {"projectId": "proj-456", "cursor": None}
+
+
+def test_list_issues_paginates_until_no_next_page(client: LinearClient) -> None:
+    """list_issues must follow pageInfo.endCursor across pages."""
+    client._client.execute_graphql.side_effect = [
+        _list_issues_response(
+            {
+                "id": "i-1",
+                "identifier": "ENG-1",
+                "title": "Page 1",
+                "url": "u1",
+                "priority": 2,
+                "state": None,
+                "team": {"id": "t-1"},
+                "project": {"id": "p-1"},
+                "parent": None,
+            },
+            cursor="cursor-1",
+            has_next=True,
+        ),
+        _list_issues_response(
+            {
+                "id": "i-2",
+                "identifier": "ENG-2",
+                "title": "Page 2",
+                "url": "u2",
+                "priority": 2,
+                "state": None,
+                "team": {"id": "t-1"},
+                "project": {"id": "p-1"},
+                "parent": None,
+            },
+            cursor=None,
+            has_next=False,
+        ),
+    ]
+
+    issues = client.list_issues("p-1")
+
+    assert [i.id for i in issues] == ["i-1", "i-2"]
+    assert client._client.execute_graphql.call_count == 2
+    second_call_vars = client._client.execute_graphql.call_args_list[1][0][1]
+    assert second_call_vars["cursor"] == "cursor-1"
 
 
 def test_list_issues_api_failure_wraps_as_runtime_error(
@@ -521,7 +615,7 @@ def test_list_issues_api_failure_wraps_as_runtime_error(
 ) -> None:
     """list_issues must wrap underlying failures so handlers can return
     a structured error dict."""
-    client._client.projects.get_issues.side_effect = Exception("API boom")
+    client._client.execute_graphql.side_effect = Exception("API boom")
 
     with pytest.raises(
         RuntimeError, match="Failed to list issues for project 'proj-1'"
@@ -529,7 +623,7 @@ def test_list_issues_api_failure_wraps_as_runtime_error(
         client.list_issues("proj-1")
 
 
-def test_list_issues_coerces_linear_priority_enum_to_int(
+def test_get_issue_coerces_linear_priority_enum_to_int(
     client: LinearClient,
 ) -> None:
     """linear-api's LinearPriority is a plain Enum (not IntEnum), so
@@ -538,19 +632,13 @@ def test_list_issues_coerces_linear_priority_enum_to_int(
     value explicitly."""
     from linear_api import LinearPriority
 
-    mock_issue = MagicMock()
-    mock_issue.id = "i-1"
-    mock_issue.identifier = "ENG-1"
-    mock_issue.title = "T"
-    mock_issue.description = None
-    mock_issue.state = None
+    mock_issue = _make_issue_mock(
+        id="i-1",
+        identifier="ENG-1",
+        title="T",
+    )
+    # Override the priority with a real enum (not the int we'd otherwise pass).
     mock_issue.priority = LinearPriority.HIGH
-    mock_issue.team_id = None
-    mock_issue.project_id = None
-    mock_issue.parent_id = None
-    mock_issue.url = "https://x"
-    mock_issue.created_at = None
-    mock_issue.updated_at = None
 
     client._client.issues.get.return_value = mock_issue
     issue = client.get_issue("i-1")
@@ -561,46 +649,32 @@ def test_list_issues_coerces_linear_priority_enum_to_int(
     assert not isinstance(issue.priority, LinearPriority)
 
 
-def test_list_issues_handles_dict_response_from_linear_api(
+def test_list_issues_accepts_wrapped_data_envelope(
     client: LinearClient,
 ) -> None:
-    """projects.get_issues() returns raw GraphQL dicts, not LinearIssue
-    objects. Issue.from_linear must handle that shape — otherwise listing
-    a project's issues blows up with AttributeError: 'dict' object has no
-    attribute 'id'."""
-    client._client.projects.get_issues.return_value = [
-        {
-            "id": "i-1",
-            "title": "First",
-            "description": None,
-            "state": {"id": "s-1", "name": "Todo", "type": "unstarted"},
-            "priority": 2,
-            "priorityLabel": "Medium",
-            "createdAt": "2024-01-01T00:00:00Z",
-            "updatedAt": "2024-01-02T00:00:00Z",
-        },
-        {
-            "id": "i-2",
-            "title": "Second",
-            "description": "Body",
-            "state": None,
-            "priority": 3,
-            "createdAt": None,
-            "updatedAt": None,
-        },
-    ]
+    """_execute_raw may return either {"project": ...} or {"data": {"project": ...}}
+    depending on the underlying SDK path — list_issues must accept both."""
+    client._client.execute_graphql.return_value = {
+        "data": _list_issues_response(
+            {
+                "id": "i-1",
+                "identifier": "ENG-1",
+                "title": "Wrapped",
+                "url": "u",
+                "priority": 2,
+                "state": None,
+                "team": {"id": "t-1"},
+                "project": {"id": "p-1"},
+                "parent": None,
+            }
+        )
+    }
 
-    issues = client.list_issues("proj-1")
+    issues = client.list_issues("p-1")
 
-    assert [i.id for i in issues] == ["i-1", "i-2"]
-    assert issues[0].title == "First"
-    assert issues[0].state is not None
-    assert issues[0].state.name == "Todo"
-    assert issues[0].created_at == "2024-01-01T00:00:00Z"
-    assert issues[1].state is None
-    # identifier is absent from the GraphQL projection — must be None,
-    # not a validation failure.
-    assert issues[0].identifier is None
+    assert [i.id for i in issues] == ["i-1"]
+    assert issues[0].team_id == "t-1"
+    assert issues[0].project_id == "p-1"
 
 
 def test_get_issue_success(client: LinearClient) -> None:
@@ -663,12 +737,13 @@ def test_create_issue(client: LinearClient) -> None:
     mock_issue.description = "Description"
     mock_issue.state = None
     mock_issue.priority = 2
-    mock_issue.team_id = None
-    mock_issue.project_id = None
-    mock_issue.parent_id = None
+    # Real LinearIssue: team / project are nested objects; parent flattens to parentId.
+    mock_issue.team = None
+    mock_issue.project = None
+    mock_issue.parentId = None
     mock_issue.url = "https://linear.app/issue/ENG-99"
-    mock_issue.created_at = None
-    mock_issue.updated_at = None
+    mock_issue.createdAt = None
+    mock_issue.updatedAt = None
     client._client.issues.create.return_value = mock_issue
 
     input_data = IssueInput(
@@ -731,12 +806,13 @@ def test_update_issue(client: LinearClient) -> None:
     mock_issue.state = mock_state
     # Linear's wire value: 0 = URGENT (Linear's enum inverts ours).
     mock_issue.priority = 0
-    mock_issue.team_id = None
-    mock_issue.project_id = None
-    mock_issue.parent_id = None
+    # Real LinearIssue: team / project are nested objects; parent flattens to parentId.
+    mock_issue.team = None
+    mock_issue.project = None
+    mock_issue.parentId = None
     mock_issue.url = "https://linear.app/issue/ENG-42"
-    mock_issue.created_at = None
-    mock_issue.updated_at = None
+    mock_issue.createdAt = None
+    mock_issue.updatedAt = None
 
     client._client.issues.update.return_value = mock_issue
 
@@ -817,12 +893,13 @@ def test_list_issue_labels(client: LinearClient) -> None:
     mock_issue.labels = [mock_label1, mock_label2]
     mock_issue.state = None
     mock_issue.priority = 2
-    mock_issue.team_id = None
-    mock_issue.project_id = None
-    mock_issue.parent_id = None
+    # Real LinearIssue: team / project are nested objects; parent flattens to parentId.
+    mock_issue.team = None
+    mock_issue.project = None
+    mock_issue.parentId = None
     mock_issue.url = "https://linear.app/issue/ENG-42"
-    mock_issue.created_at = None
-    mock_issue.updated_at = None
+    mock_issue.createdAt = None
+    mock_issue.updatedAt = None
 
     client._client.issues.get_labels.return_value = [mock_label1, mock_label2]
 
@@ -2056,24 +2133,14 @@ def test_delete_project_exception_handling(client: LinearClient) -> None:
         client.delete_project("project-123")
 
 
-def test_list_issues_dict_branch(client: LinearClient) -> None:
-    """list_issues should handle dict items via Issue.from_linear."""
-    # Create a dict issue (raw format from API)
-    dict_issue = {
-        "id": "issue-123",
-        "title": "Test Issue",
-        "description": "Test Description",
-    }
+def test_list_issues_returns_empty_when_project_payload_missing(
+    client: LinearClient,
+) -> None:
+    """list_issues returns [] when the GraphQL payload has no project node
+    (deleted project, no permission, etc.) — no traceback."""
+    client._client.execute_graphql.return_value = {"project": None}
 
-    # Mock the client to return our dict issue
-    client._client.projects.get_issues.return_value = [dict_issue]
-
-    result = client.list_issues("project-123")
-
-    assert len(result) == 1
-    assert result[0].id == "issue-123"
-    assert result[0].title == "Test Issue"
-    assert result[0].description == "Test Description"
+    assert client.list_issues("project-missing") == []
 
 
 # -----------------------------------------------------------------------------

@@ -8,8 +8,11 @@ from pydantic import BaseModel, Field, SecretStr, model_validator
 
 
 class ClaudeModel(StrEnum):
+    opus_1M = "claude-opus[1m]"
     opus_4_7 = "claude-opus-4-7"
+    opus_4_6 = "claude-opus-4-6"
     opus_4_5 = "claude-opus-4-5"
+    sonnet_1M = "claude-sonnet[1M]"
     sonnet_4_6 = "claude-sonnet-4-6"
     haiku_4_5 = "claude-haiku-4-5"
 

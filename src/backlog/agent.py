@@ -6,7 +6,7 @@ import json
 from pydantic import ValidationError
 
 from backlog.contracts import BacklogInput, BacklogOutput
-from backlog.platforms.linear import IssueResult
+from backlog.platforms import IssueResult
 from backlog.prompts import BACKLOG_SYSTEM_PROMPT, BACKLOG_USER_PROMPT_TEMPLATE
 from llm_providers import ApiKey, OAuth2CliToken, ProviderOptions, ProviderRegistry
 from llm_providers.auth.base import AuthStrategy
@@ -53,7 +53,7 @@ class BacklogAgent:
             BACKLOG_USER_PROMPT_TEMPLATE,
             output_schema=to_json(BacklogOutput.model_json_schema()),
             platform=to_json(input_contract.platform.model_dump(mode="json")),
-            platform_defaults=to_json(input_contract.platform.issue_defaults()),
+            platform_defaults=to_json(input_contract.platform.issue_defaults),
             plan_content=to_json(input_contract.plan_content),
             stacks=to_json(input_contract.stacks),
             platform_name=to_json(input_contract.platform.platform_name),
@@ -92,11 +92,10 @@ class BacklogAgent:
 
         return asyncio.run(self.run(input_contract))
 
-    async def create_issues(self, output: BacklogOutput) -> list[IssueResult]:
+    @staticmethod
+    async def create_issues(output: BacklogOutput) -> list[IssueResult]:
         """Apply a planned backlog output to the platform via the platform protocol."""
-
-        api_key = self._require_platform_api_key()
-        return await output.platform.execute(output, api_key=api_key)
+        return await output.platform.execute(output)
 
     async def run_and_create(
         self,
@@ -136,29 +135,22 @@ class BacklogAgent:
             },
         )
 
-    def build_tool_policy(self, input_contract: BacklogInput) -> ToolPolicy:
-        api_key = self._require_platform_api_key()
-        return input_contract.platform.tool_policy(api_key=api_key)
-
-    def _require_platform_api_key(self) -> str:
-        api_key_secret = settings.linear.api_key
-        if api_key_secret is None:
-            raise ValueError(
-                "Platform API key required: set LINEAR_API_KEY in settings.linear"
-            )
-        return api_key_secret.get_secret_value()
+    @staticmethod
+    def build_tool_policy(input_contract: BacklogInput) -> ToolPolicy:
+        return input_contract.platform.tool_policy(
+            api_key=input_contract.platform.api_key
+        )
 
     @staticmethod
     def with_platform_defaults(
         output: BacklogOutput,
         input_contract: BacklogInput,
     ) -> BacklogOutput:
-        defaults = input_contract.platform.issue_defaults()
         normalized = output.model_copy(deep=True)
         normalized.platform = input_contract.platform
         for issue in normalized.issues:
             issue.fields.platform_fields = {
-                **defaults,
+                **input_contract.platform.issue_defaults,
                 **issue.fields.platform_fields,
             }
         return normalized

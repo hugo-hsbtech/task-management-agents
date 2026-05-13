@@ -222,14 +222,75 @@ class LinearClient:
     # -----------------------------------------------------------------------
 
     def list_issues(self, project_id: str) -> list[Issue]:
-        """List all issues within a specific project."""
-        try:
-            linear_issues = self._client.projects.get_issues(project_id=project_id)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to list issues for project {project_id!r}: {e}"
-            ) from e
-        return [Issue.from_linear(issue) for issue in linear_issues]
+        """List all issues within a specific project.
+
+        Bypasses ``linear_api.projects.get_issues``: its GraphQL projection
+        omits ``team``, ``project``, ``parent``, ``identifier``, and ``url``
+        — so the returned issues lose every foreign-key reference — and it
+        silently caps results at 50 with no pagination. We run our own query
+        instead and follow ``pageInfo`` to completion.
+        """
+        query = """
+        query($projectId: String!, $cursor: String) {
+          project(id: $projectId) {
+            issues(first: 50, after: $cursor) {
+              nodes {
+                id
+                identifier
+                title
+                description
+                url
+                priority
+                state { id name color type }
+                team { id }
+                project { id }
+                parent { id }
+                createdAt
+                updatedAt
+              }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }
+        """
+
+        issues: list[Issue] = []
+        cursor: str | None = None
+        while True:
+            try:
+                response = self._execute_raw(
+                    query, {"projectId": project_id, "cursor": cursor}
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to list issues for project {project_id!r}: {e}"
+                ) from e
+
+            # _execute_raw may return either unwrapped data ({"project": ...})
+            # or the full envelope ({"data": {"project": ...}}); accept both.
+            payload: Any = response
+            if isinstance(response, dict) and isinstance(response.get("data"), dict):
+                payload = response["data"]
+            if not isinstance(payload, dict):
+                break
+
+            project = payload.get("project")
+            if not isinstance(project, dict):
+                break
+
+            issues_conn = project.get("issues") or {}
+            for node in issues_conn.get("nodes") or []:
+                issues.append(Issue.from_linear(node))
+
+            page_info = issues_conn.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            next_cursor = page_info.get("endCursor")
+            if not next_cursor:
+                break
+            cursor = next_cursor
+
+        return issues
 
     def get_issue(self, issue_id: str) -> Issue | None:
         """Get a specific issue by ID or identifier (e.g., 'ENG-123')."""

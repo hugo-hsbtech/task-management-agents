@@ -144,7 +144,7 @@ def _track(created_issues: list[str], result: dict) -> dict:
 @pytest.mark.asyncio
 async def test_list_teams(capsys, tools: LinearTools) -> None:
     """list_teams must return at least one team with id and name."""
-    result = await tools._handle_list_teams({})
+    result = await tools.handle_list_teams({})
 
     _log(capsys, "list_teams", input_data={}, output_data=result)
 
@@ -157,7 +157,7 @@ async def test_list_teams(capsys, tools: LinearTools) -> None:
 async def test_get_team(capsys, tools: LinearTools, team_id: str) -> None:
     """get_team must resolve the configured team_id."""
     input_data = {"team_id": team_id}
-    result = await tools._handle_get_team(input_data)
+    result = await tools.handle_get_team(input_data)
 
     _log(capsys, "get_team", input_data=input_data, output_data=result)
 
@@ -175,7 +175,7 @@ async def test_get_team(capsys, tools: LinearTools, team_id: str) -> None:
 async def test_list_projects(capsys, tools: LinearTools, team_id: str) -> None:
     """list_projects must return projects for the configured team."""
     input_data = {"team_id": team_id}
-    result = await tools._handle_list_projects(input_data)
+    result = await tools.handle_list_projects(input_data)
 
     _log(capsys, "list_projects", input_data=input_data, output_data=result)
 
@@ -188,7 +188,7 @@ async def test_list_projects(capsys, tools: LinearTools, team_id: str) -> None:
 async def test_get_project(capsys, tools: LinearTools, project_id: str) -> None:
     """get_project must resolve the configured project_id."""
     input_data = {"project_id": project_id}
-    result = await tools._handle_get_project(input_data)
+    result = await tools.handle_get_project(input_data)
 
     _log(capsys, "get_project", input_data=input_data, output_data=result)
 
@@ -202,15 +202,34 @@ async def test_get_project(capsys, tools: LinearTools, project_id: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_issues(capsys, tools: LinearTools, project_id: str) -> None:
-    """list_issues must return issues dict for the configured project."""
+async def test_list_issues(
+    capsys, tools: LinearTools, team_id: str, project_id: str
+) -> None:
+    """list_issues must return issues with team/project references populated.
+
+    Guards against the regression where the upstream GraphQL projection
+    stripped foreign-key references — issues came back with ``team_id`` and
+    ``project_id`` set to ``None``.
+    """
     input_data = {"project_id": project_id}
-    result = await tools._handle_list_issues(input_data)
+    result = await tools.handle_list_issues(input_data)
 
     _log(capsys, "list_issues", input_data=input_data, output_data=result)
 
     assert "issues" in result
     assert isinstance(result["issues"], list)
+
+    for issue in result["issues"]:
+        assert issue.get("team_id") == team_id, (
+            f"issue {issue.get('id')} has team_id={issue.get('team_id')!r}, "
+            f"expected {team_id!r}"
+        )
+        assert issue.get("project_id") == project_id, (
+            f"issue {issue.get('id')} has project_id={issue.get('project_id')!r}, "
+            f"expected {project_id!r}"
+        )
+        assert issue.get("identifier"), f"issue {issue.get('id')} missing identifier"
+        assert issue.get("url"), f"issue {issue.get('id')} missing url"
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +250,7 @@ async def test_create_issue(
         "priority": 3,
     }
 
-    result = _track(created_issues, await tools._handle_create_issue(input_data))
+    result = _track(created_issues, await tools.handle_create_issue(input_data))
 
     _log(capsys, "create_issue", input_data=input_data, output_data=result)
 
@@ -247,7 +266,7 @@ async def test_get_issue(
     """get_issue must retrieve a previously created issue by id."""
     created = _track(
         created_issues,
-        await tools._handle_create_issue(
+        await tools.handle_create_issue(
             {
                 "title": "[TEST] get_issue integration test",
                 "description": "Created by test_linear_platform.py — safe to delete.",
@@ -260,7 +279,7 @@ async def test_get_issue(
     issue_id = created["id"]
 
     input_data = {"issue_id": issue_id}
-    result = await tools._handle_get_issue(input_data)
+    result = await tools.handle_get_issue(input_data)
 
     _log(capsys, "get_issue", input_data=input_data, output_data=result)
 
@@ -275,7 +294,7 @@ async def test_update_issue(
     """update_issue must modify an existing issue and return the updated state."""
     created = _track(
         created_issues,
-        await tools._handle_create_issue(
+        await tools.handle_create_issue(
             {
                 "title": "[TEST] update_issue integration test — original",
                 "description": "Created by test_linear_platform.py — safe to delete.",
@@ -292,7 +311,7 @@ async def test_update_issue(
         "title": "[TEST] update_issue integration test — updated",
         "priority": 1,
     }
-    result = await tools._handle_update_issue(input_data)
+    result = await tools.handle_update_issue(input_data)
 
     _log(capsys, "update_issue", input_data=input_data, output_data=result)
 
@@ -319,7 +338,7 @@ async def test_execute_creates_and_reuses_issues(
     capsys, platform: LinearPlatform, api_key: str, created_issues: list[str]
 ) -> None:
     """execute() creates issues on first run, reuses on second run."""
-    defaults = platform.issue_defaults()
+    defaults = platform.issue_defaults
     backlog_output = BacklogOutput(
         platform=platform,
         issues=[
@@ -344,11 +363,11 @@ async def test_execute_creates_and_reuses_issues(
         ],
     )
 
-    first = await platform.execute(backlog_output, api_key=api_key)
+    first = await platform.execute(backlog_output)
     for r in first:
         created_issues.append(r.issue.id)
 
-    second = await platform.execute(backlog_output, api_key=api_key)
+    second = await platform.execute(backlog_output)
 
     _log_results(capsys, "execute — first run", first)
     _log_results(capsys, "execute — second run (expect reuse)", second)
@@ -374,7 +393,7 @@ async def test_create_issue_relation(
     """create_issue_relation must wire a blocks relation between two real issues."""
     source = _track(
         created_issues,
-        await tools._handle_create_issue(
+        await tools.handle_create_issue(
             {
                 "title": "[TEST] relation source — blocker",
                 "description": "Created by test_linear_platform.py — safe to delete.",
@@ -386,7 +405,7 @@ async def test_create_issue_relation(
     )
     target = _track(
         created_issues,
-        await tools._handle_create_issue(
+        await tools.handle_create_issue(
             {
                 "title": "[TEST] relation target — blocked",
                 "description": "Created by test_linear_platform.py — safe to delete.",
@@ -402,7 +421,7 @@ async def test_create_issue_relation(
         "related_issue_id": target["id"],
         "type": "blocks",
     }
-    result = await tools._handle_create_issue_relation(input_data)
+    result = await tools.handle_create_issue_relation(input_data)
 
     _log(capsys, "create_issue_relation", input_data=input_data, output_data=result)
 
@@ -416,7 +435,7 @@ async def test_execute_wires_relations_between_issues(
     capsys, platform: LinearPlatform, api_key: str, created_issues: list[str]
 ) -> None:
     """execute() must call create_issue_relation for issues that declare relations."""
-    defaults = platform.issue_defaults()
+    defaults = platform.issue_defaults
     backlog_output = BacklogOutput(
         platform=platform,
         issues=[
@@ -447,7 +466,7 @@ async def test_execute_wires_relations_between_issues(
         ],
     )
 
-    results = await platform.execute(backlog_output, api_key=api_key)
+    results = await platform.execute(backlog_output)
     for r in results:
         created_issues.append(r.issue.id)
 

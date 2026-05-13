@@ -41,7 +41,7 @@ def test_backlog_input_accepts_plan_stack_and_linear_platform_dependency() -> No
 def test_linear_platform_provides_issue_defaults() -> None:
     platform = LinearPlatform(team_id="team-1", project_id="project-1")
 
-    assert platform.issue_defaults() == {
+    assert platform.issue_defaults == {
         "team_id": "team-1",
         "project_id": "project-1",
     }
@@ -129,7 +129,7 @@ def test_backlog_user_prompt_is_parseable_and_matches_contract_shape() -> None:
         BACKLOG_USER_PROMPT_TEMPLATE,
         output_schema=to_json(BacklogOutput.model_json_schema()),
         platform=to_json(input_contract.platform.model_dump(mode="json")),
-        platform_defaults=to_json(input_contract.platform.issue_defaults()),
+        platform_defaults=to_json(input_contract.platform.issue_defaults),
         plan_content=to_json(input_contract.plan_content),
         stacks=to_json(input_contract.stacks),
         platform_name=to_json(input_contract.platform.platform_name),

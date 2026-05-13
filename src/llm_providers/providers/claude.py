@@ -4,6 +4,8 @@ import json
 from collections.abc import AsyncIterator, Callable
 from typing import Any, ClassVar
 
+import claude_agent_sdk
+
 from llm_providers.auth.api_key import ApiKey
 from llm_providers.auth.base import AuthStrategy
 from llm_providers.auth.oauth2_cli import OAuth2CliToken
@@ -73,8 +75,6 @@ class ClaudeProvider(BaseProvider):
 
     def __init__(self, auth: AuthStrategy) -> None:
         super().__init__(auth)
-        import claude_agent_sdk
-
         self._sdk = claude_agent_sdk
         self._apply_credential()
 
@@ -82,6 +82,7 @@ class ClaudeProvider(BaseProvider):
         """Inject the resolved credential into the env var the SDK reads."""
         import os
 
+        # TOOD: change this to provide specific env vrrs per auth type
         cred = self._auth.resolve()
         if cred.kind == "oauth2_cli_token":
             os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = cred.payload["token"]

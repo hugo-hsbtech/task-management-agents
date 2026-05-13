@@ -294,7 +294,7 @@ class LinearTools:
     # Tool Handlers
     # -------------------------------------------------------------------------
 
-    async def _handle_create_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_create_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_create_issue tool."""
         issue_input = IssueInput.model_validate(obj=input_data)
         try:
@@ -303,7 +303,7 @@ class LinearTools:
             return {"error": str(e)}
         return issue.model_dump(mode="json")
 
-    async def _handle_update_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_update_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_update_issue tool."""
         update_input = IssueUpdateInput.model_validate(obj=input_data)
         try:
@@ -312,12 +312,12 @@ class LinearTools:
             return {"error": str(e)}
         return issue.model_dump(mode="json")
 
-    async def _handle_delete_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_delete_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_delete_issue tool."""
         success = self._client.delete_issue(input_data["issue_id"])
         return {"success": success, "issue_id": input_data["issue_id"]}
 
-    async def _handle_add_label(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_add_label(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_add_label tool."""
         label_input = IssueLabelInput.model_validate(obj=input_data)
         try:
@@ -326,7 +326,7 @@ class LinearTools:
             return {"error": str(e)}
         return issue.model_dump(mode="json")
 
-    async def _handle_list_teams(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_list_teams(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_teams tool."""
         try:
             teams = self._client.list_teams()
@@ -334,7 +334,7 @@ class LinearTools:
             return {"error": str(e)}
         return {"teams": [t.model_dump(mode="json") for t in teams]}
 
-    async def _handle_get_team(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_get_team(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_get_team tool."""
         team = self._client.get_team(input_data["team_id"])
         if team is None:
@@ -342,7 +342,7 @@ class LinearTools:
 
         return team.model_dump(mode="json")
 
-    async def _handle_list_projects(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_list_projects(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_projects tool."""
         try:
             projects = self._client.list_projects(input_data["team_id"])
@@ -350,7 +350,7 @@ class LinearTools:
             return {"error": str(e)}
         return {"projects": [p.model_dump(mode="json") for p in projects]}
 
-    async def _handle_get_project(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_get_project(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_get_project tool."""
         project = self._client.get_project(input_data["project_id"])
 
@@ -359,9 +359,7 @@ class LinearTools:
 
         return project.model_dump(mode="json")
 
-    async def _handle_update_project(
-        self, input_data: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def handle_update_project(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_update_project tool."""
         update_input = ProjectUpdateInput.model_validate(obj=input_data)
         try:
@@ -372,7 +370,7 @@ class LinearTools:
             return {"error": str(e)}
         return project.model_dump(mode="json")
 
-    async def _handle_list_issues(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_list_issues(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_list_issues tool."""
         try:
             issues = self._client.list_issues(input_data["project_id"])
@@ -380,14 +378,14 @@ class LinearTools:
             return {"error": str(e)}
         return {"issues": [i.model_dump(mode="json") for i in issues]}
 
-    async def _handle_get_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    async def handle_get_issue(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Handler for linear_get_issue tool."""
         issue = self._client.get_issue(input_data["issue_id"])
         if issue is None:
             return {"error": f"Issue '{input_data['issue_id']}' not found"}
         return issue.model_dump(mode="json")
 
-    async def _handle_create_issue_relation(
+    async def handle_create_issue_relation(
         self, input_data: dict[str, Any]
     ) -> dict[str, Any]:
         """Handler for linear_create_issue_relation tool."""
@@ -410,14 +408,14 @@ class LinearTools:
             relation_type=cast("Literal['blocks', 'duplicate', 'related']", api_type),
         )
 
-    async def _handle_get_issue_relations(
+    async def handle_get_issue_relations(
         self, input_data: dict[str, Any]
     ) -> dict[str, Any]:
         """Handler for linear_get_issue_relations tool."""
         relations = self._client.get_issue_relations(input_data["issue_id"])
         return {"relations": [r.model_dump(mode="json") for r in relations]}
 
-    async def _handle_list_sub_issues(
+    async def handle_list_sub_issues(
         self, input_data: dict[str, Any]
     ) -> dict[str, Any]:
         """Handler for linear_list_sub_issues tool."""
@@ -445,85 +443,85 @@ class LinearTools:
                 name="linear_create_issue",
                 description="Create a new Linear issue in a specific team and project",
                 input_schema=CREATE_ISSUE_SCHEMA,
-                handler=self._handle_create_issue,
+                handler=self.handle_create_issue,
             ),
             "linear_update_issue": ToolSpec(
                 name="linear_update_issue",
                 description="Update an existing Linear issue (title, description, state, priority)",
                 input_schema=UPDATE_ISSUE_SCHEMA,
-                handler=self._handle_update_issue,
+                handler=self.handle_update_issue,
             ),
             "linear_delete_issue": ToolSpec(
                 name="linear_delete_issue",
                 description="Delete a Linear issue by ID",
                 input_schema=DELETE_ISSUE_SCHEMA,
-                handler=self._handle_delete_issue,
+                handler=self.handle_delete_issue,
             ),
             "linear_add_label": ToolSpec(
                 name="linear_add_label",
                 description="Add a label to a Linear issue (creates label if it doesn't exist)",
                 input_schema=ADD_LABEL_SCHEMA,
-                handler=self._handle_add_label,
+                handler=self.handle_add_label,
             ),
             "linear_list_teams": ToolSpec(
                 name="linear_list_teams",
                 description="List all Linear teams accessible to the API key",
                 input_schema=LIST_TEAMS_SCHEMA,
-                handler=self._handle_list_teams,
+                handler=self.handle_list_teams,
             ),
             "linear_get_team": ToolSpec(
                 name="linear_get_team",
                 description="Get a specific Linear team by ID or key",
                 input_schema=GET_TEAM_SCHEMA,
-                handler=self._handle_get_team,
+                handler=self.handle_get_team,
             ),
             "linear_list_projects": ToolSpec(
                 name="linear_list_projects",
                 description="List all projects within a Linear team",
                 input_schema=LIST_PROJECTS_SCHEMA,
-                handler=self._handle_list_projects,
+                handler=self.handle_list_projects,
             ),
             "linear_get_project": ToolSpec(
                 name="linear_get_project",
                 description="Get a specific Linear project by ID",
                 input_schema=GET_PROJECT_SCHEMA,
-                handler=self._handle_get_project,
+                handler=self.handle_get_project,
             ),
             "linear_update_project": ToolSpec(
                 name="linear_update_project",
                 description="Update a Linear project (name, description, state) and optionally post an update",
                 input_schema=UPDATE_PROJECT_SCHEMA,
-                handler=self._handle_update_project,
+                handler=self.handle_update_project,
             ),
             "linear_list_issues": ToolSpec(
                 name="linear_list_issues",
                 description="List all issues within a Linear project",
                 input_schema=LIST_ISSUES_SCHEMA,
-                handler=self._handle_list_issues,
+                handler=self.handle_list_issues,
             ),
             "linear_get_issue": ToolSpec(
                 name="linear_get_issue",
                 description="Get a specific Linear issue by ID or identifier (e.g., 'ENG-123')",
                 input_schema=GET_ISSUE_SCHEMA,
-                handler=self._handle_get_issue,
+                handler=self.handle_get_issue,
             ),
             "linear_create_issue_relation": ToolSpec(
                 name="linear_create_issue_relation",
                 description="Create a relation between two Linear issues (blocks, blocked_by, relates_to, duplicate_of)",
                 input_schema=CREATE_ISSUE_RELATION_SCHEMA,
-                handler=self._handle_create_issue_relation,
+                handler=self.handle_create_issue_relation,
             ),
             "linear_get_issue_relations": ToolSpec(
                 name="linear_get_issue_relations",
                 description="Get all relations for a Linear issue (blocks, duplicate, related)",
                 input_schema=GET_ISSUE_RELATIONS_SCHEMA,
-                handler=self._handle_get_issue_relations,
+                handler=self.handle_get_issue_relations,
             ),
             "linear_list_sub_issues": ToolSpec(
                 name="linear_list_sub_issues",
                 description="List all sub-issues (children) of a Linear parent issue",
                 input_schema=LIST_SUB_ISSUES_SCHEMA,
-                handler=self._handle_list_sub_issues,
+                handler=self.handle_list_sub_issues,
             ),
         }
 

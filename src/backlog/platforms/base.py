@@ -17,19 +17,28 @@ class BacklogPlatform(Protocol):
 
     platform_name: ClassVar[str]
 
+    @property
     def issue_defaults(self) -> dict[str, str]:
-        """Return platform fields injected into generated issues."""
+        """Platform fields injected into generated issues."""
+        ...
+
+    @property
+    def api_key(self) -> str:
+        """Resolved API key for this platform.
+
+        Implementations read from their own settings module (e.g. Linear reads
+        ``settings.linear.api_key``). Raises ``ValueError`` if not configured.
+        Keeps the agent layer free of platform-specific settings imports.
+        """
         ...
 
     def tool_policy(self, *, api_key: str) -> ToolPolicy:
         """Return provider-agnostic tools supported by the platform."""
         ...
 
-    async def execute(
-        self,
-        output: BacklogOutput,
-        *,
-        api_key: str,
-    ) -> list[IssueResult]:
-        """Apply a planned BacklogOutput to the platform (create/update issues)."""
+    async def execute(self, output: BacklogOutput) -> list[IssueResult]:
+        """Apply a planned BacklogOutput to the platform (create/update issues).
+
+        Each platform reads its own credential via ``self.api_key``.
+        """
         ...
