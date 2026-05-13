@@ -8,9 +8,15 @@ provider and auth-strategy registration as a side effect.
 # registries are populated when downstream code reads them.
 from llm_providers import (
     auth,  # noqa: F401  (registers strategies if any)
-    providers,  # noqa: F401  (registers Claude + OpenAI)
+    providers,  # noqa: F401  (registers Claude + OpenAI + Gemini)
 )
-from llm_providers.auth import ApiKey, AuthStrategy, Credential, OAuth2CliToken
+from llm_providers.auth import (
+    ApiKey,
+    AuthStrategy,
+    Credential,
+    OAuth2ADC,
+    OAuth2CliToken,
+)
 from llm_providers.auth.factory import resolve_auth
 from llm_providers.base import BaseProvider, StatefulClient
 from llm_providers.errors import (
@@ -49,6 +55,7 @@ __all__ = [
     "ApiKey",
     "AuthStrategy",
     "Credential",
+    "OAuth2ADC",
     "OAuth2CliToken",
     # Base
     "BaseProvider",
