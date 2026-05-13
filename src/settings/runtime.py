@@ -11,17 +11,26 @@ separately). Setting ``HSB_RUNTIME_WORK_ITEM_ORCHESTRATOR=codex`` raises
 """
 
 from enum import StrEnum
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The forbidden env vars are listed here as the single source of truth.
+# ``_G1Guard`` is generated from this tuple below so adding a new var only
+# requires touching one place.
+FORBIDDEN_API_KEY_VARS: tuple[str, ...] = (
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+)
 
 
 class _G1Guard(BaseSettings):
     """Pydantic-backed G1 enforcer. Constructing this class raises
     ``RuntimeError`` if any forbidden API-key env var is set. Pydantic
     propagates non-ValueError exceptions from validators unwrapped, so
-    the historical ``RuntimeError`` contract is preserved."""
+    the historical ``RuntimeError`` contract is preserved.
+    """
 
     anthropic_api_key: str | None = Field(
         default=None, validation_alias="ANTHROPIC_API_KEY"
@@ -31,8 +40,12 @@ class _G1Guard(BaseSettings):
     @model_validator(mode="after")
     def _refuse_forbidden(self) -> Self:
         forbidden = [
-            str(self.__class__.model_fields[name].validation_alias)
-            for name in self.__class__.model_fields
+            alias
+            for alias, name in zip(
+                FORBIDDEN_API_KEY_VARS,
+                ("anthropic_api_key", "openai_api_key"),
+                strict=True,
+            )
             if getattr(self, name) is not None
         ]
         if forbidden:
@@ -42,14 +55,6 @@ class _G1Guard(BaseSettings):
                 "`codex login --device-auth` for Codex)."
             )
         return self
-
-
-# Public introspection list — derived from `_G1Guard` so the two stay in sync.
-FORBIDDEN_API_KEY_VARS: tuple[str, ...] = tuple(
-    str(field.validation_alias)
-    for field in _G1Guard.model_fields.values()
-    if field.validation_alias is not None
-)
 
 
 class AgentRuntime(StrEnum):
@@ -125,7 +130,7 @@ class RuntimeSettings(BaseSettings):
     intelligence: AgentRuntime = AgentRuntime.CLAUDE
     linear: AgentRuntime = AgentRuntime.CLAUDE
 
-    @field_validator(
+    _AGENT_FIELDS: ClassVar[tuple[str, ...]] = (
         "backlog",
         "work_item_orchestrator",
         "quality_assurance",
@@ -135,8 +140,9 @@ class RuntimeSettings(BaseSettings):
         "builder",
         "intelligence",
         "linear",
-        mode="before",
     )
+
+    @field_validator(*_AGENT_FIELDS, mode="before")
     @classmethod
     def _normalize_runtime(cls, v: object) -> object:
         if isinstance(v, str):

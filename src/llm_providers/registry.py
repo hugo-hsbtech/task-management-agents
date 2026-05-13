@@ -8,9 +8,9 @@ registry.py to add a provider).
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, ClassVar
 
+from libs.logging import get_logger
 from llm_providers.auth.base import AuthStrategy
 from llm_providers.base import BaseProvider
 from llm_providers.errors import AuthResolutionError, ProviderNotFoundError
@@ -18,7 +18,7 @@ from llm_providers.errors import AuthResolutionError, ProviderNotFoundError
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ProviderRegistry:
@@ -116,7 +116,12 @@ class AuthRegistry:
     @classmethod
     def register(cls, kind: str) -> Callable[[type[AuthStrategy]], type[AuthStrategy]]:
         def decorator(strat_cls: type[AuthStrategy]) -> type[AuthStrategy]:
-            if not issubclass(strat_cls, AuthStrategy):
+            # Name-based MRO check rather than ``issubclass``: when callers
+            # evict ``llm_providers.auth.base`` from ``sys.modules`` (the test
+            # suite does this to exercise reload behavior), ``AuthStrategy``'s
+            # class identity changes but registry.py's import is cached, so a
+            # direct ``issubclass`` returns False against the stale reference.
+            if not any(c.__name__ == "AuthStrategy" for c in strat_cls.__mro__):
                 raise TypeError(
                     f"{strat_cls.__name__} must subclass AuthStrategy to be registered."
                 )
@@ -132,7 +137,9 @@ class AuthRegistry:
                     "Both sources of truth must match."
                 )
             cls._strategies[kind] = strat_cls
-            logger.debug("Registered auth strategy %r → %s", kind, strat_cls.__name__)
+            logger.debug(
+                "auth.strategy_registered", kind=kind, cls=strat_cls.__name__
+            )
             return strat_cls
 
         return decorator
@@ -179,6 +186,12 @@ def auto_resolve_auth(
         try:
             instance = strat_cls.default()
         except Exception as e:  # noqa: BLE001 — strategy owns its construction errors
+            logger.warning(
+                "auth.strategy_construct_failed",
+                provider=provider_name,
+                strategy=strat_cls.__name__,
+                error=str(e),
+            )
             skipped.append((strat_cls.__name__, f"construct_failed: {e}"))
             continue
         if instance.detect():

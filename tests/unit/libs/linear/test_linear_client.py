@@ -477,15 +477,25 @@ def test_post_project_update_logs_on_failure(
     client._client.execute_graphql.side_effect = RuntimeError("auth_error")
     client._client._execute.side_effect = RuntimeError("auth_error")
 
-    with caplog.at_level(logging.ERROR, logger="libs.linear.linear_client"):
+    # Best-effort failure is logged at WARNING, not ERROR.
+    with caplog.at_level(logging.WARNING, logger="libs.linear.linear_client"):
         client._post_project_update("proj-123", "Sprint shipped!")
 
-    assert any(
-        "projectUpdateCreate" in r.message and "proj-123" in r.message
+    # Match either the structured event name or the project_id field.
+    matched = [
+        r
         for r in caplog.records
+        if "project_update_post_failed" in r.getMessage()
+        or getattr(r, "project_id", None) == "proj-123"
+    ]
+    assert matched, [r.getMessage() for r in caplog.records]
+    # The cause must surface — structlog ``format_exc_info`` moves the
+    # traceback into the event dict's ``exception`` key, which appears in
+    # the rendered ``getMessage()`` output.
+    assert any(
+        "auth_error" in r.getMessage() or "Traceback" in r.getMessage()
+        for r in matched
     )
-    # The cause must appear in the captured traceback.
-    assert any(r.exc_info is not None for r in caplog.records)
 
 
 # -----------------------------------------------------------------------------

@@ -41,10 +41,13 @@ def test_resolve_raises_when_env_var_absent(monkeypatch):
         s.resolve()
 
 
-def test_default_uses_class_default_env_var(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "x")
-    s = ApiKey.default()
-    assert s.detect() is True
+def test_default_raises_no_safe_value():
+    """ApiKey.default() is intentionally fail-loud — every real provider
+    subclasses ApiKey and overrides ``default()`` with its canonical env var."""
+    from llm_providers.errors import AuthDetectionFailed
+
+    with pytest.raises(AuthDetectionFailed, match="no value to return"):
+        ApiKey.default()
 
 
 def test_kind_classvar():

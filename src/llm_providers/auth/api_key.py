@@ -1,30 +1,35 @@
-"""ApiKey auth strategy — explicit key or env-var detection.
+"""ApiKey auth strategy — opaque key holder.
 
-Supports two modes:
-  - Explicit key: ``ApiKey(api_key="sk-...")`` or ``ApiKey.from_auth(cfg)``
-  - Env-var lazy: ``ApiKey(env_var="MY_KEY")`` — resolved at ``resolve()`` time.
+The strategy itself never reads ``os.environ``. The settings layer
+(``settings._env``) is responsible for resolving env vars and passing the
+resolved string into ``ApiKey(api_key=...)`` or ``ApiKey.from_auth(cfg)``.
 """
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING, ClassVar
 
 from llm_providers.auth.base import AuthStrategy, Credential
 from llm_providers.errors import AuthDetectionFailed
+from llm_providers.registry import AuthRegistry
+from settings._env import read_env
 
 if TYPE_CHECKING:
     from settings.provider import ApiKeyAuth
 
 
+@AuthRegistry.register("api_key")
 class ApiKey(AuthStrategy):
-    """API-key credential from settings or environment variable.
+    """API-key credential.
 
     Construction:
       ApiKey(api_key="sk-...")   — explicit key (settings / test)
-      ApiKey(env_var="MY_KEY")   — lazy env-var resolution
-      ApiKey.from_auth(cfg)      — load from ApiKeyAuth settings
-      ApiKey.default()           — env-var auto-detect (LLM_PROVIDERS_API_KEY)
+      ApiKey(env_var="MY_KEY")   — name of an env var, resolved at resolve-time
+                                   via ``settings._env.read_env``
+      ApiKey.from_auth(cfg)      — load from ``ApiKeyAuth`` settings
+      ApiKey.default()           — raises ``AuthDetectionFailed``; callers must
+                                   construct explicitly. (Historically defaulted
+                                   to LLM_PROVIDERS_API_KEY which nothing set.)
     """
 
     kind: ClassVar[str] = "api_key"
@@ -45,12 +50,12 @@ class ApiKey(AuthStrategy):
     def detect(self) -> bool:
         """True when the key is available (explicit) or the env var is set."""
         if self._env_var:
-            return bool(os.environ.get(self._env_var))
+            return bool(read_env(self._env_var))
         return True
 
     def resolve(self) -> Credential:
         if self._env_var:
-            key = os.environ.get(self._env_var, "")
+            key = read_env(self._env_var, "") or ""
             if not key:
                 raise AuthDetectionFailed(f"{self._env_var} not set")
             return Credential(
@@ -73,5 +78,17 @@ class ApiKey(AuthStrategy):
 
     @classmethod
     def default(cls) -> ApiKey:
-        """Auto-detect from LLM_PROVIDERS_API_KEY env var."""
-        return cls(env_var="LLM_PROVIDERS_API_KEY")
+        """No safe default — ApiKey requires explicit construction.
+
+        Historically returned ``cls(env_var="LLM_PROVIDERS_API_KEY")`` but no
+        caller in the repo ever set that env var; every real provider
+        subclasses ``ApiKey`` and overrides ``default()`` with the canonical
+        env var for that vendor (e.g. ``ANTHROPIC_API_KEY``,
+        ``OPENAI_API_KEY``). Raising here turns a silent miss into a loud one.
+        """
+        raise AuthDetectionFailed(
+            "ApiKey.default() has no value to return. Either construct "
+            "explicitly via ApiKey(env_var=...) / ApiKey.from_auth(cfg), or "
+            "subclass ApiKey and override default() with the provider's "
+            "canonical env var."
+        )

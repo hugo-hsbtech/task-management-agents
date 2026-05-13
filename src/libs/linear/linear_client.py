@@ -2,9 +2,19 @@
 
 Uses internal mapping to convert between linear_api types and our own schemas.
 Consumers should import from libs.linear.schemas, not from linear_api.
+
+Error policy
+------------
+Methods that return a list (``list_*``, ``get_team_*``, ``get_project_*``)
+log a warning and return ``[]`` on SDK failure. Methods that return a single
+entity (``get_*``) log a warning and return ``None``. Mutating methods
+(``create_*``, ``update_*``, ``delete_*``, ``add_*``) propagate as
+``RuntimeError`` — silent failure on writes would mask data loss.
+
+Every ``except Exception`` block logs at warning or higher; no failure
+is ever swallowed silently.
 """
 
-import logging
 from typing import TYPE_CHECKING, Any, Literal
 
 from linear_api import LinearClient as BaseLinearClient
@@ -27,11 +37,12 @@ from libs.linear.schemas import (
     Team,
     _map_priority_to_api,
 )
+from libs.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LinearClient:
@@ -63,10 +74,11 @@ class LinearClient:
             if linear_team:
                 return Team.from_linear(linear_team)
             return None
-        except Exception:
+        except Exception as e:
             logger.warning(
-                "teams.get(%r) failed; falling back to list-and-match",
-                team_id,
+                "linear.get_team_falling_back",
+                team_id=team_id,
+                error=str(e),
                 exc_info=True,
             )
             try:
@@ -75,8 +87,13 @@ class LinearClient:
                     if team.id == team_id or team.key == team_id:
                         return Team.from_linear(team)
                 return None
-            except Exception:
-                logger.exception("teams.get_all() fallback failed for %r", team_id)
+            except Exception as e2:
+                logger.warning(
+                    "linear.get_team_fallback_failed",
+                    team_id=team_id,
+                    error=str(e2),
+                    exc_info=True,
+                )
                 return None
 
     # -----------------------------------------------------------------------
@@ -103,8 +120,13 @@ class LinearClient:
             if linear_project:
                 return Project.from_linear(linear_project)
             return None
-        except Exception:
-            logger.exception("projects.get(%r) failed", project_id)
+        except Exception as e:
+            logger.warning(
+                "linear.get_project_failed",
+                project_id=project_id,
+                error=str(e),
+                exc_info=True,
+            )
             return None
 
     def update_project(
@@ -182,11 +204,14 @@ class LinearClient:
                 }
             }
             self._execute_raw(query, variables)
-        except Exception:
+        except Exception as e:
             # Best effort — don't fail the whole update if posting fails,
             # but surface the cause so callers can see it in traces.
-            logger.exception(
-                "projectUpdateCreate mutation failed for project %r", project_id
+            logger.warning(
+                "linear.project_update_post_failed",
+                project_id=project_id,
+                error=str(e),
+                exc_info=True,
             )
 
     def _execute_raw(
@@ -299,8 +324,13 @@ class LinearClient:
             if linear_issue:
                 return Issue.from_linear(linear_issue)
             return None
-        except Exception:
-            logger.exception("issues.get(%r) failed", issue_id)
+        except Exception as e:
+            logger.warning(
+                "linear.get_issue_failed",
+                issue_id=issue_id,
+                error=str(e),
+                exc_info=True,
+            )
             return None
 
     def create_issue(self, input_data: IssueInput) -> Issue:
@@ -351,12 +381,22 @@ class LinearClient:
             raise RuntimeError(f"Failed to update issue {issue_id!r}: {e}") from e
 
     def delete_issue(self, issue_id: str) -> bool:
-        """Delete a Linear issue. Returns True if successful."""
+        """Delete a Linear issue. Returns True if successful.
+
+        Returns False — rather than raising — for compatibility with existing
+        callers that distinguish "delete unsuccessful" from "issue did not
+        exist". The underlying failure is logged at warning level.
+        """
         try:
             result = self._client.issues.delete(issue_id)
             return bool(result)
-        except Exception:
-            logger.exception("issues.delete(%r) failed", issue_id)
+        except Exception as e:
+            logger.warning(
+                "linear.delete_issue_failed",
+                issue_id=issue_id,
+                error=str(e),
+                exc_info=True,
+            )
             return False
 
     def add_label_to_issue(
@@ -377,8 +417,13 @@ class LinearClient:
         try:
             linear_labels = self._client.issues.get_labels(issue_id)
             return [Label.from_linear(label) for label in linear_labels]
-        except Exception:
-            logger.exception("issues.get(%r) failed while listing labels", issue_id)
+        except Exception as e:
+            logger.warning(
+                "linear.list_issue_labels_failed",
+                issue_id=issue_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def create_issue_relation(
@@ -442,6 +487,9 @@ class LinearClient:
         both issue and project comments — the difference is whether `issueId`
         or `projectId` is supplied in the input. There is no
         `issueCommentCreate` mutation.
+
+        The user projection matches ``add_comment_to_project`` so both call
+        sites yield the same ``CommentUser`` shape.
         """
         try:
             query = """
@@ -454,6 +502,8 @@ class LinearClient:
                         user {
                             id
                             name
+                            displayName
+                            email
                         }
                         createdAt
                     }
@@ -482,6 +532,8 @@ class LinearClient:
                 user=CommentUser(
                     id=user_data.get("id"),
                     name=user_data.get("name"),
+                    displayName=user_data.get("displayName"),
+                    email=user_data.get("email"),
                 )
                 if user_data
                 else None,
@@ -495,7 +547,13 @@ class LinearClient:
         try:
             linear_comments = self._client.issues.get_comments(issue_id)
             return [Comment.from_linear(comment) for comment in linear_comments]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.list_issue_comments_failed",
+                issue_id=issue_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def list_issue_attachments(self, issue_id: str) -> list[dict[str, Any]]:
@@ -514,7 +572,13 @@ class LinearClient:
                 }
                 for attachment in linear_attachments
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.list_issue_attachments_failed",
+                issue_id=issue_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def create_attachment(self, issue_id: str, title: str, url: str) -> dict[str, Any]:
@@ -555,7 +619,13 @@ class LinearClient:
                 }
                 for member in linear_members
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.get_team_members_failed",
+                team_id=team_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def get_team_labels(self, team_id: str) -> list[dict[str, Any]]:
@@ -571,7 +641,13 @@ class LinearClient:
                 }
                 for label in linear_labels
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.get_team_labels_failed",
+                team_id=team_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def get_team_issues(self, team_id: str) -> list[Issue]:
@@ -579,7 +655,13 @@ class LinearClient:
         try:
             linear_issues = self._client.teams.get_issues(team_id)
             return [Issue.from_linear(issue) for issue in linear_issues.values()]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.get_team_issues_failed",
+                team_id=team_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def get_team_projects(self, team_id: str) -> list[Project]:
@@ -589,7 +671,13 @@ class LinearClient:
             return [
                 Project.from_linear(project) for project in linear_projects.values()
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.get_team_projects_failed",
+                team_id=team_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def get_project_members(self, project_id: str) -> list[dict[str, Any]]:
@@ -605,7 +693,13 @@ class LinearClient:
                 }
                 for member in linear_members
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.get_project_members_failed",
+                project_id=project_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def get_project_labels(self, project_id: str) -> list[dict[str, Any]]:
@@ -621,7 +715,13 @@ class LinearClient:
                 }
                 for label in linear_labels
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "linear.get_project_labels_failed",
+                project_id=project_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
     def get_project_comments(self, project_id: str) -> list[Comment]:
@@ -657,7 +757,14 @@ class LinearClient:
                 response = self._execute_raw(
                     query, {"projectId": project_id, "cursor": cursor}
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning(
+                    "linear.get_project_comments_failed",
+                    project_id=project_id,
+                    cursor=cursor,
+                    error=str(e),
+                    exc_info=True,
+                )
                 break
 
             # _execute_raw may return either unwrapped data ({"project": ...})

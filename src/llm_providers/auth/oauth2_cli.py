@@ -1,18 +1,19 @@
-"""OAuth2CliToken auth strategy — OAuth2 token from explicit settings.
+"""OAuth2CliToken auth strategy — OAuth2 bearer-token holder.
 
-Token source is explicitly configured via OAuth2CliAuth:
-  - env_var: read token from environment variable
-  - token_path: read token from CLI-managed file
+Token source is configured explicitly via ``env_var`` or ``token_path``;
+env reads are routed through ``settings._env.read_env`` so this module
+never touches ``os.environ`` directly.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from typing import TYPE_CHECKING, ClassVar
 
 from llm_providers.auth.base import AuthStrategy, Credential
 from llm_providers.errors import AuthDetectionFailed
+from llm_providers.registry import AuthRegistry
+from settings._env import read_env
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,8 +21,9 @@ if TYPE_CHECKING:
     from settings.provider import OAuth2CliAuth
 
 
+@AuthRegistry.register("oauth2_cli_token")
 class OAuth2CliToken(AuthStrategy):
-    """OAuth2 bearer token loaded from explicit settings configuration."""
+    """OAuth2 bearer token loaded from a configured env var or file path."""
 
     kind: ClassVar[str] = "oauth2_cli_token"
 
@@ -34,29 +36,27 @@ class OAuth2CliToken(AuthStrategy):
         self._token_path = token_path
 
     def detect(self) -> bool:
-        """True iff the configured token source is actually present.
+        """True iff the configured token source is present.
 
         env_var → the env var is set and non-empty.
         token_path → the file exists.
         Otherwise (no source configured, or source empty) → False, so
-        auto_resolve_auth moves to the next strategy.
+        ``auto_resolve_auth`` moves to the next strategy.
         """
-        if self._env_var and os.environ.get(self._env_var):
+        if self._env_var and read_env(self._env_var):
             return True
         return bool(self._token_path and self._token_path.exists())
 
     def resolve(self) -> Credential:
         """Resolve token from configured source."""
-        # Try env_var first if configured
         if self._env_var:
-            v = os.environ.get(self._env_var)
+            v = read_env(self._env_var)
             if v:
                 return Credential(
                     kind="oauth2_cli_token",
                     payload={"token": v, "source": f"env:{self._env_var}"},
                 )
 
-        # Try token_path if configured
         if self._token_path and self._token_path.exists():
             raw = self._token_path.read_text(encoding="utf-8").strip()
             token = self._extract_token(raw)
@@ -77,7 +77,13 @@ class OAuth2CliToken(AuthStrategy):
 
     @classmethod
     def default(cls) -> OAuth2CliToken:
-        """Default construction - requires explicit configuration."""
+        """Default construction — no preconfigured source.
+
+        Returns an instance with no env_var / token_path. ``detect()`` will
+        return False and ``auto_resolve_auth`` will fall through. Real
+        providers subclass this and override ``default()`` with the canonical
+        token source (``CLAUDE_CODE_OAUTH_TOKEN``, ``~/.codex/auth.json``, …).
+        """
         return cls()
 
     @staticmethod

@@ -44,8 +44,20 @@ def _register_provider(name: str, supported_auth):
     return _P
 
 
+# ApiKey.default() is intentionally fail-loud (no canonical env var on the
+# base class). Tests use the _TestApiKey subclass below, which mirrors the
+# production pattern (every real provider subclasses ApiKey and overrides
+# default() with its own env var).
+
+
+class _TestApiKey(ApiKey):
+    @classmethod
+    def default(cls):
+        return cls(env_var="LLM_PROVIDERS_TEST_API_KEY")
+
+
 def test_walks_preferred_first_returns_first_detected(monkeypatch):
-    monkeypatch.delenv("LLM_PROVIDERS_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_PROVIDERS_TEST_API_KEY", raising=False)
     monkeypatch.setenv("TOK", "tok-xyz")
 
     class _PreferredOAuth(OAuth2CliToken):
@@ -53,7 +65,7 @@ def test_walks_preferred_first_returns_first_detected(monkeypatch):
         def default(cls):
             return cls(env_var="TOK")
 
-    _register_provider("foo", (_PreferredOAuth, ApiKey))
+    _register_provider("foo", (_PreferredOAuth, _TestApiKey))
     result = auto_resolve_auth("foo")
     assert result.kind == "oauth2_cli_token"
 
@@ -68,25 +80,25 @@ def test_falls_through_to_second_when_first_not_detected(monkeypatch):
         def detect(self) -> bool:
             return False  # override to simulate undetectable
 
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    _register_provider("foo", (_OAuthNever, ApiKey))
+    monkeypatch.setenv("LLM_PROVIDERS_TEST_API_KEY", "k")
+    _register_provider("foo", (_OAuthNever, _TestApiKey))
     result = auto_resolve_auth("foo")
     assert result.kind == "api_key"
 
 
 def test_accepted_kinds_filters_out_strategies(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    _register_provider("foo", (ApiKey,))
+    monkeypatch.setenv("LLM_PROVIDERS_TEST_API_KEY", "k")
+    _register_provider("foo", (_TestApiKey,))
     with pytest.raises(AuthResolutionError) as exc:
         auto_resolve_auth("foo", accepted_kinds={"oauth2_cli_token"})
     skipped_names = {name for name, _reason in exc.value.skipped}
-    assert "ApiKey" in skipped_names
+    assert "_TestApiKey" in skipped_names
     assert any("filtered" in reason for _name, reason in exc.value.skipped)
 
 
 def test_raises_when_no_strategy_detects(monkeypatch):
-    monkeypatch.delenv("LLM_PROVIDERS_API_KEY", raising=False)
-    _register_provider("foo", (ApiKey,))
+    monkeypatch.delenv("LLM_PROVIDERS_TEST_API_KEY", raising=False)
+    _register_provider("foo", (_TestApiKey,))
     with pytest.raises(AuthResolutionError) as exc:
         auto_resolve_auth("foo")
     assert exc.value.provider == "foo"
@@ -107,7 +119,16 @@ def test_construct_failure_is_skipped_not_raised(monkeypatch):
         def default(cls):
             raise RuntimeError("construct failed")
 
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    _register_provider("foo", (_Broken, ApiKey))
+    monkeypatch.setenv("LLM_PROVIDERS_TEST_API_KEY", "k")
+    _register_provider("foo", (_Broken, _TestApiKey))
     result = auto_resolve_auth("foo")
     assert result.kind == "api_key"
+
+
+def test_base_apikey_default_raises_construct_failed(monkeypatch):
+    """Confirm the new fail-loud ApiKey.default() integrates correctly with
+    auto_resolve_auth — it records the failure and continues the walk."""
+    _register_provider("foo", (ApiKey,))
+    with pytest.raises(AuthResolutionError) as exc:
+        auto_resolve_auth("foo")
+    assert any("construct_failed" in reason for _name, reason in exc.value.skipped)

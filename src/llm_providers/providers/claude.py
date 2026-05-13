@@ -1,11 +1,17 @@
 """ClaudeProvider — wraps claude_agent_sdk."""
 
+from __future__ import annotations
+
 import json
-from collections.abc import AsyncIterator, Callable
-from typing import Any, ClassVar
+import re
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import claude_agent_sdk
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
+
+from libs.logging import get_logger
 from llm_providers.auth.api_key import ApiKey
 from llm_providers.auth.base import AuthStrategy
 from llm_providers.auth.oauth2_cli import OAuth2CliToken
@@ -26,12 +32,32 @@ from llm_providers.protocol import Capabilities, Message, ProviderOptions
 from llm_providers.registry import ProviderRegistry
 from llm_providers.tools import McpServerSpec, ToolPolicy
 
+logger = get_logger(__name__)
+
+# Regex pinned to the canonical Claude CLI rate-limit phrase. Anchored on
+# `resets` to avoid matching arbitrary text containing "reset" elsewhere.
+_RATE_LIMIT_RESET_RE = re.compile(
+    r"resets?\s+(?P<when>[A-Za-z0-9:\s\-+()]+?)(?:[.,]|$)",
+    re.IGNORECASE,
+)
+
+# Sentinel typed-exception names from claude_agent_sdk that map directly to
+# our error hierarchy. Used in preference to fragile substring matching.
+_RATE_LIMIT_EXC_NAMES = frozenset({"RateLimitError", "QuotaExceededError"})
+_AUTH_EXC_NAMES = frozenset(
+    {
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "InvalidTokenError",
+    }
+)
+
 
 class _ClaudeOAuth2CliToken(OAuth2CliToken):
     """OAuth2 token pre-wired to CLAUDE_CODE_OAUTH_TOKEN for auto-detection."""
 
     @classmethod
-    def default(cls) -> "_ClaudeOAuth2CliToken":
+    def default(cls) -> _ClaudeOAuth2CliToken:
         return cls(env_var="CLAUDE_CODE_OAUTH_TOKEN")
 
 
@@ -39,7 +65,7 @@ class _ClaudeApiKey(ApiKey):
     """ApiKey pre-wired to ANTHROPIC_API_KEY for auto-detection."""
 
     @classmethod
-    def default(cls) -> "_ClaudeApiKey":
+    def default(cls) -> _ClaudeApiKey:
         return cls(env_var="ANTHROPIC_API_KEY")
 
 
@@ -76,18 +102,22 @@ class ClaudeProvider(BaseProvider):
     def __init__(self, auth: AuthStrategy) -> None:
         super().__init__(auth)
         self._sdk = claude_agent_sdk
-        self._apply_credential()
+        # Pre-resolve the credential and stash the env-shaped overrides we'll
+        # hand to ClaudeAgentOptions(env=...). We never write to os.environ.
+        self._sdk_env: dict[str, str] = self._build_sdk_env(self._auth.resolve())
 
-    def _apply_credential(self) -> None:
-        """Inject the resolved credential into the env var the SDK reads."""
-        import os
-
-        # TOOD: change this to provide specific env vrrs per auth type
-        cred = self._auth.resolve()
+    @staticmethod
+    def _build_sdk_env(cred: Any) -> dict[str, str]:
+        """Return the per-call env override the SDK expects for this auth kind."""
         if cred.kind == "oauth2_cli_token":
-            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = cred.payload["token"]
-        elif cred.kind == "api_key":
-            os.environ["ANTHROPIC_API_KEY"] = cred.payload["api_key"]
+            return {"CLAUDE_CODE_OAUTH_TOKEN": cred.payload["token"]}
+        if cred.kind == "api_key":
+            return {"ANTHROPIC_API_KEY": cred.payload["api_key"]}
+        logger.warning(
+            "claude.unknown_credential_kind",
+            kind=getattr(cred, "kind", None),
+        )
+        return {}
 
     async def query(  # type: ignore[override,misc]
         self, prompt: str, options: ProviderOptions
@@ -96,53 +126,71 @@ class ClaudeProvider(BaseProvider):
         try:
             async for sdk_msg in self._sdk.query(prompt=prompt, options=sdk_options):
                 yield self._to_message(sdk_msg)
-        except Exception as e:  # noqa: BLE001
-            error_msg = str(e).lower()
-            original_msg = str(e)
-            # Detect rate limit from Claude CLI output
-            if "hit your limit" in error_msg or "resets" in error_msg:
-                # Try to extract reset time from message
-                import re
-
-                reset_match = re.search(
-                    r"resets?\s+([\w\s()]+)", original_msg, re.IGNORECASE
-                )
-                reset_time = reset_match.group(1) if reset_match else None
-                raise ClaudeRateLimitError(reset_time=reset_time) from e
-            # Detect auth/token issues
-            if (
-                "oauth" in error_msg
-                or "token" in error_msg
-                or "authentication" in error_msg
-            ):
-                raise ClaudeAuthError(reason=original_msg) from e
-            # Detect malformed SDK error (error result: success often indicates CLI issues)
-            if "error result: success" in original_msg.lower():
-                raise ProviderRuntimeError(
-                    provider=self.name,
-                    phase="query",
-                    message=(
-                        f"Claude CLI returned malformed error. "
-                        f"This often indicates: (1) rate limit reached, "
-                        f"(2) invalid OAuth token, or (3) Claude CLI not authenticated. "
-                        f"Run 'claude config get oauth_token' to verify. "
-                        f"Original: {original_msg}"
-                    ),
-                ) from e
-            # Generic runtime error with detailed message
-            raise ProviderRuntimeError(
-                provider=self.name,
-                phase="query",
-                message=f"Claude query failed: {original_msg}",
-            ) from e
+        except Exception as e:
+            raise self._classify_exception(e) from e
 
     def client(self, options: ProviderOptions) -> StatefulClient:
         sdk_options = self._build_native_options(options)
         try:
             sdk_client = self._sdk.ClaudeSDKClient(options=sdk_options)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            logger.error("claude.client_init_failed", error=str(e))
             raise ProviderRuntimeError(provider=self.name, phase="client_init") from e
         return _ClaudeStatefulClient(sdk_client, self._to_message)  # type: ignore[return-value]
+
+    # ---- Error classification ----------------------------------------------
+
+    def _classify_exception(self, exc: Exception) -> Exception:
+        """Map an SDK exception to the project's error hierarchy.
+
+        Prefers the SDK's typed exception name; falls back to a narrow set of
+        canonical phrases only when the type doesn't tell us enough.
+        """
+        exc_type_name = type(exc).__name__
+        original = str(exc)
+        lower = original.lower()
+
+        if exc_type_name in _RATE_LIMIT_EXC_NAMES or "hit your limit" in lower:
+            reset_match = _RATE_LIMIT_RESET_RE.search(original)
+            reset_time = reset_match.group("when").strip() if reset_match else None
+            logger.warning(
+                "claude.rate_limit",
+                exc_type=exc_type_name,
+                reset_time=reset_time,
+            )
+            return ClaudeRateLimitError(reset_time=reset_time)
+
+        if exc_type_name in _AUTH_EXC_NAMES or "oauth_token_invalid" in lower:
+            logger.warning("claude.auth_failed", exc_type=exc_type_name)
+            return ClaudeAuthError(reason=original)
+
+        if "error result: success" in lower:
+            logger.error(
+                "claude.malformed_error_result",
+                exc_type=exc_type_name,
+                original=original,
+            )
+            return ProviderRuntimeError(
+                provider=self.name,
+                phase="query",
+                message=(
+                    "Claude CLI returned malformed error. "
+                    "This often indicates: (1) rate limit reached, "
+                    "(2) invalid OAuth token, or (3) Claude CLI not authenticated. "
+                    f"Run 'claude config get oauth_token' to verify. Original: {original}"
+                ),
+            )
+
+        logger.error(
+            "claude.query_failed",
+            exc_type=exc_type_name,
+            original=original,
+        )
+        return ProviderRuntimeError(
+            provider=self.name,
+            phase="query",
+            message=f"Claude query failed: {original}",
+        )
 
     # ---- Translation hooks ---------------------------------------------------
 
@@ -150,26 +198,13 @@ class ClaudeProvider(BaseProvider):
         if isinstance(sp, TextSystemPrompt):
             return sp.text
         if isinstance(sp, SkillReference):
-            # Claude has SystemPromptFile, but for portability we read the file
-            # contents and pass as a plain string. (A future enhancement can
-            # detect SystemPromptFile availability on the SDK and prefer it.)
             return sp.path.read_text(encoding="utf-8")
         if isinstance(sp, PresetSystemPrompt):
-            # Claude's SystemPromptPreset is a TypedDict {type: "preset",
-            # preset: <id>}. We return it directly so _build_native_options
-            # can hand it to ClaudeAgentOptions(system_prompt=...) unchanged.
-            # The SDK validates preset_id against its own Literal set.
             return {"type": "preset", "preset": sp.preset_id}
         raise TranslationError(f"Unknown SystemPrompt subtype: {type(sp).__name__}")
 
     def _translate_tools(self, policy: ToolPolicy) -> dict[str, Any]:
-        # Pass-through to claude_agent_sdk's allowed_tools.
-        return {
-            "allowed_tools": list(policy.allowed),
-            # Custom tools live in extras["claude"]["custom_mcp"] if a caller
-            # wants to wire in @tool-decorated handlers. Phase A keeps the
-            # pass-through minimal; richer wiring lands when a caller needs it.
-        }
+        return {"allowed_tools": list(policy.allowed)}
 
     def _translate_mcp(self, servers: tuple[McpServerSpec, ...]) -> dict[str, Any]:
         """Translate MCP servers to Claude SDK format.
@@ -180,8 +215,6 @@ class ClaudeProvider(BaseProvider):
         out: dict[str, dict[str, Any]] = {}
         for s in servers:
             if s.transport == "http":
-                # Auto-convert HTTP to STDIO via mcp-remote proxy
-                # claude_agent_sdk only supports STDIO transport
                 if s.url is None:
                     raise TranslationError(
                         f"McpServerSpec {s.name!r}: transport='http' requires url=..."
@@ -225,6 +258,9 @@ class ClaudeProvider(BaseProvider):
             "permission_mode": options.permission_mode,
             "max_turns": options.max_turns,
             "model": options.model,
+            # Pass the credential to the SDK explicitly. The SDK forwards this
+            # to its subprocess as env overlay — no process-wide mutation.
+            "env": dict(self._sdk_env),
         }
         if mcp is not None:
             kwargs["mcp_servers"] = mcp
@@ -268,7 +304,7 @@ class _ClaudeStatefulClient:
         self._inner = sdk_client
         self._to_message = to_message
 
-    async def __aenter__(self) -> "_ClaudeStatefulClient":
+    async def __aenter__(self) -> _ClaudeStatefulClient:
         await self._inner.__aenter__()
         return self
 
@@ -276,13 +312,11 @@ class _ClaudeStatefulClient:
         await self._inner.__aexit__(*exc)
 
     async def query(self, prompt: str) -> AsyncIterator[Message]:
-        # Mirror ClaudeProvider.query's error contract — wrap SDK exceptions
-        # in ProviderRuntimeError so callers handle both one-shot and stateful
-        # paths uniformly.
         try:
             async for sdk_msg in self._inner.query(prompt):
                 yield self._to_message(sdk_msg)
         except ProviderRuntimeError:
             raise
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            logger.error("claude.client_query_failed", error=str(e))
             raise ProviderRuntimeError(provider="claude", phase="client_query") from e
