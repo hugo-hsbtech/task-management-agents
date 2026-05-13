@@ -47,18 +47,21 @@ class _SlidingWindowRateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        async with self._lock:
-            loop = asyncio.get_running_loop()
-            now = loop.time()
-            while self._timestamps and now - self._timestamps[0] >= self._window:
-                self._timestamps.popleft()
-            if len(self._timestamps) >= self._max:
-                sleep_for = self._window - (now - self._timestamps[0])
-                if sleep_for > 0:
-                    await asyncio.sleep(sleep_for)
-                if self._timestamps:
+        # Drop the lock around sleeps so concurrent waiters can re-check the
+        # window when slots age out, instead of all queuing behind one sleeper.
+        # Loops until a slot is reserved.
+        while True:
+            async with self._lock:
+                loop = asyncio.get_running_loop()
+                now = loop.time()
+                while self._timestamps and now - self._timestamps[0] >= self._window:
                     self._timestamps.popleft()
-            self._timestamps.append(asyncio.get_running_loop().time())
+                if len(self._timestamps) < self._max:
+                    self._timestamps.append(loop.time())
+                    return
+                sleep_for = self._window - (now - self._timestamps[0])
+            if sleep_for > 0:
+                await asyncio.sleep(sleep_for)
 
 
 _LINEAR_WRITE_LIMITER = _SlidingWindowRateLimiter(
@@ -336,11 +339,12 @@ class LinearPlatform(BaseModel):
                     "related_issue_id": target_id,
                     "type": relation.type,
                 }
-                await _linear_write_call(
+                raw = await _linear_write_call(
                     tools.handle_create_issue_relation,
                     relation_payload,
                     op="create_issue_relation",
                 )
+                _raise_if_error(raw, op="create_issue_relation")
 
     async def _apply_labels(
         self,
