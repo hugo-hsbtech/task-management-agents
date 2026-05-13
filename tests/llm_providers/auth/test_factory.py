@@ -1,10 +1,12 @@
 """resolve_auth — strict (provider, auth_kind) → AuthStrategy with resolved value.
 
 Exercises the full matrix:
-  - claude + oauth2_cli_token → CLAUDE_CODE_OAUTH_TOKEN
-  - claude + api_key          → ANTHROPIC_API_KEY
-  - openai + oauth2_cli_token → <codex_home>/auth.json
-  - openai + api_key          → OPENAI_API_KEY
+  - claude  + oauth2_cli_token → CLAUDE_CODE_OAUTH_TOKEN
+  - claude  + api_key          → ANTHROPIC_API_KEY
+  - openai  + oauth2_cli_token → <codex_home>/auth.json
+  - openai  + api_key          → OPENAI_API_KEY
+  - gemini  + api_key          → GEMINI_API_KEY
+  - gemini  + oauth2_adc       → OAuth2ADC()
 Plus the failure modes (missing source, unsupported combo).
 """
 
@@ -96,6 +98,33 @@ def test_openai_api_key_missing_raises(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(AuthResolutionError, match="OPENAI_API_KEY"):
         resolve_auth("openai", "api_key")
+
+
+# ---------------------------------------------------------------------------
+# Gemini
+# ---------------------------------------------------------------------------
+
+
+def test_gemini_api_key_reads_env_var(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSy-test")
+    strat = resolve_auth("gemini", "api_key")
+    assert isinstance(strat, ApiKey)
+    assert strat.resolve().payload["api_key"] == "AIzaSy-test"
+
+
+def test_gemini_api_key_missing_raises(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(AuthResolutionError, match="GEMINI_API_KEY"):
+        resolve_auth("gemini", "api_key")
+
+
+def test_gemini_oauth2_adc_returns_strategy():
+    from llm_providers.auth.oauth2_adc import OAuth2ADC
+
+    strat = resolve_auth("gemini", "oauth2_adc")
+    assert isinstance(strat, OAuth2ADC)
+    cred = strat.resolve()
+    assert cred.kind == "oauth2_adc"
 
 
 # ---------------------------------------------------------------------------

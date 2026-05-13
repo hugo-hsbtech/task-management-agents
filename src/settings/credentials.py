@@ -26,3 +26,7 @@ class CredentialsSettings(BaseSettings):
         default=None,
         validation_alias="OPENAI_API_KEY",
     )
+    gemini_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="GEMINI_API_KEY",
+    )
