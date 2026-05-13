@@ -17,6 +17,7 @@ from settings import (
     ApiKeyAuth,
     OAuth2ADCAuth,
     OAuth2CliAuth,
+    ProviderName,
     ProviderSettings,
     settings,
 )
@@ -161,7 +162,13 @@ def build_provider(provider_settings: ProviderSettings | None = None) -> BasePro
 
     provider_settings = provider_settings or settings.provider
     auth = _auth_from_settings(provider_settings)
-    return ProviderRegistry.build(provider_settings.name.value, auth=auth)
+    # Codex is the OAuth2 backend of OpenAIProvider; map at the registry boundary.
+    registry_name = (
+        "openai"
+        if provider_settings.name == ProviderName.codex
+        else provider_settings.name.value
+    )
+    return ProviderRegistry.build(registry_name, auth=auth)
 
 
 async def run_backlog_agent_async(

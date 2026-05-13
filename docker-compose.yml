@@ -24,6 +24,7 @@ services:
       - hsb-mcp-auth:/root/.mcp-auth
       - hsb-gh-auth:/root/.config/gh
       - hsb-claude-state:/app/.claude/projects
+      - hsb-codex-auth:/root/.codex
     stdin_open: true
     tty: true
     command: ["python", "run_loop.py"]
@@ -32,3 +33,4 @@ volumes:
   hsb-mcp-auth:
   hsb-gh-auth:
   hsb-claude-state:
+  hsb-codex-auth:

@@ -1,11 +1,14 @@
 """Tests for settings.provider — ProviderSettings validators and helpers."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from settings.provider import (
     ApiKeyAuth,
     ClaudeConfig,
+    CodexModel,
     GeminiConfig,
     OAuth2ADCAuth,
     OAuth2CliAuth,
@@ -174,3 +177,51 @@ def test_is_gemini_true():
     assert ps.is_gemini() is True
     assert ps.is_claude() is False
     assert ps.is_openai() is False
+
+
+# ── CodexModel and ProviderName.codex ────────────────────────────────────────
+
+
+def test_codex_model_enum_values():
+    assert CodexModel.codex_mini_latest == "gpt-5.4-mini"
+    assert CodexModel.gpt_5_5 == "gpt-5.5"
+    assert CodexModel.o4_mini == "o4-mini"
+
+
+def test_codex_provider_name_enum():
+    assert ProviderName.codex == "codex"
+
+
+def test_codex_model_accepted():
+    ps = ProviderSettings(
+        name=ProviderName.codex,
+        model=CodexModel.codex_mini_latest,
+        auth=OAuth2CliAuth(token_path=Path.home() / ".codex" / "auth.json"),
+    )
+    assert ps.model == "gpt-5.4-mini"
+    assert ps.is_codex() is True
+    assert ps.is_claude() is False
+    assert ps.is_openai() is False
+
+
+def test_codex_rejects_api_key_auth():
+    with pytest.raises(ValidationError, match="codex requires oauth2_cli auth"):
+        ProviderSettings(
+            name=ProviderName.codex,
+            model=CodexModel.o4_mini,
+            auth=ApiKeyAuth(key="sk-test"),
+        )
+
+
+def test_codex_invalid_model_raises():
+    with pytest.raises(ValidationError, match="not valid for provider"):
+        ProviderSettings(
+            name=ProviderName.codex,
+            model="gpt-4o",
+            auth=OAuth2CliAuth(token_path=Path.home() / ".codex" / "auth.json"),
+        )
+
+
+def test_is_codex_false_for_others():
+    ps = ProviderSettings()  # defaults to claude
+    assert ps.is_codex() is False

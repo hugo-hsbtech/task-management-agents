@@ -29,10 +29,26 @@ class GeminiModel(StrEnum):
     gemini_2_0_flash = "gemini-2.0-flash"
 
 
+class CodexModel(StrEnum):
+    # ChatGPT-Codex-supported slugs. The legacy `codex-mini-latest` /
+    # `o4-mini` slugs are API-key-only and rejected by ChatGPT OAuth seats —
+    # this project mandates OAuth, so the enum exposes only ChatGPT-supported
+    # models. The Python identifier `codex_mini_latest` is kept for source
+    # compatibility but now points at the ChatGPT-Codex mini variant.
+    codex_mini_latest = "gpt-5.4-mini"
+    # Flagship ChatGPT-Codex model — "strongest agentic coding model"
+    # (per codex CLI v0.130 release notes). Use for high-quality structured
+    # output where the mini variant under-performs.
+    gpt_5_5 = "gpt-5.5"
+    # Intentionally mirrors OpenAIModel.o4_mini — both backends can target this model.
+    o4_mini = "o4-mini"
+
+
 class ProviderName(StrEnum):
     claude = "claude"
     openai = "openai"
     gemini = "gemini"
+    codex = "codex"
 
 
 # ============================================================================
@@ -146,6 +162,7 @@ class ProviderSettings(BaseModel):
         valid: dict[ProviderName, type[StrEnum]] = {
             ProviderName.claude: ClaudeModel,
             ProviderName.openai: OpenAIModel,
+            ProviderName.codex: CodexModel,
             ProviderName.gemini: GeminiModel,
         }
         allowed = set(valid[self.name])
@@ -174,6 +191,14 @@ class ProviderSettings(BaseModel):
                 f"openai config only valid when name='openai', got {self.name!r}"
             )
 
+        # Codex check must precede the ADC check below — codex+ADC should
+        # fail with the codex-specific message, not the gemini-only message.
+        if self.name == ProviderName.codex and self.auth.kind != "oauth2_cli":
+            raise ValueError(
+                f"codex requires oauth2_cli auth (got {self.auth.kind!r}). "
+                "Run: codex login --device-auth"
+            )
+
         # ADC auth requires Gemini + project_id
         if self.auth.kind == "oauth2_adc":
             if self.name != ProviderName.gemini:
@@ -191,3 +216,6 @@ class ProviderSettings(BaseModel):
 
     def is_gemini(self) -> bool:
         return self.name == ProviderName.gemini
+
+    def is_codex(self) -> bool:
+        return self.name == ProviderName.codex
