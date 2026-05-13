@@ -27,9 +27,9 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Codex CLI: install from npm so `codex login` is available inside the
-# container (selectable backend for backlog agent — see src/llm_providers
-# /providers/openai.py::_CodexBackend).
+# Codex CLI: install from npm so `codex login --device-auth` is available
+# inside the container (selectable backend for backlog agent — see
+# src/llm_providers/providers/openai.py::_CodexBackend).
 RUN npm install -g @openai/codex \
     && codex --version
 

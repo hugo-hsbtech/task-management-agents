@@ -10,7 +10,9 @@
 #     if missing — does NOT install globally without consent.
 #   - Creates ~/.codex/config.toml with forced_login_method = "chatgpt"
 #     IF MISSING. Existing config.toml is preserved.
-#   - Runs `codex login` which writes ~/.codex/auth.json on success.
+#   - Runs `codex login --device-auth` which writes ~/.codex/auth.json on
+#     success. Device-auth flow prints a URL + short code instead of using
+#     a localhost OAuth callback — works on headless / remote / SSH hosts.
 #
 # CODEX_HOME override is respected (the same env var is honoured by
 # src/llm_providers/providers/_codex_config.py).
@@ -43,16 +45,12 @@ fi
 ok "codex binary found: $(command -v codex) ($(codex --version 2>/dev/null || echo 'version unknown'))"
 say ""
 
-if [[ -f "$AUTH_FILE" ]]; then
-  info "Existing auth.json found at $AUTH_FILE."
-  info "Skipping login — Codex is already authenticated."
-  say ""
-  say "  → To force a fresh auth: rm '$AUTH_FILE' then re-run."
-  exit 0
-fi
-
 mkdir -p "$CODEX_HOME"
 
+# Seed config.toml UNCONDITIONALLY (idempotent: only writes if missing).
+# This MUST run before the auth.json early-exit below so a partially
+# initialised CODEX_HOME — auth.json present, config.toml missing — heals
+# on re-run. assert_codex_oauth_only() requires both files to exist.
 if [[ -f "$CONFIG_FILE" ]]; then
   info "config.toml already exists at $CONFIG_FILE — left untouched."
   if ! grep -qE '^forced_login_method\s*=\s*"chatgpt"' "$CONFIG_FILE"; then
@@ -70,15 +68,25 @@ TOML
 fi
 say ""
 
-info "Starting codex login..."
+# Now check whether login is already done.
+if [[ -f "$AUTH_FILE" ]]; then
+  info "Existing auth.json found at $AUTH_FILE."
+  info "Skipping login — Codex is already authenticated."
+  say ""
+  say "  → To force a fresh auth: rm '$AUTH_FILE' then re-run."
+  exit 0
+fi
+
+info "Starting codex login (device-auth flow)..."
 say ""
 say "──────────────────────────────────────────────────────────────────────"
-say "  codex will print an OAuth URL. Open it in any browser, sign in to"
-say "  ChatGPT, and approve."
+say "  codex will print a verification URL and a short code."
+say "  Open the URL on ANY device with a browser, enter the code, sign in"
+say "  to ChatGPT, and approve. No localhost callback is used."
 say "──────────────────────────────────────────────────────────────────────"
 say ""
 
-if codex login; then
+if codex login --device-auth; then
   say ""
   ok "codex login completed."
 else
@@ -91,7 +99,7 @@ if [[ -f "$AUTH_FILE" ]]; then
   ok "Authenticated. auth.json at $AUTH_FILE."
   say ""
   say "  → You can now run live Codex tests:"
-  say "      HSB_RUN_CODEX_INTEGRATION=1 uv run pytest tests/integration/backlog/test_backlog_agent_codex.py -v"
+  say "      HSB_RUN_INTEGRATION=1 uv run pytest tests/integration/backlog/test_backlog_agent_codex.py -v"
 else
   fail "auth.json missing after login. Re-run ./scripts/auth-codex-host.sh."
   exit 1

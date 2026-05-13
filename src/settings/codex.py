@@ -18,9 +18,9 @@ class CodexSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="CODEX_")
 
-    # Default matches the container's root-user home — what `codex login`
-    # writes to inside the project's Docker image. Override on host
-    # development with CODEX_HOME=$HOME/.codex.
+    # Default matches the container's root-user home — what
+    # `codex login --device-auth` writes to inside the project's Docker
+    # image. Override on host development with CODEX_HOME=$HOME/.codex.
     home: Path = Path("/root/.codex")
 
     # No default — when unset, `runtime/codex.py` uses the PATH lookup
