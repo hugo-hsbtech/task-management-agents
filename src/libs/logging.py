@@ -39,7 +39,8 @@ def configure(
 
     Routing through stdlib lets ``pytest``'s ``caplog`` fixture, third-party
     handler chains, and any external observability tooling see every record
-    via the same well-known interface. Safe to call multiple times.
+    via the same well-known interface. Safe to call multiple times; subsequent
+    calls reconfigure the handlers (idempotent).
     """
     global _configured
 

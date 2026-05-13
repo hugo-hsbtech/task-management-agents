@@ -9,6 +9,14 @@ fail fast with a message naming the env var or file the operator must set.
 This replaces the prior env-var-name plumbing on ``ApiKey`` and
 ``OAuth2CliToken`` — strategies are now pure value holders, and there is
 exactly one place that touches the environment.
+
+Design rationale: Walk-and-detect (try each strategy's detect() until one
+succeeds) was replaced with explicit (provider, auth_kind) mapping because:
+  - Reduces ambiguity: no "which strategy wins if multiple detect()" cases
+  - Improves error messages: tells the operator exactly what env var is missing
+  - Enables priority order: OAuth2 first (matches G1 policy), API-key fallback
+  - Simplifies testing: no dynamic strategy selection to mock
+  - Centralizes env access: a single factory function is the only env reader
 """
 
 from __future__ import annotations
@@ -73,7 +81,7 @@ def resolve_auth(provider_name: str, auth_kind: str) -> AuthStrategy:
             tok = creds.claude_code_oauth_token
             if tok is None:
                 raise AuthResolutionError(
-                    "Claude OAuth2 requires CLAUDE_CODE_OAUTH_TOKEN to be set. "
+                    "Claude OAuth2 token auth requires CLAUDE_CODE_OAUTH_TOKEN to be set. "
                     "Run `claude setup-token` to obtain one."
                 )
             return OAuth2CliToken(token=tok.get_secret_value())
@@ -81,7 +89,7 @@ def resolve_auth(provider_name: str, auth_kind: str) -> AuthStrategy:
             key = creds.anthropic_api_key
             if key is None:
                 raise AuthResolutionError(
-                    "Claude api_key auth requires ANTHROPIC_API_KEY to be set."
+                    "Claude API-key auth requires ANTHROPIC_API_KEY to be set."
                 )
             return ApiKey(api_key=key.get_secret_value())
 
