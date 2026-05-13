@@ -206,9 +206,25 @@ class _VertexAIBackend(_Backend):
     capabilities = _VERTEX_CAPS
 
     def __init__(self, cred: Credential) -> None:
+        import os
+
         from google import genai  # lazy import
 
-        self._project = cred.payload.get("project_id")
+        self._project = (
+            cred.payload.get("project_id")
+            or os.environ.get("GOOGLE_CLOUD_PROJECT")
+            or os.environ.get("GCLOUD_PROJECT")
+        )
+        if not self._project:
+            raise ProviderRuntimeError(
+                provider="gemini",
+                phase="init",
+                detail=(
+                    "Vertex AI backend requires a GCP project ID. "
+                    "Set GOOGLE_CLOUD_PROJECT env var or pass project_id "
+                    "via OAuth2ADC(project_id='...')."
+                ),
+            )
         self._client = genai.Client(
             vertexai=True,
             project=self._project,
