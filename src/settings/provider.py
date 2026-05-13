@@ -182,6 +182,8 @@ class ProviderSettings(BaseModel):
                 f"openai config only valid when name='openai', got {self.name!r}"
             )
 
+        # Codex check must precede the ADC check below — codex+ADC should
+        # fail with the codex-specific message, not the gemini-only message.
         if self.name == ProviderName.codex and self.auth.kind != "oauth2_cli":
             raise ValueError(
                 f"codex requires oauth2_cli auth (got {self.auth.kind!r}). "

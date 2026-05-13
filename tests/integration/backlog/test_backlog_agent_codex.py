@@ -37,12 +37,15 @@ REAL_WORLD_PLAN = (
 ).read_text(encoding="utf-8")
 
 
+def _codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+
+
 def _codex_provider_settings() -> ProviderSettings:
-    codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
     return ProviderSettings(
         name=ProviderName.codex,
         model=CodexModel.codex_mini_latest,
-        auth=OAuth2CliAuth(token_path=codex_home / "auth.json"),
+        auth=OAuth2CliAuth(token_path=_codex_home() / "auth.json"),
     )
 
 
@@ -50,9 +53,7 @@ def test_codex_generates_realistic_backlog_for_product_plan(capsys) -> None:
     if not os.environ.get("HSB_RUN_CODEX_INTEGRATION"):
         pytest.skip("HSB_RUN_CODEX_INTEGRATION env var must be set to run this test")
 
-    auth_path = Path(
-        os.environ.get("CODEX_HOME", Path.home() / ".codex")
-    ) / "auth.json"
+    auth_path = _codex_home() / "auth.json"
     if not auth_path.exists():
         pytest.skip(f"Codex not authenticated: {auth_path} missing. Run: codex login --device-auth")
 
