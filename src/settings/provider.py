@@ -29,10 +29,16 @@ class GeminiModel(StrEnum):
     gemini_2_0_flash = "gemini-2.0-flash"
 
 
+class CodexModel(StrEnum):
+    codex_mini_latest = "codex-mini-latest"
+    o4_mini = "o4-mini"
+
+
 class ProviderName(StrEnum):
     claude = "claude"
     openai = "openai"
     gemini = "gemini"
+    codex = "codex"
 
 
 # ============================================================================
@@ -146,6 +152,7 @@ class ProviderSettings(BaseModel):
         valid: dict[ProviderName, type[StrEnum]] = {
             ProviderName.claude: ClaudeModel,
             ProviderName.openai: OpenAIModel,
+            ProviderName.codex: CodexModel,
             ProviderName.gemini: GeminiModel,
         }
         allowed = set(valid[self.name])
@@ -174,6 +181,12 @@ class ProviderSettings(BaseModel):
                 f"openai config only valid when name='openai', got {self.name!r}"
             )
 
+        if self.name == ProviderName.codex and self.auth.kind != "oauth2_cli":
+            raise ValueError(
+                f"codex requires oauth2_cli auth (got {self.auth.kind!r}). "
+                "Run: codex login --device-auth"
+            )
+
         # ADC auth requires Gemini + project_id
         if self.auth.kind == "oauth2_adc":
             if self.name != ProviderName.gemini:
@@ -191,3 +204,6 @@ class ProviderSettings(BaseModel):
 
     def is_gemini(self) -> bool:
         return self.name == ProviderName.gemini
+
+    def is_codex(self) -> bool:
+        return self.name == ProviderName.codex

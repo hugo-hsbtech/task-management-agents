@@ -174,3 +174,60 @@ def test_is_gemini_true():
     assert ps.is_gemini() is True
     assert ps.is_claude() is False
     assert ps.is_openai() is False
+
+
+# ── CodexModel and ProviderName.codex ────────────────────────────────────────
+
+
+def test_codex_model_enum_values():
+    from settings.provider import CodexModel
+
+    assert CodexModel.codex_mini_latest == "codex-mini-latest"
+    assert CodexModel.o4_mini == "o4-mini"
+
+
+def test_codex_provider_name_enum():
+    assert ProviderName.codex == "codex"
+
+
+def test_codex_model_accepted():
+    from pathlib import Path
+
+    from settings.provider import CodexModel
+
+    ps = ProviderSettings(
+        name=ProviderName.codex,
+        model=CodexModel.codex_mini_latest,
+        auth=OAuth2CliAuth(token_path=Path.home() / ".codex" / "auth.json"),
+    )
+    assert ps.model == "codex-mini-latest"
+    assert ps.is_codex() is True
+    assert ps.is_claude() is False
+    assert ps.is_openai() is False
+
+
+def test_codex_rejects_api_key_auth():
+    from settings.provider import CodexModel
+
+    with pytest.raises(ValidationError, match="codex requires oauth2_cli auth"):
+        ProviderSettings(
+            name=ProviderName.codex,
+            model=CodexModel.o4_mini,
+            auth=ApiKeyAuth(key="sk-test"),
+        )
+
+
+def test_codex_invalid_model_raises():
+    from pathlib import Path
+
+    with pytest.raises(ValidationError, match="not valid for provider"):
+        ProviderSettings(
+            name=ProviderName.codex,
+            model="gpt-4o",
+            auth=OAuth2CliAuth(token_path=Path.home() / ".codex" / "auth.json"),
+        )
+
+
+def test_is_codex_false_for_others():
+    ps = ProviderSettings()  # defaults to claude
+    assert ps.is_codex() is False
