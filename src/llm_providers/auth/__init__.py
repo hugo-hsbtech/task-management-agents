@@ -7,6 +7,7 @@ time. The registry is therefore populated as a side effect of this import.
 
 from llm_providers.auth.api_key import ApiKey
 from llm_providers.auth.base import AuthStrategy, Credential
+from llm_providers.auth.oauth2_adc import OAuth2ADC
 from llm_providers.auth.oauth2_cli import OAuth2CliToken
 
-__all__ = ["ApiKey", "AuthStrategy", "Credential", "OAuth2CliToken"]
+__all__ = ["ApiKey", "AuthStrategy", "Credential", "OAuth2ADC", "OAuth2CliToken"]

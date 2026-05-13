@@ -24,6 +24,8 @@ class OpenAIModel(StrEnum):
 
 
 class GeminiModel(StrEnum):
+    gemini_3_1_pro = "gemini-3.1-pro"
+    gemini_3_1_flash = "gemini-3.1-flash"
     gemini_2_5_pro = "gemini-2.5-pro"
     gemini_2_5_flash = "gemini-2.5-flash"
     gemini_2_5_flash_lite = "gemini-2.5-flash-lite"

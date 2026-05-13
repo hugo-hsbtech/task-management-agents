@@ -32,6 +32,7 @@ def _ensure_providers_registered():
 
     for mod_name in (
         "llm_providers.providers.claude",
+        "llm_providers.providers.gemini",
         "llm_providers.providers.openai",
     ):
         if mod_name not in sys.modules:
@@ -53,7 +54,7 @@ def provider_cls(request):
     return ProviderRegistry.get(request.param)
 
 
-@pytest.mark.parametrize("name", ["claude", "openai"])
+@pytest.mark.parametrize("name", ["claude", "gemini", "openai"])
 class TestProviderConformance:
     """Run the same assertions against every registered provider."""
 
@@ -136,9 +137,10 @@ class TestProviderConformance:
                     )
 
 
-def test_provider_registry_has_at_least_claude_and_openai():
+def test_provider_registry_has_at_least_claude_openai_and_gemini():
     import llm_providers  # noqa: F401
 
     names = ProviderRegistry.names()
     assert "claude" in names
     assert "openai" in names
+    assert "gemini" in names

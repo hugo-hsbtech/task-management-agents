@@ -65,6 +65,8 @@ def resolve_auth(provider_name: str, auth_kind: str) -> AuthStrategy:
     ``claude``   ``api_key``             ``ANTHROPIC_API_KEY`` env var
     ``openai``   ``oauth2_cli_token``    ``<settings.codex.home>/auth.json``
     ``openai``   ``api_key``             ``OPENAI_API_KEY`` env var
+    ``gemini``   ``api_key``             ``GEMINI_API_KEY`` env var
+    ``gemini``   ``oauth2_adc``          Google ADC (gcloud / ``GOOGLE_APPLICATION_CREDENTIALS``)
     ===========  ======================  ===========================================
     """
     # Lazy import so this module stays cheap to import when only the
@@ -111,6 +113,20 @@ def resolve_auth(provider_name: str, auth_kind: str) -> AuthStrategy:
                     "OpenAI api_key auth requires OPENAI_API_KEY to be set."
                 )
             return ApiKey(api_key=key.get_secret_value())
+
+    if provider_name == "gemini":
+        if auth_kind == "api_key":
+            key = creds.gemini_api_key
+            if key is None:
+                raise AuthResolutionError(
+                    "Gemini api_key auth requires GEMINI_API_KEY to be set. "
+                    "Get one at https://aistudio.google.com/apikey"
+                )
+            return ApiKey(api_key=key.get_secret_value())
+        if auth_kind == "oauth2_adc":
+            from llm_providers.auth.oauth2_adc import OAuth2ADC
+
+            return OAuth2ADC()
 
     raise AuthResolutionError(
         f"Unsupported (provider, auth_kind) combination: "
