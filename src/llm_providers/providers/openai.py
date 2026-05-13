@@ -311,7 +311,16 @@ class _CodexBackend(_Backend):
                 approval_policy=approval,
                 working_directory=options.cwd,
             )
-            turn_options = self._sdk.TurnOptions(output_schema=options.output_schema)
+            # OpenAI's structured-output strict mode rejects
+            # `additionalProperties: <schema>` (only `false` is allowed), which
+            # is incompatible with the free-form `dict[str, str]` fields on the
+            # current backlog contract (`platform_fields`, `context`). Server-
+            # side strict validation is intentionally disabled here — we mirror
+            # the Claude path and rely on the agent's client-side validate-and-
+            # retry loop (see BacklogAgent.run in src/backlog/agent.py,
+            # MAX_VALIDATION_RETRIES). Revisit if free-form dicts are ever
+            # refactored out of the contract.
+            turn_options = self._sdk.TurnOptions(output_schema=None)
 
             codex_opts = self._build_codex_options()
             codex = (

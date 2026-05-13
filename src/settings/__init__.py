@@ -30,10 +30,12 @@ from settings.provider import (
     ApiKeyAuth,
     AuthConfig,
     ClaudeConfig,
+    CodexModel,
     GeminiConfig,
     OAuth2ADCAuth,
     OAuth2CliAuth,
     OpenAIConfig,
+    ProviderName,
     ProviderSettings,
 )
 from settings.runtime import (
@@ -101,6 +103,7 @@ __all__ = [
     "ApiKeyAuth",
     "AuthConfig",
     "ClaudeConfig",
+    "CodexModel",
     "CodexSettings",
     "GeminiConfig",
     "GitHubSettings",
@@ -109,6 +112,7 @@ __all__ = [
     "OAuth2CliAuth",
     "OpenAIConfig",
     "OrchestratorSettings",
+    "ProviderName",
     "ProviderSettings",
     "RuntimeSettings",
     "TestFixtureSettings",

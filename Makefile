@@ -54,6 +54,10 @@ auth-linear: ## Linear OAuth (persists per HSB_PROJECT in named volume)
 auth-github: ## GitHub gh auth login (persists per HSB_PROJECT in named volume)
 	@./scripts/auth-github.sh
 
+.PHONY: auth-codex
+auth-codex: ## Codex CLI login (persists per HSB_PROJECT in named volume)
+	@./scripts/auth-codex.sh
+
 .PHONY: kill-stale
 kill-stale: ## Remove any lingering hsb-agents containers
 	@./scripts/kill-stale.sh

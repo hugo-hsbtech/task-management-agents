@@ -61,3 +61,9 @@ def test_g1_helpers_reexported():
 
     assert FORBIDDEN_API_KEY_VARS is Original_Const
     assert assert_oauth2_only is Original_Fn
+
+
+def test_codex_model_reexported():
+    from settings import CodexModel  # noqa: F401 — import check
+
+    assert CodexModel.codex_mini_latest == "gpt-5.4-mini"
