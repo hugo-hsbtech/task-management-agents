@@ -492,10 +492,7 @@ def test_post_project_update_logs_on_failure(
     # The cause must surface — either as the stdlib record's ``exc_info``
     # attribute (when the bridge keeps it) or as the rendered event dict
     # carrying ``exc_info=True`` (when structlog packages it into the dict).
-    assert any(
-        r.exc_info is not None or "exc_info" in r.getMessage()
-        for r in matched
-    )
+    assert any(r.exc_info is not None or "exc_info" in r.getMessage() for r in matched)
 
 
 # -----------------------------------------------------------------------------

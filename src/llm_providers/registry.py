@@ -50,7 +50,7 @@ class ProviderRegistry:
                     "Both sources of truth must match."
                 )
             cls._providers[name] = provider_cls
-            logger.debug("Registered provider %r → %s", name, provider_cls.__name__)
+            logger.debug("provider.registered", name=name, cls=provider_cls.__name__)
             return provider_cls
 
         return decorator
@@ -137,9 +137,7 @@ class AuthRegistry:
                     "Both sources of truth must match."
                 )
             cls._strategies[kind] = strat_cls
-            logger.debug(
-                "auth.strategy_registered", kind=kind, cls=strat_cls.__name__
-            )
+            logger.debug("auth.strategy_registered", kind=kind, cls=strat_cls.__name__)
             return strat_cls
 
         return decorator

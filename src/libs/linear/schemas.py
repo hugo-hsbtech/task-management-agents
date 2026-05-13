@@ -226,7 +226,9 @@ class Project(BaseModel):
 
         try:
             linear_teams = linear_project.teams or []
-        except Exception as e:  # pragma: no cover - SDK lazy-fetch can raise on null teams
+        except (
+            Exception
+        ) as e:  # pragma: no cover - SDK lazy-fetch can raise on null teams
             logger.warning(
                 "linear.project_teams_lazy_fetch_failed",
                 project_id=getattr(linear_project, "id", None),

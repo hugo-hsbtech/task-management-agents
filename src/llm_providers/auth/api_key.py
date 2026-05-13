@@ -45,13 +45,20 @@ class ApiKey(AuthStrategy):
             raise ValueError("ApiKey requires either api_key= or env_var=")
         self._api_key = api_key or ""
         self._env_var = env_var
-        self._source = source if api_key else f"env:{env_var}"
+        # `is not None` (not truthiness): an explicit empty string is a real
+        # caller-supplied value — surface it as such rather than silently
+        # falling back to the env-var source label, which would mask a
+        # misconfiguration.
+        self._source = source if api_key is not None else f"env:{env_var}"
 
     def detect(self) -> bool:
-        """True when the key is available (explicit) or the env var is set."""
+        """True when a usable key is available (explicit non-empty) or the env
+        var is set."""
         if self._env_var:
             return bool(read_env(self._env_var))
-        return True
+        # Explicit empty string is treated as a misconfiguration, not as
+        # "available" — keeps detect()/resolve() symmetric.
+        return bool(self._api_key)
 
     def resolve(self) -> Credential:
         if self._env_var:
@@ -66,6 +73,8 @@ class ApiKey(AuthStrategy):
                     "env_var": self._env_var,
                 },
             )
+        if not self._api_key:
+            raise AuthDetectionFailed("ApiKey constructed with an empty api_key value.")
         return Credential(
             kind="api_key",
             payload={"api_key": self._api_key, "source": self._source},
