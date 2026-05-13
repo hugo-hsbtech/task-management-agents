@@ -6,7 +6,7 @@ Requires:
   - LINEAR_API_KEY, LINEAR_TEAM_ID, LINEAR_PROJECT_ID set
 
 Run with:
-    HSB_RUN_CODEX_INTEGRATION=1 \\
+    HSB_RUN_INTEGRATION=1 \\
         uv run pytest tests/integration/backlog/test_backlog_agent_codex.py -q
 """
 
@@ -44,15 +44,12 @@ def _codex_home() -> Path:
 def _codex_provider_settings() -> ProviderSettings:
     return ProviderSettings(
         name=ProviderName.codex,
-        model=CodexModel.codex_mini_latest,
+        model=CodexModel.gpt_5_5,
         auth=OAuth2CliAuth(token_path=_codex_home() / "auth.json"),
     )
 
 
 def test_codex_generates_realistic_backlog_for_product_plan(capsys) -> None:
-    if not os.environ.get("HSB_RUN_CODEX_INTEGRATION"):
-        pytest.skip("HSB_RUN_CODEX_INTEGRATION env var must be set to run this test")
-
     auth_path = _codex_home() / "auth.json"
     if not auth_path.exists():
         pytest.skip(
@@ -119,5 +116,5 @@ def test_codex_generates_realistic_backlog_for_product_plan(capsys) -> None:
         assert issue.fields.platform_fields["project_id"] == linear_settings.project_id
 
     assert len(results) == len(output.issues)
-    assert {result["action"] for result in results} <= {"create", "reuse", "update"}
-    assert any(result["action"] in {"create", "reuse"} for result in results)
+    assert {result.action for result in results} <= {"create", "reuse", "update"}
+    assert any(result.action in {"create", "reuse"} for result in results)

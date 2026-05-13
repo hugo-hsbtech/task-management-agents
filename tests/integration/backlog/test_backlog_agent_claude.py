@@ -96,5 +96,5 @@ def test_claude_generates_realistic_backlog_for_product_plan(capsys) -> None:
         assert issue.fields.platform_fields["project_id"] == linear_settings.project_id
 
     assert len(results) == len(output.issues)
-    assert {result["action"] for result in results} <= {"create", "reuse", "update"}
-    assert any(result["action"] in {"create", "reuse"} for result in results)
+    assert {result.action for result in results} <= {"create", "reuse", "update"}
+    assert any(result.action in {"create", "reuse"} for result in results)
