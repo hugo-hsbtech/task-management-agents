@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
@@ -12,19 +13,135 @@ from llm_providers.tools import ToolPolicy
 from tools.linear import LinearTools
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from backlog.contracts import BacklogOutput, IssuePlan
 
 
-# Linear's per-user rate limit (~1500 req/hour) is enforced with burst
-# tolerance; over-bursts surface from `linear_api` as opaque GraphQL
-# "Argument Validation Error" rather than a clean HTTP 429. Pacing every
-# write keeps a typical backlog (~50 issues × create + parent + relations)
-# safely under the burst threshold without hand-coded 429 retry logic.
-LINEAR_WRITE_THROTTLE_SECONDS = 0.4
+# Linear's per-user rate limit (~1500 req/hour personal API key) is enforced
+# with burst tolerance; over-bursts surface from `linear_api` as opaque
+# GraphQL "Argument Validation Error" rather than a clean HTTP 429. We pace
+# writes with a sliding-window limiter (max requests per window seconds) AND
+# retry transient errors with exponential backoff. The window is intentionally
+# conservative vs Linear's published limit to leave headroom for any other
+# Linear traffic running off the same API key.
+LINEAR_WRITE_MAX_REQUESTS_PER_WINDOW: int = 20
+LINEAR_WRITE_WINDOW_SECONDS: float = 60.0
+LINEAR_WRITE_MAX_ATTEMPTS: int = 4
+LINEAR_WRITE_BACKOFF_BASE_SECONDS: float = 1.0
+LINEAR_WRITE_BACKOFF_MAX_SECONDS: float = 16.0
 
 
-async def _throttle() -> None:
-    await asyncio.sleep(LINEAR_WRITE_THROTTLE_SECONDS)
+class _SlidingWindowRateLimiter:
+    """Allow at most ``max_calls`` events per rolling ``window_seconds``.
+
+    Single-process, asyncio-only. Multiple coroutines may share one instance;
+    the internal lock serialises window arithmetic. When the window is full,
+    the next caller sleeps until the oldest recorded call falls out.
+    """
+
+    def __init__(self, max_calls: int, window_seconds: float) -> None:
+        self._max = max_calls
+        self._window = window_seconds
+        self._timestamps: deque[float] = deque()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            while self._timestamps and now - self._timestamps[0] >= self._window:
+                self._timestamps.popleft()
+            if len(self._timestamps) >= self._max:
+                sleep_for = self._window - (now - self._timestamps[0])
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
+                if self._timestamps:
+                    self._timestamps.popleft()
+            self._timestamps.append(asyncio.get_running_loop().time())
+
+
+_LINEAR_WRITE_LIMITER = _SlidingWindowRateLimiter(
+    max_calls=LINEAR_WRITE_MAX_REQUESTS_PER_WINDOW,
+    window_seconds=LINEAR_WRITE_WINDOW_SECONDS,
+)
+
+
+# Substrings that mark Linear/Cloudflare responses we should retry.
+# Matched case-insensitively against the stringified exception or error
+# envelope message. The "argument validation error" pattern is included
+# because Linear's GraphQL gateway returns it under burst conditions where
+# a clean 429 would be more informative.
+_TRANSIENT_LINEAR_ERROR_TOKENS = (
+    "argument validation error",
+    "bad gateway",
+    "service unavailable",
+    "gateway timeout",
+    "rate limit",
+    "too many requests",
+    "timeout",
+    "502",
+    "503",
+    "504",
+    "429",
+)
+
+
+def _is_transient_linear_error(text: str) -> bool:
+    lowered = text.lower()
+    return any(token in lowered for token in _TRANSIENT_LINEAR_ERROR_TOKENS)
+
+
+def _backoff_seconds(attempt: int) -> float:
+    raw: float = LINEAR_WRITE_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+    return raw if raw < LINEAR_WRITE_BACKOFF_MAX_SECONDS else LINEAR_WRITE_BACKOFF_MAX_SECONDS
+
+
+async def _linear_write_call(
+    method: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+    payload: dict[str, Any],
+    *,
+    op: str,  # noqa: ARG001 — reserved for future logging / metrics
+) -> dict[str, Any]:
+    """Rate-limit + retry-on-transient wrapper for Linear writes.
+
+    Each attempt acquires a slot from the global sliding-window limiter (so
+    retries pay the throttle too), then invokes ``method(payload)``. Transient
+    failures — raised exceptions whose stringification matches a known token,
+    or error-envelope dicts whose ``"error"`` value matches — trigger
+    exponential backoff (1s, 2s, 4s, 8s; capped at 16s) up to
+    ``LINEAR_WRITE_MAX_ATTEMPTS``. Non-transient failures and final-attempt
+    failures are re-raised / returned unchanged for the caller to surface.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(1, LINEAR_WRITE_MAX_ATTEMPTS + 1):
+        await _LINEAR_WRITE_LIMITER.acquire()
+        try:
+            raw = await method(payload)
+        except Exception as exc:  # noqa: BLE001 — bubble unless transient
+            if attempt >= LINEAR_WRITE_MAX_ATTEMPTS or not _is_transient_linear_error(
+                str(exc)
+            ):
+                raise
+            last_exc = exc
+            await asyncio.sleep(_backoff_seconds(attempt))
+            continue
+
+        # Tool handlers may return an error envelope instead of raising —
+        # inspect and retry if the message looks transient.
+        if (
+            isinstance(raw, dict)
+            and "error" in raw
+            and attempt < LINEAR_WRITE_MAX_ATTEMPTS
+            and _is_transient_linear_error(str(raw.get("error", "")))
+        ):
+            await asyncio.sleep(_backoff_seconds(attempt))
+            continue
+        return raw
+
+    # All attempts exhausted with raised exceptions — re-raise the last.
+    assert last_exc is not None
+    raise last_exc
 
 
 class IssueResult(BaseModel):
@@ -117,23 +234,23 @@ class LinearPlatform(BaseModel):
                 )
             elif issue.action == IssueAction.update:
                 issue_id = issue.fields.platform_fields["issue_id"]
-                raw = await tools.handle_update_issue(
-                    {
-                        "issue_id": issue_id,
-                        **_update_payload(issue).model_dump(
-                            mode="json", by_alias=False
-                        ),
-                    }
+                update_payload = {
+                    "issue_id": issue_id,
+                    **_update_payload(issue).model_dump(mode="json", by_alias=False),
+                }
+                raw = await _linear_write_call(
+                    tools.handle_update_issue, update_payload, op="update_issue"
                 )
                 _raise_if_error(raw, op="update_issue")
-                await _throttle()
                 result = IssueResult(action="update", issue=Issue.model_validate(raw))
             else:
-                raw = await tools.handle_create_issue(
-                    _create_payload(issue).model_dump(mode="json", by_alias=False)
+                create_payload = _create_payload(issue).model_dump(
+                    mode="json", by_alias=False
+                )
+                raw = await _linear_write_call(
+                    tools.handle_create_issue, create_payload, op="create_issue"
                 )
                 _raise_if_error(raw, op="create_issue")
-                await _throttle()
                 result = IssueResult(action="create", issue=Issue.model_validate(raw))
 
             if issue.id and result.issue.id:
@@ -177,11 +294,16 @@ class LinearPlatform(BaseModel):
             parent_real_id = real_id_by_temp_id.get(parent_temp_id)
             if not parent_real_id:
                 continue
-            raw = await tools.handle_update_issue(
-                {"issue_id": result.issue.id, "parent_id": parent_real_id}
+            parent_payload = {
+                "issue_id": result.issue.id,
+                "parent_id": parent_real_id,
+            }
+            raw = await _linear_write_call(
+                tools.handle_update_issue,
+                parent_payload,
+                op="update_issue (parent link)",
             )
             _raise_if_error(raw, op="update_issue (parent link)")
-            await _throttle()
 
     async def _apply_relations(
         self,
@@ -205,14 +327,16 @@ class LinearPlatform(BaseModel):
                 target_id = id_by_title.get(relation.target_title)
                 if not target_id:
                     continue
-                await tools.handle_create_issue_relation(
-                    {
-                        "issue_id": result.issue.id,
-                        "related_issue_id": target_id,
-                        "type": relation.type,
-                    }
+                relation_payload = {
+                    "issue_id": result.issue.id,
+                    "related_issue_id": target_id,
+                    "type": relation.type,
+                }
+                await _linear_write_call(
+                    tools.handle_create_issue_relation,
+                    relation_payload,
+                    op="create_issue_relation",
                 )
-                await _throttle()
 
     async def _apply_labels(
         self,
