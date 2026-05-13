@@ -219,7 +219,7 @@ class _VertexAIBackend(_Backend):
             raise ProviderRuntimeError(
                 provider="gemini",
                 phase="init",
-                detail=(
+                message=(
                     "Vertex AI backend requires a GCP project ID. "
                     "Set GOOGLE_CLOUD_PROJECT env var or pass project_id "
                     "via OAuth2ADC(project_id='...')."
