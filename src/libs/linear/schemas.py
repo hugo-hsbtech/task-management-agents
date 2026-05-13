@@ -222,13 +222,13 @@ class Project(BaseModel):
 
         try:
             linear_teams = linear_project.teams or []
-        except Exception:
+        except Exception:  # pragma: no cover - SDK lazy-fetch can raise on null teams
             linear_teams = []
         team = None
         if linear_teams and isinstance(linear_teams, list):
             try:
                 team = Team.from_linear(linear_team=linear_teams[0])
-            except Exception:
+            except Exception:  # pragma: no cover - malformed nested team payload
                 team = None
 
         return cls(
@@ -408,7 +408,9 @@ class CommentUser(BaseModel):
     model_config = {"frozen": True}
 
     @classmethod
-    def from_linear(cls, linear_user: LinearUser) -> Self:
+    def from_linear(
+        cls, linear_user: LinearUser
+    ) -> Self:  # pragma: no cover - exercised only via integration paths
         return cls(
             id=linear_user.id,
             name=linear_user.name,

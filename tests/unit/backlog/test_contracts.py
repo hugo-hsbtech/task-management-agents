@@ -72,6 +72,25 @@ def test_backlog_output_requires_at_least_one_issue() -> None:
         )
 
 
+def test_backlog_output_is_linear_true_for_linear_platform() -> None:
+    """BacklogOutput.is_linear() must return True when targeting LinearPlatform."""
+    output = BacklogOutput(
+        platform=LinearPlatform(team_id="team-1", project_id="project-1"),
+        issues=[
+            IssuePlan(
+                issue_type="task",
+                fields=IssueFields(
+                    title="[T] Anything",
+                    description="Any.",
+                    platform_fields={"team_id": "team-1", "project_id": "project-1"},
+                ),
+            )
+        ],
+    )
+
+    assert output.is_linear() is True
+
+
 def test_backlog_output_accepts_linear_issue_fields() -> None:
     output = BacklogOutput(
         platform=LinearPlatform(team_id="team-1", project_id="project-1"),

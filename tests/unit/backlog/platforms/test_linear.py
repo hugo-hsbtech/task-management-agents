@@ -707,3 +707,78 @@ def test_update_payload_raises_when_issue_id_missing() -> None:
         ValueError, match="update action requires fields.platform_fields.issue_id"
     ):
         _update_payload(issue)
+
+
+# ---------------------------------------------------------------------------
+# api_key property — settings resolution
+# ---------------------------------------------------------------------------
+
+
+def test_api_key_property_reads_settings_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """api_key property must unwrap settings.linear.api_key.get_secret_value()."""
+    monkeypatch.setenv("LINEAR_API_KEY", "lin-real-secret")
+    plat = LinearPlatform(team_id="T1", project_id="P1")
+
+    assert plat.api_key == "lin-real-secret"
+
+
+def test_api_key_property_raises_when_settings_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """api_key property must raise a helpful ValueError when settings.linear.api_key is None."""
+    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+    # The .env file at project root provides LINEAR_API_KEY; point pydantic-settings
+    # at an empty cwd so the env-file fallback finds nothing either.
+    monkeypatch.chdir(tmp_path)
+
+    plat = LinearPlatform(team_id="T1", project_id="P1")
+
+    with pytest.raises(ValueError, match="Platform API key required"):
+        plat.api_key  # noqa: B018  # property access is the act under test
+
+
+# ---------------------------------------------------------------------------
+# _apply_parent_links — temp_id resolves to nothing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_execute_skips_parent_link_when_temp_id_unknown(
+    monkeypatch, platform: LinearPlatform
+) -> None:
+    """A parent_id that points to a temp id not produced by this run must be skipped."""
+    instances: list[FakeLinearTools] = []
+
+    def fake_tools(api_key: str) -> FakeLinearTools:
+        t = FakeLinearTools(api_key)
+        instances.append(t)
+        return t
+
+    monkeypatch.setattr("backlog.platforms.linear.LinearTools", fake_tools)
+
+    defaults = platform.issue_defaults
+    output = BacklogOutput(
+        platform=platform,
+        issues=[
+            IssuePlan(
+                id="child",
+                issue_type="task",
+                fields=IssueFields(
+                    title="[T] Child of phantom",
+                    description="Parent ref never created.",
+                    parent_id="phantom-temp-id",
+                    platform_fields=dict(defaults),
+                ),
+            )
+        ],
+    )
+
+    results = await platform.execute(output)
+
+    assert results[0].action == "create"
+    parent_link_updates = [
+        u for u in instances[0].updated if u.get("parent_id") is not None
+    ]
+    assert parent_link_updates == []

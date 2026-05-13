@@ -296,3 +296,142 @@ def test_build_provider_rejects_unwired_oauth2_adc_auth() -> None:
 
     with pytest.raises(ValueError, match="oauth2_adc auth is not wired"):
         build_provider(configured)
+
+
+def test_auth_from_settings_rejects_unknown_auth_type() -> None:
+    """_auth_from_settings must surface unsupported auth subclasses as TypeError."""
+    from backlog.agent import _auth_from_settings
+
+    class _ForeignAuth:
+        """Auth type not handled by the registry."""
+
+    configured = ProviderSettings(
+        name=ProviderName.openai,
+        model="gpt-4o",
+        auth=ApiKeyAuth(key="sk-test"),
+    )
+    object.__setattr__(configured, "auth", _ForeignAuth())
+
+    with pytest.raises(TypeError, match="Unsupported auth settings type"):
+        _auth_from_settings(configured)
+
+
+def test_build_tool_policy_uses_platform_api_key(monkeypatch) -> None:
+    """build_tool_policy must pull the platform's api_key property and forward it."""
+    from backlog.platforms import LinearPlatform
+
+    monkeypatch.setattr(
+        LinearPlatform, "api_key", property(lambda self: "lin-from-settings")
+    )
+
+    captured: list[str] = []
+
+    def fake_tool_policy(self: LinearPlatform, *, api_key: str) -> ToolPolicy:
+        captured.append(api_key)
+        return ToolPolicy()
+
+    monkeypatch.setattr(LinearPlatform, "tool_policy", fake_tool_policy)
+
+    input_contract = BacklogInput(
+        plan_content="# Plan",
+        stacks=["python"],
+        platform=LinearPlatform(team_id="team-1", project_id="project-1"),
+    )
+
+    policy = BacklogAgent.build_tool_policy(input_contract)
+
+    assert isinstance(policy, ToolPolicy)
+    assert captured == ["lin-from-settings"]
+
+
+@pytest.mark.asyncio
+async def test_create_issues_delegates_to_platform_execute(monkeypatch) -> None:
+    """BacklogAgent.create_issues must call output.platform.execute(output)."""
+    from backlog.contracts import BacklogOutput, IssueFields, IssuePlan
+    from backlog.platforms import LinearPlatform
+
+    platform = LinearPlatform(team_id="team-1", project_id="project-1")
+    output = BacklogOutput(
+        platform=platform,
+        issues=[
+            IssuePlan(
+                issue_type="task",
+                fields=IssueFields(
+                    title="[T] Anything",
+                    description="Any.",
+                    platform_fields={"team_id": "team-1", "project_id": "project-1"},
+                ),
+            )
+        ],
+    )
+
+    captured: list[BacklogOutput] = []
+
+    async def fake_execute(self: LinearPlatform, out: BacklogOutput) -> list[Any]:
+        captured.append(out)
+        return ["fake-result"]
+
+    monkeypatch.setattr(LinearPlatform, "execute", fake_execute)
+
+    results = await BacklogAgent.create_issues(output)
+
+    assert captured == [output]
+    assert results == ["fake-result"]
+
+
+def test_run_and_create_sync_returns_output_and_results(
+    monkeypatch, backlog_input: BacklogInput
+) -> None:
+    """run_and_create_sync must drive both run() and create_issues() under asyncio.run()."""
+    from backlog.platforms import LinearPlatform
+
+    provider = FakeProvider([output_json()])
+    agent = BacklogAgent(
+        provider_settings=provider_settings(),
+        provider=provider,  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+    )
+
+    async def fake_execute(self: LinearPlatform, output: Any) -> list[str]:
+        return ["created-1"]
+
+    monkeypatch.setattr(LinearPlatform, "execute", fake_execute)
+
+    output, results = agent.run_and_create_sync(backlog_input)
+
+    assert output.issues[0].fields.title == "[EPIC] Login"
+    assert results == ["created-1"]
+
+
+def test_create_issues_sync_wraps_create_issues_in_asyncio_run(monkeypatch) -> None:
+    """create_issues_sync must run create_issues() to completion via asyncio.run()."""
+    from backlog.contracts import BacklogOutput, IssueFields, IssuePlan
+    from backlog.platforms import LinearPlatform
+
+    platform = LinearPlatform(team_id="team-1", project_id="project-1")
+    output = BacklogOutput(
+        platform=platform,
+        issues=[
+            IssuePlan(
+                issue_type="task",
+                fields=IssueFields(
+                    title="[T] Anything",
+                    description="Any.",
+                    platform_fields={"team_id": "team-1", "project_id": "project-1"},
+                ),
+            )
+        ],
+    )
+
+    async def fake_execute(self: LinearPlatform, out: Any) -> list[str]:
+        return ["sync-result"]
+
+    monkeypatch.setattr(LinearPlatform, "execute", fake_execute)
+
+    agent = BacklogAgent(
+        provider_settings=provider_settings(),
+        provider=FakeProvider([]),  # type: ignore[arg-type]
+        tool_policy=EMPTY_TOOL_POLICY,
+    )
+
+    assert agent.create_issues_sync(output) == ["sync-result"]

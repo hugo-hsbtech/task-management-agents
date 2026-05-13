@@ -945,3 +945,53 @@ def test_get_policy_tools_includes_list_sub_issues(
     assert "linear_list_sub_issues" in tools
     assert callable(tools["linear_list_sub_issues"])
     assert callable(tools["linear_get_issue_relations"])
+
+
+# -----------------------------------------------------------------------------
+# handle_create_issue_relation — type mapping + ID swap for blocked_by
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_type", "expected_api_type", "expected_src", "expected_tgt"),
+    [
+        ("blocks", "blocks", "src-id", "tgt-id"),
+        ("blocked_by", "blocks", "tgt-id", "src-id"),
+        ("relates_to", "related", "src-id", "tgt-id"),
+        ("duplicate_of", "duplicate", "src-id", "tgt-id"),
+    ],
+)
+async def test_handle_create_issue_relation_maps_each_type(
+    linear_tools: LinearTools,
+    mock_linear_client: MagicMock,
+    tool_type: str,
+    expected_api_type: str,
+    expected_src: str,
+    expected_tgt: str,
+) -> None:
+    """handle_create_issue_relation must translate tool-level types to Linear API types.
+
+    ``blocked_by`` swaps the two IDs because Linear only models ``blocks``; the inverse
+    is expressed by reversing the direction of the relation.
+    """
+    mock_linear_client.create_issue_relation.return_value = {
+        "issue_id": expected_src,
+        "related_issue_id": expected_tgt,
+        "type": expected_api_type,
+    }
+
+    result = await linear_tools.handle_create_issue_relation(
+        {
+            "issue_id": "src-id",
+            "related_issue_id": "tgt-id",
+            "type": tool_type,
+        }
+    )
+
+    mock_linear_client.create_issue_relation.assert_called_once_with(
+        issue_id=expected_src,
+        related_issue_id=expected_tgt,
+        relation_type=expected_api_type,
+    )
+    assert result["type"] == expected_api_type
