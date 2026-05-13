@@ -128,28 +128,26 @@ def _isolate_provider_registration() -> Any:
 def test_registry_builds_claude_provider_and_query_yields_messages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ProviderRegistry.build_auto("claude") wires the OAuth env-var
-    strategy and the resulting provider streams Message objects from a
-    stubbed claude_agent_sdk.query."""
+    """ProviderRegistry.build_from_settings("claude", auth_kind="oauth2_cli_token")
+    resolves the token from CLAUDE_CODE_OAUTH_TOKEN and the resulting provider
+    streams Message objects from a stubbed claude_agent_sdk.query."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok-abc")
 
     fake_sdk = _stub_claude_sdk()
     with patch.dict("sys.modules", {"claude_agent_sdk": fake_sdk}):
         # Import inside the patch so the module-level `import claude_agent_sdk`
         # picks up the stub.
-        from llm_providers.providers.claude import (
-            ClaudeProvider,
-            _ClaudeOAuth2CliToken,
+        from llm_providers.auth.oauth2_cli import OAuth2CliToken
+        from llm_providers.providers.claude import ClaudeProvider
+
+        provider = ProviderRegistry.build_from_settings(
+            "claude", auth_kind="oauth2_cli_token"
         )
 
-        provider = ProviderRegistry.build_auto("claude")
-
         assert isinstance(provider, ClaudeProvider)
-        # The OAuth2 env-var strategy is preferred and detected via the
-        # CLAUDE_CODE_OAUTH_TOKEN env var — the resolved strategy should be
-        # the provider-private subclass added in Task 18, NOT the bare
-        # OAuth2CliToken.
-        assert isinstance(provider._auth, _ClaudeOAuth2CliToken)
+        # The auth factory resolves to a plain OAuth2CliToken carrying the
+        # token value — no more provider-private subclass.
+        assert isinstance(provider._auth, OAuth2CliToken)
 
         # Wire the stubbed SDK to yield one assistant + one result.
         msg_assistant = MagicMock(spec=fake_sdk.AssistantMessage)
@@ -191,7 +189,7 @@ def test_registry_builds_claude_provider_and_query_yields_messages(
 def test_registry_builds_openai_provider_with_api_key_and_streams(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ProviderRegistry.build_auto("openai", accepted_kinds={"api_key"})
+    """ProviderRegistry.build_from_settings("openai", auth_kind="api_key")
     selects the _RawOpenAIBackend and streams chunks via AsyncOpenAI."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-xyz")
 
@@ -210,7 +208,7 @@ def test_registry_builds_openai_provider_with_api_key_and_streams(
             _RawOpenAIBackend,
         )
 
-        provider = ProviderRegistry.build_auto("openai", accepted_kinds={"api_key"})
+        provider = ProviderRegistry.build_from_settings("openai", auth_kind="api_key")
 
         assert isinstance(provider, OpenAIProvider)
         assert isinstance(provider._backend, _RawOpenAIBackend)
@@ -389,7 +387,9 @@ def test_same_provider_options_works_against_both_providers(
     with patch.dict("sys.modules", {"claude_agent_sdk": fake_claude_sdk}):
         from llm_providers.providers.claude import ClaudeProvider
 
-        claude_provider = ProviderRegistry.build_auto("claude")
+        claude_provider = ProviderRegistry.build_from_settings(
+            "claude", auth_kind="oauth2_cli_token"
+        )
         assert isinstance(claude_provider, ClaudeProvider)
 
         async def _run_claude() -> list[Message]:
@@ -417,8 +417,8 @@ def test_same_provider_options_works_against_both_providers(
     with patch.dict("sys.modules", {"openai": fake_openai}):
         from llm_providers.providers.openai import OpenAIProvider
 
-        openai_provider = ProviderRegistry.build_auto(
-            "openai", accepted_kinds={"api_key"}
+        openai_provider = ProviderRegistry.build_from_settings(
+            "openai", auth_kind="api_key"
         )
         assert isinstance(openai_provider, OpenAIProvider)
 
@@ -458,7 +458,9 @@ def test_skill_reference_resolves_to_file_contents_for_both_providers(
     with patch.dict("sys.modules", {"claude_agent_sdk": fake_claude_sdk}):
         from llm_providers.providers.claude import ClaudeProvider
 
-        claude_provider = ProviderRegistry.build_auto("claude")
+        claude_provider = ProviderRegistry.build_from_settings(
+            "claude", auth_kind="oauth2_cli_token"
+        )
         assert isinstance(claude_provider, ClaudeProvider)
         claude_text = claude_provider._translate_system_prompt(
             SkillReference(path=skill)
@@ -473,8 +475,8 @@ def test_skill_reference_resolves_to_file_contents_for_both_providers(
     with patch.dict("sys.modules", {"openai": fake_openai}):
         from llm_providers.providers.openai import OpenAIProvider
 
-        openai_provider = ProviderRegistry.build_auto(
-            "openai", accepted_kinds={"api_key"}
+        openai_provider = ProviderRegistry.build_from_settings(
+            "openai", auth_kind="api_key"
         )
         assert isinstance(openai_provider, OpenAIProvider)
         openai_text = openai_provider._translate_system_prompt(
@@ -497,11 +499,11 @@ def test_per_agent_api_key_escape_hatch_widens_allowlist(
     hatch, the same env raises AuthResolutionError."""
     monkeypatch.setenv("HSB_RUNTIME_BACKLOG", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-xxx")
-    # Point CODEX_HOME at an empty tmp dir so the _CodexOAuth2CliToken
-    # strategy's detect() returns False (no auth.json there). Otherwise on
-    # an operator's dev machine ~/.codex/auth.json may exist and the
-    # Codex-OAuth strategy would short-circuit the walk before the API-key
-    # branch is considered.
+    # Point CODEX_HOME at an empty tmp dir so the Codex auth.json file is
+    # absent. With the escape hatch ON the resolver should pick api_key
+    # over the missing OAuth2 file; with the escape hatch OFF the only
+    # allowed kind is OAuth2 and the missing file must surface as
+    # AuthResolutionError.
     empty_codex_home = tmp_path / "empty_codex_home"
     empty_codex_home.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(empty_codex_home))

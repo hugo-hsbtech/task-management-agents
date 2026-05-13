@@ -61,12 +61,16 @@ def resolve_auth(provider_name: str, auth_kind: str) -> AuthStrategy:
     """
     # Lazy import so this module stays cheap to import when only the
     # strategies are needed (avoids pulling pydantic-settings at import).
+    # CredentialsSettings is independent of RuntimeSettings so reading
+    # credentials never triggers agent-runtime field validation.
     from settings.codex import CodexSettings
-    from settings.runtime import RuntimeSettings
+    from settings.credentials import CredentialsSettings
+
+    creds = CredentialsSettings()
 
     if provider_name == "claude":
         if auth_kind == "oauth2_cli_token":
-            tok = RuntimeSettings().claude_code_oauth_token
+            tok = creds.claude_code_oauth_token
             if tok is None:
                 raise AuthResolutionError(
                     "Claude OAuth2 requires CLAUDE_CODE_OAUTH_TOKEN to be set. "
@@ -74,7 +78,7 @@ def resolve_auth(provider_name: str, auth_kind: str) -> AuthStrategy:
                 )
             return OAuth2CliToken(token=tok.get_secret_value())
         if auth_kind == "api_key":
-            key = RuntimeSettings().anthropic_api_key
+            key = creds.anthropic_api_key
             if key is None:
                 raise AuthResolutionError(
                     "Claude api_key auth requires ANTHROPIC_API_KEY to be set."
@@ -89,9 +93,11 @@ def resolve_auth(provider_name: str, auth_kind: str) -> AuthStrategy:
                     f"OpenAI/Codex OAuth2 requires {auth_file} to exist. "
                     "Run `codex login --device-auth` to create it."
                 )
-            return OAuth2CliToken(token=_extract_codex_token(auth_file.read_text()))
+            return OAuth2CliToken(
+                token=_extract_codex_token(auth_file.read_text(encoding="utf-8"))
+            )
         if auth_kind == "api_key":
-            key = RuntimeSettings().openai_api_key
+            key = creds.openai_api_key
             if key is None:
                 raise AuthResolutionError(
                     "OpenAI api_key auth requires OPENAI_API_KEY to be set."
