@@ -435,3 +435,35 @@ def test_create_issues_sync_wraps_create_issues_in_asyncio_run(monkeypatch) -> N
     )
 
     assert agent.create_issues_sync(output) == ["sync-result"]
+
+
+def test_build_provider_maps_codex_name_to_openai_registry(monkeypatch) -> None:
+    """build_provider(codex settings) must call ProviderRegistry.build("openai", ...)."""
+    from pathlib import Path
+
+    from settings.provider import CodexModel, OAuth2CliAuth, ProviderName, ProviderSettings
+
+    class TestProvider:
+        def __init__(self, auth: OAuth2CliToken) -> None:
+            self.auth = auth
+
+    calls: list[tuple[str, object]] = []
+
+    def fake_build(name: str, *, auth: object) -> TestProvider:
+        calls.append((name, auth))
+        return TestProvider(auth)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ProviderRegistry, "build", fake_build)
+
+    codex_settings = ProviderSettings(
+        name=ProviderName.codex,
+        model=CodexModel.codex_mini_latest,
+        auth=OAuth2CliAuth(token_path=Path("/tmp/auth.json")),
+    )
+
+    build_provider(codex_settings)
+
+    assert calls[0][0] == "openai", (
+        "build_provider must pass 'openai' to ProviderRegistry for codex settings"
+    )
+    assert isinstance(calls[0][1], OAuth2CliToken)

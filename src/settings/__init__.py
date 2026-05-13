@@ -35,6 +35,7 @@ from settings.provider import (
     OAuth2ADCAuth,
     OAuth2CliAuth,
     OpenAIConfig,
+    ProviderName,
     ProviderSettings,
 )
 from settings.runtime import (
@@ -111,6 +112,7 @@ __all__ = [
     "OAuth2CliAuth",
     "OpenAIConfig",
     "OrchestratorSettings",
+    "ProviderName",
     "ProviderSettings",
     "RuntimeSettings",
     "TestFixtureSettings",
