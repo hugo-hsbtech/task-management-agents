@@ -8,10 +8,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from libs.logging import get_logger
 from llm_providers.auth.api_key import ApiKey
 from llm_providers.auth.base import AuthStrategy, Credential
 from llm_providers.auth.oauth2_cli import OAuth2CliToken
@@ -44,24 +45,7 @@ from llm_providers.tools import McpServerSpec, ToolPolicy
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-
-class _CodexOAuth2CliToken(OAuth2CliToken):
-    """OAuth2 token pre-wired to ~/.codex/auth.json (honoring CODEX_HOME) for
-    auto-detection."""
-
-    @classmethod
-    def default(cls) -> _CodexOAuth2CliToken:
-        codex_home = os.environ.get("CODEX_HOME")
-        base = Path(codex_home) if codex_home else Path.home() / ".codex"
-        return cls(token_path=base / "auth.json")
-
-
-class _OpenAIApiKey(ApiKey):
-    """ApiKey pre-wired to OPENAI_API_KEY for auto-detection."""
-
-    @classmethod
-    def default(cls) -> _OpenAIApiKey:
-        return cls(env_var="OPENAI_API_KEY")
+logger = get_logger(__name__)
 
 
 _CODEX_CAPS = Capabilities(
@@ -80,8 +64,6 @@ _RAW_CAPS = Capabilities(
     supports_mcp=False,
     supports_native_tools=True,
     supports_hooks=False,
-    # client() raises UnsupportedCapabilityError; raw OpenAI has no
-    # multi-turn session abstraction in Phase A.
     supports_stateful_client=False,
     supports_output_schema=True,
     supports_system_prompt_file=False,
@@ -105,19 +87,14 @@ class OpenAIProvider(BaseProvider):
     """
 
     name: ClassVar[str] = "openai"
-    # Class-level placeholder; overridden by instance property below.
-    capabilities: ClassVar[Capabilities] = _RAW_CAPS
-    # _CodexOAuth2CliToken / _OpenAIApiKey appear first so auto_resolve_auth
-    # walks their pre-wired default() (which knows where to look for tokens).
-    # OAuth2CliToken / ApiKey remain in the tuple so callers constructing
-    # them directly (e.g. tests, explicit wiring) still satisfy
-    # _validate_auth's isinstance check.
     supported_auth: ClassVar[tuple[type[AuthStrategy], ...]] = (
-        _CodexOAuth2CliToken,
-        _OpenAIApiKey,
         OAuth2CliToken,
         ApiKey,
     )
+
+    # Pre-init placeholder; replaced by the backend-specific instance attribute
+    # in __init__. Declared as ClassVar so the base-class type checker is happy.
+    capabilities: ClassVar[Capabilities] = _RAW_CAPS
 
     def __init__(self, auth: AuthStrategy) -> None:
         super().__init__(auth)
@@ -130,10 +107,9 @@ class OpenAIProvider(BaseProvider):
             raise CredentialMismatch(
                 f"OpenAIProvider cannot apply credential kind {cred.kind!r}"
             )
-
-    @property  # type: ignore[no-redef]
-    def capabilities(self) -> Capabilities:  # type: ignore[override]  # noqa: F811
-        return self._backend.capabilities
+        # Shadow the ClassVar with an instance attribute carrying the
+        # backend-correct capabilities. No type: ignore / @property hack.
+        self.capabilities = self._backend.capabilities  # type: ignore[misc]
 
     async def query(  # type: ignore[override,misc]
         self, prompt: str, options: ProviderOptions
@@ -143,7 +119,12 @@ class OpenAIProvider(BaseProvider):
                 yield msg
         except ProviderRuntimeError:
             raise
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            logger.error(
+                "openai.query_failed",
+                exc_type=type(e).__name__,
+                error=str(e),
+            )
             raise ProviderRuntimeError(provider=self.name, phase="query") from e
 
     def client(self, options: ProviderOptions) -> StatefulClient:
@@ -166,28 +147,31 @@ class OpenAIProvider(BaseProvider):
         return {"allowed_tools": list(policy.allowed)}
 
     def _translate_mcp(self, servers: tuple[McpServerSpec, ...]) -> Any:
-        # Backend decides whether MCP is supported. Codex verifies operator
-        # config; raw OpenAI raises UnsupportedCapabilityError.
         return self._backend.translate_mcp(servers, self)
 
 
 class _Backend:
-    """Common backend interface — shared shape; implementations differ."""
+    """Abstract backend interface — concrete subclasses below.
+
+    The bodies are stubs that exist purely to declare the interface for
+    type checkers; concrete backends always override. The raises are
+    unreachable in practice — hence ``pragma: no cover``.
+    """
 
     capabilities: Capabilities
 
-    async def query(
+    async def query(  # pragma: no cover - abstract; subclasses override
         self, prompt: str, options: ProviderOptions, provider: OpenAIProvider
     ) -> AsyncIterator[Message]:
         raise NotImplementedError
-        yield  # pragma: no cover  (makes mypy treat this as an async generator)
+        yield  # makes the function a true async generator
 
-    def client(
+    def client(  # pragma: no cover - abstract; subclasses override
         self, options: ProviderOptions, provider: OpenAIProvider
     ) -> StatefulClient:
         raise NotImplementedError
 
-    def translate_mcp(
+    def translate_mcp(  # pragma: no cover - abstract; subclasses override
         self, servers: tuple[McpServerSpec, ...], provider: OpenAIProvider
     ) -> Any:
         raise NotImplementedError
@@ -196,30 +180,23 @@ class _Backend:
 class _CodexBackend(_Backend):
     """openai_codex_sdk backend. OAuth-only; verifies operator's ~/.codex config.
 
-    NOTE: The openai_codex_sdk was reimplemented as open-source. The API changed
-    from the original closed-beta version. This implementation attempts to use
-    the new API with fallback error handling.
+    Uses the open-source Codex CLI (subprocess-based). The legacy closed-beta
+    Python SDK is no longer supported — pyproject pins ``openai-codex-sdk>=0.1.11``
+    which is the open-source release.
     """
 
     capabilities = _CODEX_CAPS
 
     def __init__(self, cred: Credential) -> None:
-        # cred.payload["source"] is "env:..." or "file:<path>" — for "file:" we
-        # derive codex_home from the file's parent for the config verification.
-        source = cred.payload.get("source", "")
-        codex_home: Path | None = None
-        if source.startswith("file:"):
-            codex_home = Path(source.removeprefix("file:")).parent
-        self._cached_config = assert_codex_oauth_only(codex_home=codex_home)
+        # The token came pre-resolved from the factory; we only need the
+        # Codex home directory for config validation. Pull it from settings —
+        # no env-var introspection in this module.
+        from settings.codex import CodexSettings
 
-        # Import the SDK and check version/API compatibility
-        import openai_codex_sdk
-
-        self._sdk = openai_codex_sdk
-        self._codex_home = codex_home
-
-        # Check for new API vs old API
-        self._use_new_api = not hasattr(openai_codex_sdk, "Codex")
+        self._codex_home = CodexSettings().home
+        self._cached_config = assert_codex_oauth_only(codex_home=self._codex_home)
+        # Token kept for completeness; callers don't need it after init.
+        del cred
 
     async def query(
         self, prompt: str, options: ProviderOptions, provider: OpenAIProvider
@@ -237,52 +214,31 @@ class _CodexBackend(_Backend):
         sp_text = provider._translate_system_prompt(options.system_prompt)
         full_text = f"<system>{sp_text}</system>\n\n{prompt}"
 
-        if self._use_new_api:
-            # New open-source API - use subprocess-based CLI
-            async for msg in self._query_new_api(full_text, options, approval):
-                yield msg
-        else:
-            # Legacy closed-beta API
-            async for msg in self._query_legacy_api(full_text, options, approval):
-                yield msg
-
-    async def _query_new_api(
-        self, prompt: str, options: ProviderOptions, approval: Any
-    ) -> AsyncIterator[Message]:
-        """Query using new open-source Codex CLI (subprocess-based)."""
-        import asyncio
-        import os
-        from pathlib import Path
-
-        # Build the Codex CLI command
+        # Build the Codex CLI command. Subprocess inherits parent env and we
+        # layer CODEX_HOME on top from settings — never mutating the parent
+        # process's ``os.environ``.
         cmd = ["codex", "--quiet", "--approval-policy", str(approval).lower()]
         if options.model:
             cmd.extend(["--model", options.model])
         if options.cwd:
             cmd.extend(["--workdir", str(options.cwd)])
 
-        # Run Codex as subprocess.
-        # NOTE: max_turns is not enforced here; the subprocess CLI has no
-        # per-turn event stream, so turn tracking is unavailable on this path.
+        # NOTE: max_turns is not enforced — the subprocess CLI has no per-turn
+        # event stream, so turn tracking is unavailable on this path.
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={
-                **os.environ,
-                "CODEX_HOME": str(self._codex_home or Path.home() / ".codex"),
-            },
+            env={**os.environ, "CODEX_HOME": str(self._codex_home)},
         )
 
-        # All three pipes are PIPE-configured above, so they are never None
-        # in practice; the asserts narrow the StreamReader/Writer | None types
-        # for mypy.
-        assert proc.stdin is not None  # nosec B101
-        assert proc.stdout is not None  # nosec B101
-        assert proc.stderr is not None  # nosec B101
+        # All three pipes are PIPE-configured above; the asserts narrow the
+        # StreamReader/Writer | None types for mypy.
+        if proc.stdin is None or proc.stdout is None or proc.stderr is None:
+            raise RuntimeError("subprocess pipes not initialised")  # pragma: no cover
 
-        proc.stdin.write(prompt.encode())
+        proc.stdin.write(full_text.encode())
         proc.stdin.close()
 
         buffer: list[str] = []
@@ -296,71 +252,19 @@ class _CodexBackend(_Backend):
         await proc.wait()
 
         if proc.returncode != 0:
-            err_text = stderr_data.decode()[:500]
-            raise RuntimeError(f"Codex CLI failed (exit {proc.returncode}): {err_text}")
+            stderr_text = stderr_data.decode()
+            logger.error(
+                "codex.subprocess_failed",
+                returncode=proc.returncode,
+                stderr=stderr_text,  # full text in structured log
+            )
+            preview = stderr_text[:500]
+            raise RuntimeError(
+                f"Codex CLI failed (exit {proc.returncode}): {preview}"
+                f"{' ...[truncated]' if len(stderr_text) > 500 else ''}"
+            )
 
         yield Message(text="".join(buffer), is_final=True, raw=None)
-
-    async def _query_legacy_api(
-        self, prompt: str, options: ProviderOptions, approval: Any
-    ) -> AsyncIterator[Message]:
-        """Query using legacy closed-beta SDK API."""
-        try:
-            thread_options = self._sdk.ThreadOptions(
-                model=options.model,
-                approval_policy=approval,
-                working_directory=options.cwd,
-            )
-            # OpenAI's structured-output strict mode rejects
-            # `additionalProperties: <schema>` (only `false` is allowed), which
-            # is incompatible with the free-form `dict[str, str]` fields on the
-            # current backlog contract (`platform_fields`, `context`). Server-
-            # side strict validation is intentionally disabled here — we mirror
-            # the Claude path and rely on the agent's client-side validate-and-
-            # retry loop (see BacklogAgent.run in src/backlog/agent.py,
-            # MAX_VALIDATION_RETRIES). Revisit if free-form dicts are ever
-            # refactored out of the contract.
-            turn_options = self._sdk.TurnOptions(output_schema=None)
-
-            codex_opts = self._build_codex_options()
-            codex = (
-                self._sdk.Codex(codex_opts)
-                if codex_opts is not None
-                else self._sdk.Codex()
-            )
-            thread = codex.start_thread(thread_options)
-            streamed = await thread.run_streamed(
-                [self._sdk.TextInput(type="text", text=prompt)],
-                turn_options,
-            )
-
-            turns_seen = 0
-            final_buffer: list[str] = []
-            async for evt in streamed.events:
-                if isinstance(
-                    evt, self._sdk.TurnCompletedEvent | self._sdk.TurnFailedEvent
-                ):
-                    turns_seen += 1
-                    if turns_seen > options.max_turns:
-                        raise RuntimeError(
-                            f"Codex exceeded max_turns={options.max_turns}; aborting."
-                        )
-                evt_text = self._extract_event_text(evt)
-                if evt_text:
-                    final_buffer.append(evt_text)
-                yield Message(text=evt_text, is_final=False, raw=evt)
-
-            yield Message(text="".join(final_buffer), is_final=True, raw=None)
-
-        except AttributeError as e:
-            # SDK API mismatch - provide helpful error
-            raise RuntimeError(
-                f"Codex SDK API mismatch: {e}. "
-                f"The installed openai_codex_sdk appears to be the new open-source "
-                f"version with a different API. Legacy API classes (Codex, ThreadOptions, "
-                f"etc.) not found. Consider using Claude provider instead, or update "
-                f"the provider code for the new SDK API."
-            ) from e
 
     def client(
         self, options: ProviderOptions, provider: OpenAIProvider
@@ -378,26 +282,6 @@ class _CodexBackend(_Backend):
         # visibility; we do NOT write to the operator's config.
         verify_codex_mcp(self._cached_config, [s.name for s in servers])
         return {s.name: self._cached_config["mcp_servers"][s.name] for s in servers}
-
-    @staticmethod
-    def _extract_event_text(evt: Any) -> str:
-        direct = getattr(evt, "text", None)
-        if isinstance(direct, str) and direct:
-            return direct
-        item = getattr(evt, "item", None)
-        if item is not None:
-            item_text = getattr(item, "text", None)
-            if isinstance(item_text, str) and item_text:
-                return item_text
-        return ""
-
-    def _build_codex_options(self) -> Any:
-        from openai_codex_sdk.types import CodexOptions
-
-        override = os.environ.get("CODEX_PATH_OVERRIDE")
-        if override:
-            return CodexOptions(codex_path_override=override)
-        return None
 
 
 class _RawOpenAIBackend(_Backend):
@@ -417,9 +301,7 @@ class _RawOpenAIBackend(_Backend):
         # NOTE: options.tool_policy.allowed/denied/custom is currently a no-op
         # on the OpenAI provider. Codex tool surface (Phase B) and OpenAI
         # function-calling translation (Phase B) will wire this in. For Phase A,
-        # the policy is accepted in ProviderOptions but not enforced — callers
-        # that depend on tool restriction should not yet flip an agent to
-        # HSB_RUNTIME_<AGENT>=openai.
+        # the policy is accepted in ProviderOptions but not enforced.
         sp_text = provider._translate_system_prompt(options.system_prompt)
         messages = [
             {"role": "system", "content": sp_text},
@@ -431,7 +313,12 @@ class _RawOpenAIBackend(_Backend):
                 messages=messages,
                 stream=True,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            logger.error(
+                "openai.raw_create_failed",
+                exc_type=type(e).__name__,
+                error=str(e),
+            )
             raise ProviderRuntimeError(provider=provider.name, phase="query") from e
 
         final_buffer: list[str] = []

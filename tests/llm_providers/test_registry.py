@@ -1,4 +1,6 @@
-"""Provider/Auth registry tests — register, get, build, build_auto, duplicates."""
+"""ProviderRegistry / AuthRegistry tests — register, get, build, duplicates."""
+
+from __future__ import annotations
 
 import pytest
 
@@ -92,11 +94,45 @@ def test_register_rejects_name_mismatch():
                 return None
 
 
-def test_build_constructs_with_auth(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
+def test_register_adopts_decorator_name_when_class_does_not_set_it():
+    @ProviderRegistry.register("auto-named")
+    class _P(BaseProvider):
+        capabilities = _caps()
+        supported_auth = (ApiKey,)
+
+        async def query(self, p, o):
+            from llm_providers.protocol import Message
+
+            yield Message(text="", is_final=True)
+
+        def client(self, o):
+            return None
+
+    assert _P.name == "auto-named"
+
+
+def test_build_constructs_with_auth():
     _make_provider("foo")
-    p = ProviderRegistry.build("foo", auth=ApiKey.default())
+    p = ProviderRegistry.build("foo", auth=ApiKey(api_key="k"))
     assert p.name == "foo"
+
+
+def test_build_from_settings_delegates_to_factory(monkeypatch):
+    """``build_from_settings`` defers to ``resolve_auth`` and constructs the
+    provider with the returned strategy."""
+    _make_provider("foo")
+
+    sentinel = ApiKey(api_key="resolved-by-factory")
+
+    def _fake_resolve(name, kind):
+        assert name == "foo"
+        assert kind == "api_key"
+        return sentinel
+
+    monkeypatch.setattr("llm_providers.auth.factory.resolve_auth", _fake_resolve)
+
+    p = ProviderRegistry.build_from_settings("foo", auth_kind="api_key")
+    assert p._auth is sentinel  # noqa: SLF001
 
 
 def test_build_rejects_wrong_auth():
@@ -105,15 +141,8 @@ def test_build_rejects_wrong_auth():
     class _Other(AuthStrategy):
         kind = "other"
 
-        def detect(self) -> bool:
-            return True
-
         def resolve(self) -> Credential:
             return Credential(kind=self.kind, payload={})
-
-        @classmethod
-        def default(cls):
-            return cls()
 
     with pytest.raises(UnsupportedAuthError):
         ProviderRegistry.build("foo", auth=_Other())
@@ -130,18 +159,16 @@ def test_auth_registry_register_and_kinds():
     class _S(AuthStrategy):
         kind = "my-kind"
 
-        def detect(self) -> bool:
-            return True
-
         def resolve(self) -> Credential:
             return Credential(kind=self.kind, payload={})
 
-        @classmethod
-        def default(cls):
-            return cls()
-
     assert AuthRegistry.get("my-kind") is _S
     assert "my-kind" in AuthRegistry.kinds()
+
+
+def test_auth_registry_get_unknown_raises():
+    with pytest.raises(KeyError, match="not registered"):
+        AuthRegistry.get("nope")
 
 
 def test_auth_registry_rejects_duplicate():
@@ -149,15 +176,8 @@ def test_auth_registry_rejects_duplicate():
     class _A(AuthStrategy):
         kind = "dup"
 
-        def detect(self) -> bool:
-            return False
-
         def resolve(self) -> Credential:
             return Credential(kind=self.kind, payload={})
-
-        @classmethod
-        def default(cls):
-            return cls()
 
     with pytest.raises(ValueError, match="already registered"):
 
@@ -165,12 +185,24 @@ def test_auth_registry_rejects_duplicate():
         class _B(AuthStrategy):  # noqa: F811
             kind = "dup"
 
-            def detect(self) -> bool:
-                return False
-
             def resolve(self) -> Credential:
                 return Credential(kind=self.kind, payload={})
 
-            @classmethod
-            def default(cls):
-                return cls()
+
+def test_auth_registry_rejects_non_authstrategy():
+    with pytest.raises(TypeError, match="AuthStrategy"):
+
+        @AuthRegistry.register("bad")
+        class _NotAStrategy:
+            kind = "bad"
+
+
+def test_auth_registry_rejects_kind_mismatch():
+    with pytest.raises(ValueError, match="!="):
+
+        @AuthRegistry.register("decorator-kind")
+        class _S(AuthStrategy):
+            kind = "class-kind"  # mismatch
+
+            def resolve(self) -> Credential:
+                return Credential(kind=self.kind, payload={})

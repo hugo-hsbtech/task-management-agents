@@ -323,6 +323,13 @@ def run(
 @app.callback()
 def main() -> None:
     """HSBTech AI Engineering Workflow CLI."""
+    # Configure structlog once at the CLI boundary. Subcommands and library
+    # code obtain bound loggers via libs.logging.get_logger.
+    from libs.logging import configure
+    from settings import settings
+
+    log_cfg = settings.logging
+    configure(level=log_cfg.level, json_logs=log_cfg.json_output)
 
 
 if __name__ == "__main__":

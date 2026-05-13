@@ -4,7 +4,7 @@ Two access patterns, both first-class:
 
 1. The `settings` singleton — recommended for production code:
 
-       from hsb.settings import settings
+       from settings import settings
 
        claim_delay_ms = settings.orchestrator.claim_delay_ms
        codex_home = settings.codex.home
@@ -17,7 +17,7 @@ Two access patterns, both first-class:
 2. Direct class import — recommended for tests that need to control
    instantiation timing or pass `_env_file=`:
 
-       from hsb.settings.orchestrator import OrchestratorSettings
+       from settings.orchestrator import OrchestratorSettings
 
        assert OrchestratorSettings().claim_delay_ms == 200
 """
@@ -25,6 +25,7 @@ Two access patterns, both first-class:
 from settings.codex import CodexSettings
 from settings.github import GitHubSettings
 from settings.linear import LinearSettings
+from settings.logging import LoggingSettings
 from settings.orchestrator import OrchestratorSettings
 from settings.provider import (
     ApiKeyAuth,
@@ -75,6 +76,10 @@ class _Settings:
         return LinearSettings()
 
     @property
+    def logging(self) -> LoggingSettings:
+        return LoggingSettings()
+
+    @property
     def orchestrator(self) -> OrchestratorSettings:
         return OrchestratorSettings()
 
@@ -108,6 +113,7 @@ __all__ = [
     "GeminiConfig",
     "GitHubSettings",
     "LinearSettings",
+    "LoggingSettings",
     "OAuth2ADCAuth",
     "OAuth2CliAuth",
     "OpenAIConfig",

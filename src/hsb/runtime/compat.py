@@ -5,7 +5,7 @@ integration. These shims keep older imports working — primarily
 ``from hsb.runtime.claude import ClaudeRuntime`` and
 ``from hsb.runtime.codex import CodexRuntime`` — but emit a
 ``DeprecationWarning`` on construction so callers know to migrate to
-``ProviderRegistry.build_auto(...)``.
+``ProviderRegistry.build_from_settings(...)``.
 
 Implementation notes:
   * The class bodies stay close to the legacy implementation rather than
@@ -35,8 +35,8 @@ if TYPE_CHECKING:
 
 _DEPRECATION_MSG = (
     "{cls} is deprecated; use "
-    "llm_providers.ProviderRegistry.build_auto({provider!r}, "
-    "accepted_kinds={{'oauth2_cli_token', 'api_key'}}) instead. "
+    "llm_providers.ProviderRegistry.build_from_settings({provider!r}, "
+    "auth_kind='oauth2_cli_token') instead. "
     "This shim will be removed in a future release."
 )
 
@@ -50,7 +50,7 @@ class ClaudeRuntime:
     """Legacy adapter around claude_agent_sdk.
 
     Preserved for backward compatibility. Prefer
-    ``ProviderRegistry.build_auto("claude", ...)`` from the
+    ``ProviderRegistry.build_from_settings("claude", ...)`` from the
     ``llm_providers`` library.
     """
 
@@ -123,7 +123,7 @@ class CodexRuntime:
     """Legacy adapter around openai_codex_sdk.Codex.
 
     Preserved for backward compatibility. Prefer
-    ``ProviderRegistry.build_auto("openai", ...)`` from the
+    ``ProviderRegistry.build_from_settings("openai", ...)`` from the
     ``llm_providers`` library — OAuth-via-Codex-CLI is selected
     automatically when ``~/.codex/auth.json`` is present.
     """

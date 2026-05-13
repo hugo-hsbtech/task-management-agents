@@ -11,6 +11,7 @@ from llm_providers import (
     providers,  # noqa: F401  (registers Claude + OpenAI)
 )
 from llm_providers.auth import ApiKey, AuthStrategy, Credential, OAuth2CliToken
+from llm_providers.auth.factory import resolve_auth
 from llm_providers.base import BaseProvider, StatefulClient
 from llm_providers.errors import (
     AuthDetectionFailed,
@@ -40,7 +41,6 @@ from llm_providers.protocol import (
 from llm_providers.registry import (
     AuthRegistry,
     ProviderRegistry,
-    auto_resolve_auth,
 )
 from llm_providers.tools import McpServerSpec, ToolPolicy, ToolSpec
 
@@ -78,7 +78,7 @@ __all__ = [
     # Registry
     "AuthRegistry",
     "ProviderRegistry",
-    "auto_resolve_auth",
+    "resolve_auth",
     # Tools
     "McpServerSpec",
     "ToolPolicy",

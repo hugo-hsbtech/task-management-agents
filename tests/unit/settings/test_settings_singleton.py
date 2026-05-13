@@ -66,6 +66,18 @@ def test_test_fixture_attribute(monkeypatch):
     assert settings.test_fixture.live_codex is False
 
 
+def test_provider_attribute_returns_provider_settings():
+    """settings.provider yields a freshly-constructed ProviderSettings."""
+    from settings import settings
+    from settings.provider import ProviderName, ProviderSettings
+
+    ps = settings.provider
+    assert isinstance(ps, ProviderSettings)
+    assert ps.name == ProviderName.claude  # default
+    # Lazy/fresh — two accesses return distinct instances.
+    assert settings.provider is not ps
+
+
 def test_wio_ipc_attribute(monkeypatch):
     monkeypatch.delenv("HSB_WIO_INPUT_FILE", raising=False)
     monkeypatch.delenv("HSB_WIO_OUTPUT_FILE", raising=False)

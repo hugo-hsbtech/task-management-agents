@@ -11,7 +11,7 @@ import warnings
 
 from hsb.runtime.handle import HsbProviderHandle
 from hsb.runtime.policy import allowed_auth_kinds
-from llm_providers.errors import ProviderNotFoundError
+from llm_providers.errors import AuthResolutionError, ProviderNotFoundError
 from llm_providers.registry import ProviderRegistry
 
 # Per-agent provider hard-blocks. Adding a new block is a one-line tuple edit;
@@ -22,6 +22,13 @@ _HARD_BLOCKED: dict[str, tuple[str, ...]] = {
     # arrives in Phase B.
     "wio": ("openai", "gemini"),
 }
+
+# Strict-direct: callers used to pass a set of accepted auth kinds and the
+# registry would walk-and-detect. With the factory-based resolver each
+# (provider, auth_kind) pair has exactly one credential source, so we pick
+# in priority order — OAuth2 first (matches G1), API-key only when the
+# escape hatch is present in ``allowed_auth_kinds``.
+_AUTH_KIND_PRIORITY: tuple[str, ...] = ("oauth2_cli_token", "api_key")
 
 
 def resolve_runtime(agent_name: str) -> HsbProviderHandle:
@@ -47,15 +54,33 @@ def resolve_runtime(agent_name: str) -> HsbProviderHandle:
             f"Blocked providers: {blocked}. See AGENT-CONTRACTS.md."
         )
 
-    try:
-        provider = ProviderRegistry.build_auto(
-            raw,
-            accepted_kinds=allowed_auth_kinds(agent_name),
-        )
-    except ProviderNotFoundError as e:
+    allowed = allowed_auth_kinds(agent_name)
+    candidates = tuple(k for k in _AUTH_KIND_PRIORITY if k in allowed)
+    if not candidates:
         raise ValueError(
-            f"{env_var}={raw!r}: provider {raw!r} is not registered. "
-            f"Registered providers: {ProviderRegistry.names()}."
-        ) from e
+            f"No auth kind available for agent {agent_name!r}: "
+            f"allowed={sorted(allowed)} ∩ supported={_AUTH_KIND_PRIORITY} is empty."
+        )
 
-    return HsbProviderHandle(provider=provider, agent_name=agent_name)
+    # Try each allowed kind in priority order. The factory raises
+    # AuthResolutionError when its credential source is missing — that's
+    # a "next candidate, please" signal. Provider-not-found bubbles
+    # immediately because retrying with a different auth kind won't help.
+    last_resolution_error: AuthResolutionError | None = None
+    for auth_kind in candidates:
+        try:
+            provider = ProviderRegistry.build_from_settings(raw, auth_kind=auth_kind)
+            return HsbProviderHandle(provider=provider, agent_name=agent_name)
+        except ProviderNotFoundError as e:
+            raise ValueError(
+                f"{env_var}={raw!r}: provider {raw!r} is not registered. "
+                f"Registered providers: {ProviderRegistry.names()}."
+            ) from e
+        except AuthResolutionError as e:
+            last_resolution_error = e
+            continue
+
+    # Every allowed kind failed to resolve. Surface the last error so the
+    # operator sees a clear "the credential source is missing" message.
+    assert last_resolution_error is not None  # noqa: S101
+    raise last_resolution_error

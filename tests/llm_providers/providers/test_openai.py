@@ -65,7 +65,7 @@ def test_codex_backend_selected_for_oauth_token(monkeypatch, tmp_path):
     with patch.dict("sys.modules", sdks):
         from llm_providers.providers.openai import OpenAIProvider, _CodexBackend
 
-        p = OpenAIProvider(auth=OAuth2CliToken(token_path=tmp_path / "auth.json"))
+        p = OpenAIProvider(auth=OAuth2CliToken(token="tok"))
         assert isinstance(p._backend, _CodexBackend)
 
 
@@ -75,7 +75,7 @@ def test_raw_openai_backend_selected_for_api_key(monkeypatch):
     with patch.dict("sys.modules", sdks):
         from llm_providers.providers.openai import OpenAIProvider, _RawOpenAIBackend
 
-        p = OpenAIProvider(auth=ApiKey(env_var="OPENAI_API_KEY"))
+        p = OpenAIProvider(auth=ApiKey(api_key="sk-abc"))
         assert isinstance(p._backend, _RawOpenAIBackend)
 
 
@@ -95,7 +95,7 @@ def test_capabilities_differ_by_backend(monkeypatch, tmp_path):
     with patch.dict("sys.modules", sdks_codex):
         from llm_providers.providers.openai import OpenAIProvider
 
-        p_codex = OpenAIProvider(auth=OAuth2CliToken(token_path=tmp_path / "auth.json"))
+        p_codex = OpenAIProvider(auth=OAuth2CliToken(token="tok"))
         assert p_codex.capabilities.supports_mcp is True
 
     # Reset registration so the second import re-runs the decorator cleanly.
@@ -107,7 +107,7 @@ def test_capabilities_differ_by_backend(monkeypatch, tmp_path):
     with patch.dict("sys.modules", sdks_raw):
         from llm_providers.providers.openai import OpenAIProvider
 
-        p_raw = OpenAIProvider(auth=ApiKey(env_var="OPENAI_API_KEY"))
+        p_raw = OpenAIProvider(auth=ApiKey(api_key="sk-abc"))
         assert p_raw.capabilities.supports_mcp is False
 
 
@@ -134,7 +134,7 @@ def test_codex_backend_init_calls_oauth_guard(monkeypatch, tmp_path):
         from llm_providers.providers.openai import OpenAIProvider
 
         with pytest.raises(RuntimeError, match="config.toml not found"):
-            OpenAIProvider(auth=OAuth2CliToken(token_path=tmp_path / "auth.json"))
+            OpenAIProvider(auth=OAuth2CliToken(token="tok"))
 
 
 @pytest.mark.asyncio
@@ -184,7 +184,7 @@ async def test_raw_openai_query_streams_messages(monkeypatch):
         from llm_providers.providers.openai import OpenAIProvider
         from llm_providers.tools import ToolPolicy
 
-        provider = OpenAIProvider(auth=ApiKey(env_var="OPENAI_API_KEY"))
+        provider = OpenAIProvider(auth=ApiKey(api_key="sk-abc"))
         opts = ProviderOptions(
             system_prompt=TextSystemPrompt(text="be helpful"),
             model="gpt-4o-mini",

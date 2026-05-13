@@ -41,41 +41,37 @@ class _DummyProvider(BaseProvider):
 
 def test_base_provider_cannot_be_instantiated():
     with pytest.raises(TypeError, match="abstract"):
-        BaseProvider(auth=ApiKey.default())  # type: ignore[abstract]
+        BaseProvider(auth=ApiKey(api_key="k"))  # type: ignore[abstract]
 
 
-def test_subclass_validates_auth_type(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey.default())
+def test_subclass_validates_auth_type():
+    p = _DummyProvider(auth=ApiKey(api_key="k"))
     assert p._auth.kind == "api_key"  # noqa: SLF001
 
 
 def test_subclass_rejects_unsupported_auth():
     with pytest.raises(UnsupportedAuthError) as exc:
-        _DummyProvider(auth=OAuth2CliToken(env_var="X"))
+        _DummyProvider(auth=OAuth2CliToken(token="tok"))
     assert exc.value.provider == "dummy"
     assert exc.value.got == "OAuth2CliToken"
     assert "ApiKey" in exc.value.accepted
 
 
-def test_require_capability_passes_when_true(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey.default())
+def test_require_capability_passes_when_true():
+    p = _DummyProvider(auth=ApiKey(api_key="k"))
     p.require_capability("mcp")  # supports_mcp=True
 
 
-def test_require_capability_raises_when_false(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey.default())
+def test_require_capability_raises_when_false():
+    p = _DummyProvider(auth=ApiKey(api_key="k"))
     with pytest.raises(UnsupportedCapabilityError) as exc:
         p.require_capability("hooks")
     assert exc.value.provider == "dummy"
     assert exc.value.capability == "hooks"
 
 
-def test_translate_hooks_default_to_NotImplementedError(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDERS_API_KEY", "k")
-    p = _DummyProvider(auth=ApiKey.default())
+def test_translate_hooks_default_to_NotImplementedError():
+    p = _DummyProvider(auth=ApiKey(api_key="k"))
     with pytest.raises(NotImplementedError):
         p._translate_system_prompt(None)  # type: ignore[arg-type]  # noqa: SLF001
     with pytest.raises(NotImplementedError):

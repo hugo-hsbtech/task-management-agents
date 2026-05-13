@@ -20,7 +20,7 @@ Mapping rules (verified against linear_api>=0.3 domain models):
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Any, Self
 
 from linear_api import LinearPriority, LinearTeam
@@ -39,6 +39,10 @@ from linear_api.domain import (
     ProjectStatus as LinearProjectStatus,
 )
 from pydantic import BaseModel, Field
+
+from libs.logging import get_logger
+
+logger = get_logger(__name__)
 
 _MISSING = object()
 
@@ -112,7 +116,7 @@ def _map_priority_from_api(value: Any) -> int:
     return int(linear_to_ours.get(linear_value, Priority.MEDIUM))
 
 
-class Priority(int, Enum):
+class Priority(IntEnum):
     """Wrapper priority levels (Linear public-API numeric scheme)."""
 
     NO_PRIORITY = 0
@@ -222,13 +226,25 @@ class Project(BaseModel):
 
         try:
             linear_teams = linear_project.teams or []
-        except Exception:  # pragma: no cover - SDK lazy-fetch can raise on null teams
+        except (
+            Exception
+        ) as e:  # pragma: no cover - SDK lazy-fetch can raise on null teams
+            logger.warning(
+                "linear.project_teams_lazy_fetch_failed",
+                project_id=getattr(linear_project, "id", None),
+                error=str(e),
+            )
             linear_teams = []
         team = None
         if linear_teams and isinstance(linear_teams, list):
             try:
                 team = Team.from_linear(linear_team=linear_teams[0])
-            except Exception:  # pragma: no cover - malformed nested team payload
+            except Exception as e:  # pragma: no cover - malformed nested team payload
+                logger.warning(
+                    "linear.project_team_decode_failed",
+                    project_id=getattr(linear_project, "id", None),
+                    error=str(e),
+                )
                 team = None
 
         return cls(

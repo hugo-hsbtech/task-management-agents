@@ -8,8 +8,9 @@ from pydantic import ValidationError
 from backlog.contracts import BacklogInput, BacklogOutput
 from backlog.platforms import IssueResult
 from backlog.prompts import BACKLOG_SYSTEM_PROMPT, BACKLOG_USER_PROMPT_TEMPLATE
-from llm_providers import ApiKey, OAuth2CliToken, ProviderOptions, ProviderRegistry
+from llm_providers import ApiKey, ProviderOptions, ProviderRegistry
 from llm_providers.auth.base import AuthStrategy
+from llm_providers.auth.factory import resolve_auth
 from llm_providers.base import BaseProvider
 from llm_providers.prompt import TextSystemPrompt
 from llm_providers.tools import ToolPolicy
@@ -206,11 +207,31 @@ def run_backlog_agent(
 
 
 def _auth_from_settings(provider_settings: ProviderSettings) -> AuthStrategy:
+    """Build an AuthStrategy for the configured provider.
+
+    Strict mapping (see :func:`llm_providers.auth.factory.resolve_auth`):
+      - ``ApiKeyAuth`` — uses the explicit ``key`` from settings (required
+        field), bypassing the factory's env-var path.
+      - ``OAuth2CliAuth`` — factory reads the canonical credential source
+        for the (provider, oauth2) combo: ``CLAUDE_CODE_OAUTH_TOKEN`` for
+        Claude or ``<codex_home>/auth.json`` for OpenAI/Codex.
+      - ``OAuth2ADCAuth`` — not yet implemented.
+    """
     auth = provider_settings.auth
+    # Codex is the OAuth2 backend of OpenAIProvider; the auth factory keys
+    # on the provider's *registry* name.
+    registry_name = (
+        "openai"
+        if provider_settings.name == ProviderName.codex
+        else provider_settings.name.value
+    )
+
     if isinstance(auth, ApiKeyAuth):
-        return ApiKey.from_auth(auth)
+        return ApiKey(api_key=auth.key.get_secret_value())
     if isinstance(auth, OAuth2CliAuth):
-        return OAuth2CliToken.from_settings(auth)
+        return resolve_auth(registry_name, "oauth2_cli_token")
     if isinstance(auth, OAuth2ADCAuth):
         raise ValueError("oauth2_adc auth is not wired in llm_providers yet")
-    raise TypeError(f"Unsupported auth settings type: {type(auth).__name__}")
+    raise TypeError(  # pragma: no cover - exhaustive over AuthConfig union
+        f"Unsupported auth settings type: {type(auth).__name__}"
+    )

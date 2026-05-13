@@ -47,29 +47,17 @@ class UnsupportedCapabilityError(LLMProvidersError):
 
 
 class AuthResolutionError(LLMProvidersError):
-    """auto_resolve_auth exhausted provider.supported_auth without a match."""
+    """The requested (provider, auth_kind) credential isn't configured.
 
-    def __init__(
-        self,
-        provider: str,
-        skipped: list[tuple[str, str]],
-        accepted: set[str] | None,
-    ) -> None:
-        self.provider = provider
-        self.skipped = skipped
-        self.accepted = accepted
-        detail = "; ".join(f"{name}: {reason}" for name, reason in skipped)
-        super().__init__(
-            f"Could not resolve any auth strategy for provider {provider!r}. "
-            f"Accepted kinds: {accepted}. Tried: [{detail}]."
-        )
+    Raised by :func:`llm_providers.auth.factory.resolve_auth` when the env
+    var or file backing the requested combo is missing. The message names
+    exactly which source the operator must populate.
+    """
 
 
 class AuthDetectionFailed(LLMProvidersError):
-    """Strategy.detect() returned True but resolve() then failed.
-
-    Raised by an AuthStrategy.resolve() so auto_resolve_auth can record it
-    and continue the walk instead of bubbling."""
+    """Reserved for future use — currently unraised after the strict-direct
+    factory refactor removed the walk-and-detect lifecycle."""
 
 
 class CredentialMismatch(LLMProvidersError):

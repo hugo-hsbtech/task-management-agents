@@ -1,24 +1,29 @@
-"""ProviderRegistry, AuthRegistry, and auto_resolve_auth.
+"""ProviderRegistry + AuthRegistry.
 
-Decorator-based registries: subclasses self-register at class definition time
-via @ProviderRegistry.register("name") and @AuthRegistry.register("kind").
-Open for extension (one decorator), closed for modification (no edits to
-registry.py to add a provider).
+Decorator-based registries: subclasses self-register at class definition
+time via ``@ProviderRegistry.register("name")`` and
+``@AuthRegistry.register("kind")``. Open for extension (one decorator),
+closed for modification (no edits to registry.py to add a provider).
+
+The walk-and-detect ``auto_resolve_auth`` flow has been removed — auth
+resolution is now strict-direct via
+:func:`llm_providers.auth.factory.resolve_auth`, which maps a
+(provider, auth_kind) pair to exactly one credential source.
 """
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, ClassVar
 
+from libs.logging import get_logger
 from llm_providers.auth.base import AuthStrategy
 from llm_providers.base import BaseProvider
-from llm_providers.errors import AuthResolutionError, ProviderNotFoundError
+from llm_providers.errors import ProviderNotFoundError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ProviderRegistry:
@@ -50,7 +55,7 @@ class ProviderRegistry:
                     "Both sources of truth must match."
                 )
             cls._providers[name] = provider_cls
-            logger.debug("Registered provider %r → %s", name, provider_cls.__name__)
+            logger.debug("provider.registered", name=name, cls=provider_cls.__name__)
             return provider_cls
 
         return decorator
@@ -66,41 +71,28 @@ class ProviderRegistry:
 
     @classmethod
     def build(cls, name: str, *, auth: AuthStrategy) -> BaseProvider:
+        """Construct a provider with an already-resolved auth strategy."""
         return cls.get(name)(auth=auth)
 
     @classmethod
-    def build_from_auth_method(
-        cls,
-        name: str,
-        *,
-        auth_method: str,
-    ) -> BaseProvider:
-        """Instantiate a provider using a named auth method (e.g. 'api_key', 'oauth2').
+    def build_from_settings(cls, name: str, *, auth_kind: str) -> BaseProvider:
+        """Construct a provider, resolving its credential from settings.
 
-        Walks ``provider_cls.supported_auth`` and picks the first strategy whose
-        ``kind`` matches ``auth_method``, then calls its ``default()`` constructor.
+        Strict-direct: ``(name, auth_kind)`` must match a row in the
+        :func:`llm_providers.auth.factory.resolve_auth` matrix. Missing
+        credentials raise ``AuthResolutionError`` with a message naming
+        the env var or file the operator must set.
 
-        Raises ``ValueError`` if no registered strategy matches ``auth_method``.
+        Provider name is validated first, so a bogus name surfaces as
+        ``ProviderNotFoundError`` rather than an ``AuthResolutionError`` —
+        the caller's diagnostic is clearer that way.
         """
         provider_cls = cls.get(name)
-        for strat_cls in provider_cls.supported_auth:
-            if strat_cls.kind == auth_method:
-                return provider_cls(auth=strat_cls.default())
+        # Lazy import — factory pulls settings, which we don't want loaded
+        # at module import time.
+        from llm_providers.auth.factory import resolve_auth
 
-        raise ValueError(
-            f"Provider {name!r} has no auth strategy with kind={auth_method!r}. "
-            f"Available: {[s.kind for s in provider_cls.supported_auth]}"
-        )
-
-    @classmethod
-    def build_auto(
-        cls,
-        name: str,
-        *,
-        accepted_kinds: Iterable[str] | None = None,
-    ) -> BaseProvider:
-        provider_cls = cls.get(name)
-        auth = auto_resolve_auth(name, accepted_kinds=accepted_kinds)
+        auth = resolve_auth(name, auth_kind)
         return provider_cls(auth=auth)
 
     @classmethod
@@ -116,7 +108,12 @@ class AuthRegistry:
     @classmethod
     def register(cls, kind: str) -> Callable[[type[AuthStrategy]], type[AuthStrategy]]:
         def decorator(strat_cls: type[AuthStrategy]) -> type[AuthStrategy]:
-            if not issubclass(strat_cls, AuthStrategy):
+            # Name-based MRO check rather than ``issubclass``: when callers
+            # evict ``llm_providers.auth.base`` from ``sys.modules`` (the test
+            # suite does this to exercise reload behavior), ``AuthStrategy``'s
+            # class identity changes but registry.py's import is cached, so a
+            # direct ``issubclass`` returns False against the stale reference.
+            if not any(c.__name__ == "AuthStrategy" for c in strat_cls.__mro__):
                 raise TypeError(
                     f"{strat_cls.__name__} must subclass AuthStrategy to be registered."
                 )
@@ -132,7 +129,7 @@ class AuthRegistry:
                     "Both sources of truth must match."
                 )
             cls._strategies[kind] = strat_cls
-            logger.debug("Registered auth strategy %r → %s", kind, strat_cls.__name__)
+            logger.debug("auth.strategy_registered", kind=kind, cls=strat_cls.__name__)
             return strat_cls
 
         return decorator
@@ -150,41 +147,3 @@ class AuthRegistry:
     @classmethod
     def kinds(cls) -> tuple[str, ...]:
         return tuple(sorted(cls._strategies))
-
-
-def auto_resolve_auth(
-    provider_name: str,
-    *,
-    accepted_kinds: Iterable[str] | None = None,
-) -> AuthStrategy:
-    """Walk provider.supported_auth in declared (preferred-first) order.
-
-    For each candidate strategy:
-      1. If accepted_kinds is provided and strategy.kind is not in it → skip.
-      2. Try strategy.default() — if it raises, record and skip.
-      3. If instance.detect() returns False, record and skip.
-      4. Otherwise return the instance.
-
-    Raises AuthResolutionError if no strategy resolves; the error lists every
-    strategy tried and why it was skipped.
-    """
-    provider_cls = ProviderRegistry.get(provider_name)
-    accepted = set(accepted_kinds) if accepted_kinds is not None else None
-    skipped: list[tuple[str, str]] = []
-
-    for strat_cls in provider_cls.supported_auth:
-        if accepted is not None and strat_cls.kind not in accepted:
-            skipped.append((strat_cls.__name__, "filtered_by_accepted_kinds"))
-            continue
-        try:
-            instance = strat_cls.default()
-        except Exception as e:  # noqa: BLE001 — strategy owns its construction errors
-            skipped.append((strat_cls.__name__, f"construct_failed: {e}"))
-            continue
-        if instance.detect():
-            return instance
-        skipped.append((strat_cls.__name__, "not_detected"))
-
-    raise AuthResolutionError(
-        provider=provider_name, skipped=skipped, accepted=accepted
-    )

@@ -17,9 +17,13 @@ def test_provider_registry_populated_after_import_llm_providers(monkeypatch):
     re-execute and the decorators run against the same class.
     """
     import llm_providers
-    from llm_providers.registry import ProviderRegistry
+    from llm_providers.registry import AuthRegistry, ProviderRegistry
 
     monkeypatch.setattr(ProviderRegistry, "_providers", {})
+    # Auth strategies are also self-registering — reset that registry too so
+    # the @AuthRegistry.register decorators can re-run when the auth subpackage
+    # is reloaded.
+    monkeypatch.setattr(AuthRegistry, "_strategies", {})
 
     # Evict the provider/auth subpackages from sys.modules so their module
     # bodies (and @ProviderRegistry.register decorators) re-execute. We
@@ -56,7 +60,7 @@ def test_public_surface_re_exports():
         "ProviderOptions",
         "ProviderRegistry",
         "AuthRegistry",
-        "auto_resolve_auth",
+        "resolve_auth",
         "ApiKey",
         "OAuth2CliToken",
         "TextSystemPrompt",
