@@ -183,7 +183,8 @@ def test_is_gemini_true():
 
 
 def test_codex_model_enum_values():
-    assert CodexModel.codex_mini_latest == "codex-mini-latest"
+    assert CodexModel.codex_mini_latest == "gpt-5.4-mini"
+    assert CodexModel.gpt_5_5 == "gpt-5.5"
     assert CodexModel.o4_mini == "o4-mini"
 
 
@@ -197,7 +198,7 @@ def test_codex_model_accepted():
         model=CodexModel.codex_mini_latest,
         auth=OAuth2CliAuth(token_path=Path.home() / ".codex" / "auth.json"),
     )
-    assert ps.model == "codex-mini-latest"
+    assert ps.model == "gpt-5.4-mini"
     assert ps.is_codex() is True
     assert ps.is_claude() is False
     assert ps.is_openai() is False
