@@ -311,20 +311,15 @@ class _CodexBackend(_Backend):
                 approval_policy=approval,
                 working_directory=options.cwd,
             )
-            # OpenAI's structured-output strict mode is too restrictive for
-            # schemas with free-form dicts (e.g. `dict[str, str]` properties
-            # like `platform_fields`/`context` in BacklogInput/Output). Strict
-            # mode rejects `additionalProperties: <schema>` — only `false` is
-            # accepted — and there is no way to express a typed map without
-            # falling foul of that rule. We could inline-transform the schema
-            # to be strict-clean, but doing so would require destructively
-            # rewriting those fields away from their domain meaning.
-            #
-            # Instead we mirror the Claude path: do NOT enable server-side
-            # strict validation here. The caller already validates the model's
-            # JSON output client-side with retry (see BacklogAgent.run loop in
-            # src/backlog/agent.py). If a richer strict-mode story is needed
-            # later, see _to_openai_strict_schema() below for a starting point.
+            # OpenAI's structured-output strict mode rejects
+            # `additionalProperties: <schema>` (only `false` is allowed), which
+            # is incompatible with the free-form `dict[str, str]` fields on the
+            # current backlog contract (`platform_fields`, `context`). Server-
+            # side strict validation is intentionally disabled here — we mirror
+            # the Claude path and rely on the agent's client-side validate-and-
+            # retry loop (see BacklogAgent.run in src/backlog/agent.py,
+            # MAX_VALIDATION_RETRIES). Revisit if free-form dicts are ever
+            # refactored out of the contract.
             turn_options = self._sdk.TurnOptions(output_schema=None)
 
             codex_opts = self._build_codex_options()
@@ -465,59 +460,3 @@ class _RawOpenAIBackend(_Backend):
         if servers:
             raise UnsupportedCapabilityError(provider=provider.name, capability="mcp")
         return None
-
-
-def _to_openai_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Coerce a Pydantic-generated JSON schema into OpenAI strict structured-output form.
-
-    OpenAI's structured-output API requires, on every object schema:
-      - `additionalProperties: false`
-      - `required` listing every key in `properties`
-      - no `default` keys on property schemas
-
-    Pydantic emits objects with `additionalProperties: false` already, but omits
-    fields with Python defaults from `required` and includes a `default` key on
-    those properties. This walks the schema tree (properties / items / anyOf /
-    oneOf / allOf / $defs / definitions) and rewrites those two violations
-    everywhere, returning a deep-copied, transformed schema.
-    """
-    import copy
-
-    def _walk(node: Any) -> None:
-        if not isinstance(node, dict):
-            return
-        # On every object schema: tighten required + additionalProperties.
-        if node.get("type") == "object" and isinstance(node.get("properties"), dict):
-            node["required"] = list(node["properties"].keys())
-            node["additionalProperties"] = False
-        # Strip `default` — OpenAI strict rejects it on property schemas.
-        node.pop("default", None)
-        # Containers keyed by name (values are sub-schemas).
-        for container_key in (
-            "properties",
-            "$defs",
-            "definitions",
-            "patternProperties",
-        ):
-            container = node.get(container_key)
-            if isinstance(container, dict):
-                for sub in container.values():
-                    _walk(sub)
-        # Single sub-schema child.
-        items = node.get("items")
-        if items is not None:
-            if isinstance(items, list):
-                for sub in items:
-                    _walk(sub)
-            else:
-                _walk(items)
-        # List-of-sub-schemas children.
-        for list_key in ("anyOf", "oneOf", "allOf", "prefixItems"):
-            arr = node.get(list_key)
-            if isinstance(arr, list):
-                for sub in arr:
-                    _walk(sub)
-
-    out = copy.deepcopy(schema)
-    _walk(out)
-    return out
