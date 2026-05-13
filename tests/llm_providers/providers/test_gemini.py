@@ -42,7 +42,9 @@ def _stub_genai_sdk():
 
 def test_direct_backend_selected_for_api_key():
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.providers.gemini import GeminiProvider, _DirectAPIBackend
 
         p = GeminiProvider(auth=ApiKey(api_key="AIzaSy-test"))
@@ -51,7 +53,9 @@ def test_direct_backend_selected_for_api_key():
 
 def test_vertex_backend_selected_for_adc():
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.providers.gemini import GeminiProvider, _VertexAIBackend
 
         p = GeminiProvider(auth=OAuth2ADC(project_id="my-project"))
@@ -60,7 +64,9 @@ def test_vertex_backend_selected_for_adc():
 
 def test_supported_auth():
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.providers.gemini import GeminiProvider
 
         assert OAuth2ADC in GeminiProvider.supported_auth
@@ -70,7 +76,9 @@ def test_supported_auth():
 def test_credential_mismatch_raises():
     """Unknown credential kind raises CredentialMismatch."""
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.auth.oauth2_cli import OAuth2CliToken
         from llm_providers.errors import UnsupportedAuthError
         from llm_providers.providers.gemini import GeminiProvider
@@ -84,7 +92,9 @@ def test_credential_mismatch_raises():
 
 def test_translate_system_prompt_text():
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.prompt import TextSystemPrompt
         from llm_providers.providers.gemini import GeminiProvider
 
@@ -94,7 +104,9 @@ def test_translate_system_prompt_text():
 
 def test_translate_system_prompt_skill(tmp_path):
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.prompt import SkillReference
         from llm_providers.providers.gemini import GeminiProvider
 
@@ -102,12 +114,17 @@ def test_translate_system_prompt_skill(tmp_path):
         skill_file.write_text("skill content")
 
         p = GeminiProvider(auth=ApiKey(api_key="k"))
-        assert p._translate_system_prompt(SkillReference(path=skill_file)) == "skill content"
+        assert (
+            p._translate_system_prompt(SkillReference(path=skill_file))
+            == "skill content"
+        )
 
 
 def test_translate_system_prompt_preset_raises():
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.prompt import PresetSystemPrompt
         from llm_providers.providers.gemini import GeminiProvider
 
@@ -118,18 +135,24 @@ def test_translate_system_prompt_preset_raises():
 
 def test_mcp_raises_unsupported():
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.providers.gemini import GeminiProvider
         from llm_providers.tools import McpServerSpec
 
         p = GeminiProvider(auth=ApiKey(api_key="k"))
         with pytest.raises(UnsupportedCapabilityError, match="mcp"):
-            p._translate_mcp((McpServerSpec(name="fs", transport="stdio", command=("npx",)),))
+            p._translate_mcp(
+                (McpServerSpec(name="fs", transport="stdio", command=("npx",)),)
+            )
 
 
 def test_client_raises_unsupported():
     genai, _ = _stub_genai_sdk()
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.prompt import TextSystemPrompt
         from llm_providers.protocol import ProviderOptions
         from llm_providers.providers.gemini import GeminiProvider
@@ -156,7 +179,9 @@ async def test_direct_query_streams_messages():
 
     client_mock.models.generate_content_stream.return_value = iter([chunk1, chunk2])
 
-    with patch.dict("sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}):
+    with patch.dict(
+        "sys.modules", {"google.genai": genai, "google": SimpleNamespace(genai=genai)}
+    ):
         from llm_providers.prompt import TextSystemPrompt
         from llm_providers.protocol import ProviderOptions
         from llm_providers.providers.gemini import GeminiProvider
