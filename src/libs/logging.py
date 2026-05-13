@@ -46,13 +46,16 @@ def configure(
     timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
 
     # Pre-render processors — applied before the stdlib formatter takes over.
+    # ``format_exc_info`` is intentionally NOT in this chain: ProcessorFormatter
+    # plus ConsoleRenderer / JSONRenderer handle ``record.exc_info`` natively
+    # and produce prettier output. Including it stringifies the exception too
+    # early and triggers a structlog UserWarning at runtime.
     pre_chain: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         timestamper,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
     ]
     if extra_processors:
         pre_chain.extend(extra_processors)

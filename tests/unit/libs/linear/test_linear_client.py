@@ -489,11 +489,11 @@ def test_post_project_update_logs_on_failure(
         or getattr(r, "project_id", None) == "proj-123"
     ]
     assert matched, [r.getMessage() for r in caplog.records]
-    # The cause must surface — structlog ``format_exc_info`` moves the
-    # traceback into the event dict's ``exception`` key, which appears in
-    # the rendered ``getMessage()`` output.
+    # The cause must surface — either as the stdlib record's ``exc_info``
+    # attribute (when the bridge keeps it) or as the rendered event dict
+    # carrying ``exc_info=True`` (when structlog packages it into the dict).
     assert any(
-        "auth_error" in r.getMessage() or "Traceback" in r.getMessage()
+        r.exc_info is not None or "exc_info" in r.getMessage()
         for r in matched
     )
 

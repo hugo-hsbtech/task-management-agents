@@ -426,7 +426,9 @@ def _update_payload(issue: IssuePlan) -> IssueUpdateInput:
     """Build the Linear update payload.
 
     ``parent_id`` is resolved separately in ``_apply_parent_links`` for the same
-    reason as ``_create_payload``.
+    reason as ``_create_payload``. ``state`` is sourced from
+    ``platform_fields["state"]`` when provided so the LLM can express workflow
+    transitions in the plan.
     """
     fields = issue.fields
     issue_id = fields.platform_fields.get("issue_id")
@@ -436,6 +438,7 @@ def _update_payload(issue: IssuePlan) -> IssueUpdateInput:
         title=fields.title,
         description=fields.description,
         priority=fields.priority,
+        state=fields.platform_fields.get("state"),
     )
 
 
